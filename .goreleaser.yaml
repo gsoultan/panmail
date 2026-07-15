@@ -35,7 +35,7 @@ nfpms:
     formats:
       - deb
       - rpm
-    depends:
+    dependencies:
       - systemd
     contents:
       - src: configs/db_config.yaml.example
