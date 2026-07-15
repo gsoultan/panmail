@@ -1,0 +1,16 @@
+[Unit]
+Description=Panmail Email Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=panmail
+Group=panmail
+WorkingDirectory=/var/lib/panmail
+ExecStart=/usr/bin/panmail --built-ui --config /etc/panmail/db_config.yaml --log-dir /var/lib/panmail/logs.db --event-dir /var/lib/panmail/events.db --inbound-dir /var/lib/panmail/inbound.db
+Restart=on-failure
+StandardOutput=append:/var/log/panmail/panmail.log
+StandardError=append:/var/log/panmail/panmail.log
+
+[Install]
+WantedBy=multi-user.target

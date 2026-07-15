@@ -9,7 +9,8 @@ before:
     - go generate ./...
 
 builds:
-  - env:
+  - id: panmail
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -17,10 +18,46 @@ builds:
       - amd64
       - arm64
     main: ./cmd/api
+    binary: panmail
     flags:
       - -tags=builtui
     ldflags:
       - -s -w -X main.Version={{.Version}}
+
+nfpms:
+  - id: panmail
+    package_name: panmail
+    vendor: Panmail
+    homepage: https://github.com/gsoultan/panmail
+    maintainer: G Soultan <gsoultan@jetbrains.com>
+    description: High-performance, production-grade email gateway.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    depends:
+      - systemd
+    contents:
+      - src: configs/db_config.yaml.example
+        dst: /etc/panmail/db_config.yaml.example
+        type: config
+      - src: README.md
+        dst: /usr/share/doc/panmail/README.md
+      - src: LICENSE
+        dst: /usr/share/doc/panmail/LICENSE
+    overrides:
+      deb:
+        contents:
+          - src: scripts/panmail.service
+            dst: /lib/systemd/system/panmail.service
+      rpm:
+        contents:
+          - src: scripts/panmail.service
+            dst: /usr/lib/systemd/system/panmail.service
+    scripts:
+      postinstall: scripts/postinstall.sh
+      preremove: scripts/prerm.sh
+      postremove: scripts/postremove.sh
 
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"

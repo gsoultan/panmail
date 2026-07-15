@@ -1,0 +1,19 @@
+database:
+  type: postgres
+  host: localhost
+  port: 5432
+  user: panmail
+  password: panmail_password
+  dbname: panmail
+  sslmode: disable
+
+auth:
+  symmetric_key: "" # Will be generated during setup if empty
+
+app:
+  base_url: "http://localhost:8080"
+  log_retention_days: 14
+  retry_pattern:
+    - 5m
+    - 1h
+    - 1d

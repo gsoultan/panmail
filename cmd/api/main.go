@@ -126,12 +126,20 @@ func main() {
 
 	// Parse flags for server mode
 	builtUIFlag := flag.Bool("built-ui", false, "Serve the built UI (embedded or from web/dist)")
+	configFlag := flag.String("config", "", "Path to configuration file")
+	logDirFlag := flag.String("log-dir", "logs.db", "Directory for logs database")
+	eventDirFlag := flag.String("event-dir", "events.db", "Directory for events database")
+	inboundDirFlag := flag.String("inbound-dir", "inbound.db", "Directory for inbound database")
 	versionFlag := flag.Bool("version", false, "Show version and exit")
 	flag.Parse()
 
 	if *versionFlag {
 		fmt.Printf("Panmail Gateway v%s\n", Version)
 		return
+	}
+
+	if *configFlag != "" {
+		config.SetConfigPath(*configFlag)
 	}
 
 	// Ensure UI is built if --built-ui is passed and we're in dev mode (not embedded)
@@ -141,11 +149,7 @@ func main() {
 	}
 
 	// 1. Setup Logging (Pebble + Stdout)
-	logDir := os.Getenv("LOG_DIR")
-	if logDir == "" {
-		logDir = "logs.db"
-	}
-	logStore, err := logging.NewPebbleStore(logDir)
+	logStore, err := logging.NewPebbleStore(*logDirFlag)
 	if err != nil {
 		fmt.Printf("failed to open log store: %v\n", err)
 		os.Exit(1)
@@ -205,14 +209,14 @@ func main() {
 	suppressionRepo := suppressionstores.NewStore(conn)
 	outboxRepo := emailstores.NewOutboxStore(conn)
 	webhookRepo := webhookstores.NewStore(conn)
-	eventRepo, err := eventstores.NewStore("events.db")
+	eventRepo, err := eventstores.NewStore(*eventDirFlag)
 	if err != nil {
 		slog.Error("failed to open event store", "error", err)
 		os.Exit(1)
 	}
 	defer eventRepo.Close()
 
-	inboundRepo, err := inboundstores.NewStore("inbound.db")
+	inboundRepo, err := inboundstores.NewStore(*inboundDirFlag)
 	if err != nil {
 		slog.Error("failed to open inbound store", "error", err)
 		os.Exit(1)

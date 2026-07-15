@@ -32,7 +32,16 @@ type AppConfig struct {
 	RetryPattern     []string `yaml:"retry_pattern"`
 }
 
+var explicitConfigPath string
+
+func SetConfigPath(path string) {
+	explicitConfigPath = path
+}
+
 func GetConfigPath() (string, error) {
+	if explicitConfigPath != "" {
+		return explicitConfigPath, nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
