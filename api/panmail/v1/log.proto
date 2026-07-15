@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service LogService {
+  rpc ListLogs(ListLogsRequest) returns (ListLogsResponse);
+  rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
+}
+
+message StreamLogsRequest {
+}
+
+message ListLogsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListLogsResponse {
+  repeated LogEntry logs = 1;
+  string next_page_token = 2;
+}
+
+message LogEntry {
+  string id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string level = 3;
+  string message = 4;
+  string service = 5;
+  map<string, string> metadata = 6;
+}

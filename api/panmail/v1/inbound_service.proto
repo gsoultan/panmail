@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "panmail/v1/inbound.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service InboundService {
+  rpc ListInboundEmails(ListInboundEmailsRequest) returns (ListInboundEmailsResponse);
+  rpc GetInboundEmail(GetInboundEmailRequest) returns (GetInboundEmailResponse);
+}
+
+message ListInboundEmailsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListInboundEmailsResponse {
+  repeated InboundEmail emails = 1;
+  string next_page_token = 2;
+}
+
+message GetInboundEmailRequest {
+  string id = 1;
+}
+
+message GetInboundEmailResponse {
+  InboundEmail email = 1;
+}

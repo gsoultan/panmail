@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "panmail/v1/common.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+enum EmailEventType {
+  EMAIL_EVENT_TYPE_UNSPECIFIED = 0;
+  EMAIL_EVENT_TYPE_SENT = 1;
+  EMAIL_EVENT_TYPE_DELIVERED = 2;
+  EMAIL_EVENT_TYPE_OPENED = 3;
+  EMAIL_EVENT_TYPE_CLICKED = 4;
+  EMAIL_EVENT_TYPE_BOUNCED = 5;
+  EMAIL_EVENT_TYPE_HARD_BOUNCE = 6;
+  EMAIL_EVENT_TYPE_SOFT_BOUNCE = 7;
+  EMAIL_EVENT_TYPE_SPAM_REPORT = 8;
+  EMAIL_EVENT_TYPE_UNSUBSCRIBED = 9;
+  EMAIL_EVENT_TYPE_DROPPED = 10;
+  EMAIL_EVENT_TYPE_REJECTED = 11;
+  EMAIL_EVENT_TYPE_PENDING = 12;
+  EMAIL_EVENT_TYPE_DEFERRED = 13;
+  EMAIL_EVENT_TYPE_COMPLAINED = 14;
+}
+
+message EmailEvent {
+  string id = 1;
+  string tenant_id = 2;
+  string provider_id = 3;
+  string message_id = 4;
+  EmailEventType type = 5;
+  string recipient = 6;
+  google.protobuf.Timestamp timestamp = 7;
+  google.protobuf.Struct metadata = 8;
+  string error_message = 9;
+}
+
+message EmailMessage {
+  string id = 1;
+  string tenant_id = 2;
+  string provider_id = 10;
+  string from = 3;
+  repeated string to = 4;
+  string subject = 5;
+  string body_html = 6;
+  string body_text = 7;
+  repeated Attachment attachments = 8;
+  google.protobuf.Timestamp created_at = 9;
+}

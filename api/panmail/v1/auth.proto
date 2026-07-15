@@ -1,0 +1,248 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service AuthService {
+  rpc SignIn(SignInRequest) returns (SignInResponse);
+  rpc SignOut(SignOutRequest) returns (SignOutResponse);
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
+
+  // 2FA RPCs
+  rpc SetupTwoFactor(SetupTwoFactorRequest) returns (SetupTwoFactorResponse);
+  rpc VerifyTwoFactor(VerifyTwoFactorRequest) returns (VerifyTwoFactorResponse);
+  rpc EnableTwoFactor(EnableTwoFactorRequest) returns (EnableTwoFactorResponse);
+  rpc DisableTwoFactor(DisableTwoFactorRequest) returns (DisableTwoFactorResponse);
+}
+
+service ApiKeyService {
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+  rpc DeleteApiKey(DeleteApiKeyRequest) returns (DeleteApiKeyResponse);
+  rpc DisableApiKey(DisableApiKeyRequest) returns (DisableApiKeyResponse);
+  rpc EnableApiKey(EnableApiKeyRequest) returns (EnableApiKeyResponse);
+}
+
+service UserService {
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc UpdateUserRole(UpdateUserRoleRequest) returns (UpdateUserRoleResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  rpc UpdateUserTwoFactor(UpdateUserTwoFactorRequest) returns (UpdateUserTwoFactorResponse);
+}
+
+service TenantService {
+  rpc CreateTenant(CreateTenantRequest) returns (CreateTenantResponse);
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  rpc UpdateTenant(UpdateTenantRequest) returns (UpdateTenantResponse);
+  rpc DeleteTenant(DeleteTenantRequest) returns (DeleteTenantResponse);
+}
+
+message Tenant {
+  string id = 1;
+  string name = 2;
+  string created_at = 3;
+  repeated string retry_pattern = 4;
+}
+
+message CreateTenantRequest {
+  string name = 1;
+  repeated string retry_pattern = 2;
+}
+
+message CreateTenantResponse {
+  Tenant tenant = 1;
+}
+
+message UpdateTenantRequest {
+  string id = 1;
+  string name = 2;
+  repeated string retry_pattern = 3;
+}
+
+message UpdateTenantResponse {
+  Tenant tenant = 1;
+}
+
+message ListTenantsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListTenantsResponse {
+  repeated Tenant tenants = 1;
+  string next_page_token = 2;
+}
+
+message DeleteTenantRequest {
+  string id = 1;
+}
+
+message DeleteTenantResponse {}
+
+message CreateUserRequest {
+  string email = 1;
+  string password = 2;
+  string name = 3;
+  UserRole role = 4;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message ListUsersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  string next_page_token = 2;
+}
+
+message UpdateUserRoleRequest {
+  string id = 1;
+  UserRole role = 2;
+}
+
+message UpdateUserRoleResponse {}
+
+message DeleteUserRequest {
+  string id = 1;
+}
+
+message DeleteUserResponse {}
+
+message UpdateUserTwoFactorRequest {
+  string id = 1;
+  bool enabled = 2;
+}
+
+message UpdateUserTwoFactorResponse {}
+
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  USER_ROLE_SUPER_ADMIN = 1;
+  USER_ROLE_ADMIN = 2;
+  USER_ROLE_EDITOR = 3;
+  USER_ROLE_VIEWER = 4;
+}
+
+message ApiKey {
+  string id = 1;
+  string name = 2;
+  string prefix = 3;
+  string created_at = 4;
+  string last_used_at = 5;
+  string expires_at = 6;
+  bool is_enabled = 7;
+}
+
+message CreateApiKeyRequest {
+  string name = 1;
+  string expires_at = 2;
+}
+
+message CreateApiKeyResponse {
+  ApiKey api_key = 1;
+  string plain_text_key = 2;
+}
+
+message ListApiKeysRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListApiKeysResponse {
+  repeated ApiKey api_keys = 1;
+  string next_page_token = 2;
+}
+
+message DeleteApiKeyRequest {
+  string id = 1;
+}
+
+message DeleteApiKeyResponse {}
+
+message DisableApiKeyRequest {
+  string id = 1;
+}
+
+message DisableApiKeyResponse {}
+
+message EnableApiKeyRequest {
+  string id = 1;
+}
+
+message EnableApiKeyResponse {}
+
+message SignInRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message SignInResponse {
+  string token = 1;
+  User user = 2;
+  bool two_factor_required = 3;
+  bool two_factor_setup_required = 4;
+  string two_factor_secret = 5;
+  string two_factor_qr_code_url = 6;
+}
+
+message SignOutRequest {}
+
+message SignOutResponse {}
+
+message GetCurrentUserRequest {}
+
+message GetCurrentUserResponse {
+  User user = 1;
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  string tenant_id = 4;
+  UserRole role = 5;
+  bool two_factor_enabled = 6;
+}
+
+message SetupTwoFactorRequest {}
+
+message SetupTwoFactorResponse {
+  string secret = 1;
+  string qr_code_url = 2;
+}
+
+message VerifyTwoFactorRequest {
+  string code = 1;
+  string secret = 2; // Used during setup only
+  string email = 3;  // Used during SignIn only
+}
+
+message VerifyTwoFactorResponse {
+  bool verified = 1;
+  string token = 2; // Return token if verified during SignIn
+  User user = 3;    // Return user info if verified during SignIn
+}
+
+message EnableTwoFactorRequest {
+  string code = 1;
+  string secret = 2;
+}
+
+message EnableTwoFactorResponse {
+  bool success = 1;
+}
+
+message DisableTwoFactorRequest {
+  string user_id = 1; // Can be empty if disabling for current user
+}
+
+message DisableTwoFactorResponse {
+  bool success = 1;
+}

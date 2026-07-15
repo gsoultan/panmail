@@ -1,0 +1,44 @@
+version: 2
+project_name: panmail
+
+before:
+  hooks:
+    - bun install --cwd web
+    - sh -c "VITE_APP_VERSION=${GORELEASER_CURRENT_TAG:-v0.0.0} bun run --cwd web build"
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/api
+    flags:
+      - -tags=builtui
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    files:
+      - README.md
+      - LICENSE
+      - configs/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'

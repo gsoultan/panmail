@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+message Attachment {
+  string filename = 1;
+  string content_type = 2;
+  bytes content = 3;
+}

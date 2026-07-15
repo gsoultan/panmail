@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+message Template {
+  string id = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string subject = 4;
+  string body_html = 5;
+  string body_text = 6;
+  string design = 9;
+  google.protobuf.Timestamp create_time = 7;
+  google.protobuf.Timestamp update_time = 8;
+}

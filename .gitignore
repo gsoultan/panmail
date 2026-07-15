@@ -1,0 +1,11 @@
+/panmail
+/panmail.db
+/panmail_no_ui
+/go.sum
+/logs.db/
+/inbound.db/
+/events.db/
+/.junie/*
+/.rtk/
+/.serena/
+/.idea

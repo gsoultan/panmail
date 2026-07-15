@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "google/protobuf/timestamp.proto";
+import "panmail/v1/provider_type.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+message EmailProvider {
+  string id = 1;
+  string name = 2;
+  ProviderType type = 3;
+  oneof config {
+    SmtpConfig smtp = 4;
+    ImapConfig imap = 9;
+    Pop3Config pop3 = 10;
+  }
+  google.protobuf.Timestamp create_time = 11;
+  google.protobuf.Timestamp update_time = 12;
+  string tenant_id = 13;
+  repeated string allowed_domains = 14;
+}
+
+message SmtpConfig {
+  string host = 1;
+  int32 port = 2;
+  string username = 3;
+  string password = 4;
+  bool skip_verify = 5;
+  bool use_ssl = 6;
+}
+
+message ImapConfig {
+  string host = 1;
+  int32 port = 2;
+  string username = 3;
+  string password = 4;
+  bool skip_verify = 5;
+  bool use_ssl = 6;
+}
+
+message Pop3Config {
+  string host = 1;
+  int32 port = 2;
+  string username = 3;
+  string password = 4;
+  bool skip_verify = 5;
+  bool use_ssl = 6;
+}

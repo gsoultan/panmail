@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+enum ProviderType {
+  PROVIDER_TYPE_UNSPECIFIED = 0;
+  PROVIDER_TYPE_SMTP = 1;
+  reserved 2 to 5;
+  reserved "PROVIDER_TYPE_SES", "PROVIDER_TYPE_SENDGRID", "PROVIDER_TYPE_MAILGUN", "PROVIDER_TYPE_POSTMARK";
+  PROVIDER_TYPE_IMAP = 6;
+  PROVIDER_TYPE_POP3 = 7;
+}

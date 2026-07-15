@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "panmail/v1/provider_type.proto";
+import "panmail/v1/email_provider.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service EmailProviderService {
+  rpc CreateEmailProvider(CreateEmailProviderRequest) returns (CreateEmailProviderResponse);
+  rpc GetEmailProvider(GetEmailProviderRequest) returns (GetEmailProviderResponse);
+  rpc ListEmailProviders(ListEmailProvidersRequest) returns (ListEmailProvidersResponse);
+  rpc UpdateEmailProvider(UpdateEmailProviderRequest) returns (UpdateEmailProviderResponse);
+  rpc DeleteEmailProvider(DeleteEmailProviderRequest) returns (DeleteEmailProviderResponse);
+  rpc TestEmailProvider(TestEmailProviderRequest) returns (TestEmailProviderResponse);
+  rpc TestEmailProviderConfig(CreateEmailProviderRequest) returns (TestEmailProviderResponse);
+}
+
+message CreateEmailProviderRequest {
+  string name = 1;
+  ProviderType type = 2;
+  oneof config {
+    SmtpConfig smtp = 3;
+    ImapConfig imap = 8;
+    Pop3Config pop3 = 9;
+  }
+  repeated string allowed_domains = 10;
+}
+
+message CreateEmailProviderResponse {
+  EmailProvider provider = 1;
+}
+
+message GetEmailProviderRequest {
+  string id = 1;
+}
+
+message GetEmailProviderResponse {
+  EmailProvider provider = 1;
+}
+
+message ListEmailProvidersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListEmailProvidersResponse {
+  repeated EmailProvider providers = 1;
+  string next_page_token = 2;
+}
+
+message UpdateEmailProviderRequest {
+  string id = 1;
+  string name = 2;
+  oneof config {
+    SmtpConfig smtp = 3;
+    ImapConfig imap = 8;
+    Pop3Config pop3 = 9;
+  }
+  repeated string allowed_domains = 10;
+}
+
+message UpdateEmailProviderResponse {
+  EmailProvider provider = 1;
+}
+
+message DeleteEmailProviderRequest {
+  string id = 1;
+}
+
+message DeleteEmailProviderResponse {}
+
+message TestEmailProviderRequest {
+  string id = 1;
+}
+
+message TestEmailProviderResponse {
+  bool success = 1;
+  string error_message = 2;
+}

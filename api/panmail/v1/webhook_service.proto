@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "panmail/v1/webhook.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service WebhookService {
+  rpc CreateWebhook(CreateWebhookRequest) returns (CreateWebhookResponse);
+  rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse);
+  rpc DeleteWebhook(DeleteWebhookRequest) returns (DeleteWebhookResponse);
+  rpc UpdateWebhook(UpdateWebhookRequest) returns (UpdateWebhookResponse);
+}
+
+message CreateWebhookRequest {
+  string name = 1;
+  string url = 2;
+  repeated WebhookTriggerEvent events = 3;
+}
+
+message CreateWebhookResponse {
+  Webhook webhook = 1;
+}
+
+message ListWebhooksRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListWebhooksResponse {
+  repeated Webhook webhooks = 1;
+  string next_page_token = 2;
+}
+
+message DeleteWebhookRequest {
+  string id = 1;
+}
+
+message DeleteWebhookResponse {}
+
+message UpdateWebhookRequest {
+  string id = 1;
+  string name = 2;
+  string url = 3;
+  repeated WebhookTriggerEvent events = 4;
+  bool active = 5;
+}
+
+message UpdateWebhookResponse {
+  Webhook webhook = 1;
+}

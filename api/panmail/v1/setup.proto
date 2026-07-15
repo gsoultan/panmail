@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service SetupService {
+  rpc GetSetupStatus(GetSetupStatusRequest) returns (GetSetupStatusResponse);
+  rpc Setup(SetupRequest) returns (SetupResponse);
+  rpc TestDatabaseConnection(TestDatabaseConnectionRequest) returns (TestDatabaseConnectionResponse);
+}
+
+message GetSetupStatusRequest {}
+
+message GetSetupStatusResponse {
+  bool is_setup = 1;
+}
+
+message TestDatabaseConnectionRequest {
+  DatabaseConfig db_config = 1;
+}
+
+message TestDatabaseConnectionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message SetupRequest {
+  DatabaseConfig db_config = 1;
+  AdminConfig admin_config = 2;
+  string base_url = 3;
+}
+
+message SetupResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DatabaseConfig {
+  string type = 1; // postgres, mysql, mariadb, sqlite
+  string host = 2;
+  int32 port = 3;
+  string user = 4;
+  string password = 5;
+  string dbname = 6;
+  string file_path = 7; // for sqlite
+}
+
+message AdminConfig {
+  string email = 1;
+  string password = 2;
+  string name = 3;
+}

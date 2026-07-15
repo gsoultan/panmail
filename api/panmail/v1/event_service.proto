@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "panmail/v1/event.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service EventService {
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+  rpc GetTimeSeriesMetrics(GetTimeSeriesMetricsRequest) returns (GetTimeSeriesMetricsResponse);
+  rpc GetEvent(GetEventRequest) returns (GetEventResponse);
+  rpc GetPerformanceMetrics(GetPerformanceMetricsRequest) returns (GetPerformanceMetricsResponse);
+
+  // Archive management
+  rpc ListArchives(ListArchivesRequest) returns (ListArchivesResponse);
+  rpc DownloadArchive(DownloadArchiveRequest) returns (DownloadArchiveResponse);
+}
+
+message ListArchivesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ArchiveInfo {
+  string id = 1;
+  string filename = 2;
+  int64 size = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message ListArchivesResponse {
+  repeated ArchiveInfo archives = 1;
+  string next_page_token = 2;
+}
+
+message DownloadArchiveRequest {
+  string id = 1;
+}
+
+message DownloadArchiveResponse {
+  bytes content = 1;
+  string filename = 2;
+}
+
+message GetPerformanceMetricsRequest {}
+
+message GetPerformanceMetricsResponse {
+  double sent_per_second = 1;
+  double cpu_usage = 2;
+  uint64 memory_usage = 3;
+  uint64 uptime_seconds = 4;
+  uint32 goroutines = 5;
+  uint64 disk_usage = 6;
+  uint32 open_files = 7;
+}
+
+message GetEventRequest {
+  string id = 1;
+}
+
+message GetEventResponse {
+  EmailEvent event = 1;
+  EmailMessage message = 2;
+}
+
+message GetMetricsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+}
+
+message MetricInfo {
+  string key = 1;
+  string label = 2;
+  string description = 3;
+  int64 value = 4;
+  string category = 5; // "outbound", "inbound", "performance", "system"
+}
+
+message GetMetricsResponse {
+  map<string, int64> metrics = 1;
+  repeated MetricInfo extended_metrics = 2;
+}
+
+message GetTimeSeriesMetricsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  string granularity = 3; // "minute", "hour", "day"
+}
+
+message TimeSeriesData {
+  map<string, int64> metrics = 1;
+}
+
+message GetTimeSeriesMetricsResponse {
+  map<string, TimeSeriesData> data = 1;
+}
+
+message ListEventsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string recipient = 3;
+  EmailEventType event_type = 4;
+  google.protobuf.Timestamp start_time = 5;
+  google.protobuf.Timestamp end_time = 6;
+}
+
+message ListEventsResponse {
+  repeated EmailEvent events = 1;
+  string next_page_token = 2;
+}

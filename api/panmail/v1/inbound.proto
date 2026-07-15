@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+message InboundEmail {
+  string id = 1;
+  string tenant_id = 2;
+  string from = 3;
+  repeated string to = 4;
+  string subject = 5;
+  string body_html = 6;
+  string body_text = 7;
+  google.protobuf.Timestamp timestamp = 8;
+  map<string, string> headers = 9;
+}

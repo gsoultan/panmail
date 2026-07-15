@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+import "panmail/v1/event.proto";
+import "panmail/v1/common.proto";
+import "google/protobuf/struct.proto";
+
+service EmailService {
+  rpc SendEmail(SendEmailRequest) returns (SendEmailResponse);
+}
+
+message SendEmailRequest {
+  string provider_id = 1;
+  string from = 2;
+  repeated string to = 3;
+  string subject = 4;
+  string body = 5 [deprecated = true];
+  bool is_html = 6 [deprecated = true];
+  string body_html = 9;
+  string body_text = 10;
+  string template_id = 7;
+  google.protobuf.Struct template_data = 8;
+  repeated Attachment attachments = 11;
+}
+
+message SendEmailResponse {
+  string message_id = 1;
+  EmailEventType status = 2;
+  string error = 3;
+}

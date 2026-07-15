@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+enum WebhookTriggerEvent {
+  WEBHOOK_TRIGGER_EVENT_UNSPECIFIED = 0;
+  WEBHOOK_TRIGGER_EVENT_MAIL_SENT = 1;
+  WEBHOOK_TRIGGER_EVENT_MAIL_DELIVERED = 2;
+  WEBHOOK_TRIGGER_EVENT_MAIL_OPENED = 3;
+  WEBHOOK_TRIGGER_EVENT_MAIL_CLICKED = 4;
+  WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED = 5;
+  WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED = 6;
+  WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND = 7;
+}
+
+message Webhook {
+  string id = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string url = 4;
+  repeated WebhookTriggerEvent events = 5;
+  bool active = 6;
+  google.protobuf.Timestamp created_at = 7;
+}

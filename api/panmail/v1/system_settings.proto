@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service SystemSettingsService {
+  rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
+  rpc UpdateSettings(UpdateSettingsRequest) returns (UpdateSettingsResponse);
+}
+
+message GetSettingsRequest {}
+
+message GetSettingsResponse {
+  SystemSettings settings = 1;
+}
+
+message UpdateSettingsRequest {
+  SystemSettings settings = 1;
+}
+
+message UpdateSettingsResponse {
+  SystemSettings settings = 1;
+}
+
+message SystemSettings {
+  string base_url = 1;
+  int32 log_retention_days = 2;
+  repeated string retry_pattern = 3;
+}

@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "panmail/v1/suppression.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service SuppressionService {
+  rpc AddSuppression(AddSuppressionRequest) returns (AddSuppressionResponse);
+  rpc RemoveSuppression(RemoveSuppressionRequest) returns (RemoveSuppressionResponse);
+  rpc ListSuppressions(ListSuppressionsRequest) returns (ListSuppressionsResponse);
+  rpc CheckSuppression(CheckSuppressionRequest) returns (CheckSuppressionResponse);
+}
+
+message AddSuppressionRequest {
+  string email = 1;
+  string reason = 2;
+}
+
+message AddSuppressionResponse {
+  Suppression suppression = 1;
+}
+
+message RemoveSuppressionRequest {
+  string email = 1;
+}
+
+message RemoveSuppressionResponse {}
+
+message ListSuppressionsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListSuppressionsResponse {
+  repeated Suppression suppressions = 1;
+  string next_page_token = 2;
+}
+
+message CheckSuppressionRequest {
+  string email = 1;
+}
+
+message CheckSuppressionResponse {
+  bool is_suppressed = 1;
+  string reason = 2;
+}

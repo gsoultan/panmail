@@ -1,0 +1,31 @@
+.navItem {
+  display: block;
+  width: 100%;
+  border-radius: var(--mantine-radius-md);
+  transition: all 0.2s ease;
+  background-color: transparent;
+  text-decoration: none;
+}
+
+.navItemActive {
+  background-color: light-dark(var(--mantine-color-brand-0), var(--mantine-color-dark-5));
+  color: light-dark(var(--mantine-color-brand-7), var(--mantine-color-white)) !important;
+}
+
+.navItemInactive {
+  color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1)) !important;
+}
+
+.navItem:hover:not(.navItemActive) {
+  background-color: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-5));
+}
+
+.profileButton {
+  border-radius: var(--mantine-radius-md);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.profileButton:hover {
+  background-color: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-5));
+}
