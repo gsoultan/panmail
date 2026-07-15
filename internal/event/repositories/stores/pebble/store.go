@@ -36,6 +36,10 @@ type messageOp struct {
 	message *entities.EmailMessage
 }
 
+type resourceOp struct {
+	point entities.ResourcePoint
+}
+
 func NewStore(dir string) (stores.EventRepository, error) {
 	opts := &pebble.Options{
 		Merger: &pebble.Merger{
@@ -113,6 +117,8 @@ func (s *store) worker() {
 				_ = s.performWrite(batch, v.event)
 			case messageOp:
 				_ = s.performWriteMessage(batch, v.message)
+			case resourceOp:
+				_ = s.performWriteResource(batch, v.point)
 			}
 			count++
 			if count >= 500 {
@@ -383,6 +389,64 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
 	}
 
 	return nil
+}
+
+func (s *store) WriteResourceMetric(ctx context.Context, cpuUsage float64, memUsage uint64, load15 float64) error {
+	op := resourceOp{
+		point: entities.ResourcePoint{
+			Timestamp:    time.Now(),
+			CPUUsage:     cpuUsage,
+			MemoryUsage:  memUsage,
+			SystemLoad15: load15,
+		},
+	}
+	select {
+	case s.opChan <- op:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *store) performWriteResource(batch *pebble.Batch, p entities.ResourcePoint) error {
+	timestampDesc := math.MaxInt64 - p.Timestamp.UnixNano()
+	key := []byte(fmt.Sprintf("resource:%019d", timestampDesc))
+	val, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	return batch.Set(key, val, nil)
+}
+
+func (s *store) GetResourceHistory(ctx context.Context, since time.Time) ([]entities.ResourcePoint, error) {
+	prefix := []byte("resource:")
+	lower := prefix
+	upper := []byte("resource;")
+
+	if !since.IsZero() {
+		tsDesc := math.MaxInt64 - since.UnixNano()
+		// resource:desc_timestamp
+		// Range is [resource:0, resource:desc_timestamp_of_since]
+		upper = []byte(fmt.Sprintf("resource:%019d", tsDesc))
+	}
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	var res []entities.ResourcePoint
+	for iter.SeekGE(lower); iter.Valid(); iter.Next() {
+		var p entities.ResourcePoint
+		if err := json.Unmarshal(iter.Value(), &p); err == nil {
+			res = append(res, p)
+		}
+	}
+	return res, nil
 }
 
 func (s *store) ListArchives(ctx context.Context, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error) {

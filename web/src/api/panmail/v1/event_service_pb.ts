@@ -260,6 +260,61 @@ export class GetPerformanceMetricsRequest extends Message<GetPerformanceMetricsR
 }
 
 /**
+ * @generated from message panmail.v1.ResourcePoint
+ */
+export class ResourcePoint extends Message<ResourcePoint> {
+  /**
+   * @generated from field: google.protobuf.Timestamp timestamp = 1;
+   */
+  timestamp?: Timestamp;
+
+  /**
+   * @generated from field: double cpu_usage = 2;
+   */
+  cpuUsage = 0;
+
+  /**
+   * @generated from field: uint64 memory_usage = 3;
+   */
+  memoryUsage = protoInt64.zero;
+
+  /**
+   * @generated from field: double system_load_15 = 4;
+   */
+  systemLoad15 = 0;
+
+  constructor(data?: PartialMessage<ResourcePoint>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.ResourcePoint";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "timestamp", kind: "message", T: Timestamp },
+    { no: 2, name: "cpu_usage", kind: "scalar", T: 1 /* ScalarType.DOUBLE */ },
+    { no: 3, name: "memory_usage", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 4, name: "system_load_15", kind: "scalar", T: 1 /* ScalarType.DOUBLE */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ResourcePoint {
+    return new ResourcePoint().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ResourcePoint {
+    return new ResourcePoint().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ResourcePoint {
+    return new ResourcePoint().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ResourcePoint | PlainMessage<ResourcePoint> | undefined, b: ResourcePoint | PlainMessage<ResourcePoint> | undefined): boolean {
+    return proto3.util.equals(ResourcePoint, a, b);
+  }
+}
+
+/**
  * @generated from message panmail.v1.GetPerformanceMetricsResponse
  */
 export class GetPerformanceMetricsResponse extends Message<GetPerformanceMetricsResponse> {
@@ -298,6 +353,26 @@ export class GetPerformanceMetricsResponse extends Message<GetPerformanceMetrics
    */
   openFiles = 0;
 
+  /**
+   * @generated from field: uint32 cpu_cores = 8;
+   */
+  cpuCores = 0;
+
+  /**
+   * @generated from field: uint64 total_memory = 9;
+   */
+  totalMemory = protoInt64.zero;
+
+  /**
+   * @generated from field: double system_load_15 = 10;
+   */
+  systemLoad15 = 0;
+
+  /**
+   * @generated from field: repeated panmail.v1.ResourcePoint resource_history = 11;
+   */
+  resourceHistory: ResourcePoint[] = [];
+
   constructor(data?: PartialMessage<GetPerformanceMetricsResponse>) {
     super();
     proto3.util.initPartial(data, this);
@@ -313,6 +388,10 @@ export class GetPerformanceMetricsResponse extends Message<GetPerformanceMetrics
     { no: 5, name: "goroutines", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 6, name: "disk_usage", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 7, name: "open_files", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 8, name: "cpu_cores", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 9, name: "total_memory", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
+    { no: 10, name: "system_load_15", kind: "scalar", T: 1 /* ScalarType.DOUBLE */ },
+    { no: 11, name: "resource_history", kind: "message", T: ResourcePoint, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GetPerformanceMetricsResponse {

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	_ "embed"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -67,9 +66,9 @@ func (s *apiKeyStore) ListByTenantID(ctx context.Context, tenantID string, pageS
 	}
 
 	query := strings.TrimSuffix(strings.TrimSpace(listApiKeysQuery), ";")
-	query += fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, offset)
+	query += " LIMIT $2 OFFSET $3"
 
-	rows, err := dbConn.QueryContext(ctx, query, tenantID)
+	rows, err := dbConn.QueryContext(ctx, query, tenantID, pageSize, offset)
 	if err != nil {
 		return nil, "", err
 	}

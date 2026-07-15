@@ -326,22 +326,94 @@ func (*GetPerformanceMetricsRequest) Descriptor() ([]byte, []int) {
 	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{5}
 }
 
-type GetPerformanceMetricsResponse struct {
+type ResourcePoint struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SentPerSecond float64                `protobuf:"fixed64,1,opt,name=sent_per_second,json=sentPerSecond,proto3" json:"sent_per_second,omitempty"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	CpuUsage      float64                `protobuf:"fixed64,2,opt,name=cpu_usage,json=cpuUsage,proto3" json:"cpu_usage,omitempty"`
 	MemoryUsage   uint64                 `protobuf:"varint,3,opt,name=memory_usage,json=memoryUsage,proto3" json:"memory_usage,omitempty"`
-	UptimeSeconds uint64                 `protobuf:"varint,4,opt,name=uptime_seconds,json=uptimeSeconds,proto3" json:"uptime_seconds,omitempty"`
-	Goroutines    uint32                 `protobuf:"varint,5,opt,name=goroutines,proto3" json:"goroutines,omitempty"`
-	DiskUsage     uint64                 `protobuf:"varint,6,opt,name=disk_usage,json=diskUsage,proto3" json:"disk_usage,omitempty"`
-	OpenFiles     uint32                 `protobuf:"varint,7,opt,name=open_files,json=openFiles,proto3" json:"open_files,omitempty"`
+	SystemLoad_15 float64                `protobuf:"fixed64,4,opt,name=system_load_15,json=systemLoad15,proto3" json:"system_load_15,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *ResourcePoint) Reset() {
+	*x = ResourcePoint{}
+	mi := &file_panmail_v1_event_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResourcePoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResourcePoint) ProtoMessage() {}
+
+func (x *ResourcePoint) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_event_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResourcePoint.ProtoReflect.Descriptor instead.
+func (*ResourcePoint) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ResourcePoint) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *ResourcePoint) GetCpuUsage() float64 {
+	if x != nil {
+		return x.CpuUsage
+	}
+	return 0
+}
+
+func (x *ResourcePoint) GetMemoryUsage() uint64 {
+	if x != nil {
+		return x.MemoryUsage
+	}
+	return 0
+}
+
+func (x *ResourcePoint) GetSystemLoad_15() float64 {
+	if x != nil {
+		return x.SystemLoad_15
+	}
+	return 0
+}
+
+type GetPerformanceMetricsResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	SentPerSecond   float64                `protobuf:"fixed64,1,opt,name=sent_per_second,json=sentPerSecond,proto3" json:"sent_per_second,omitempty"`
+	CpuUsage        float64                `protobuf:"fixed64,2,opt,name=cpu_usage,json=cpuUsage,proto3" json:"cpu_usage,omitempty"`
+	MemoryUsage     uint64                 `protobuf:"varint,3,opt,name=memory_usage,json=memoryUsage,proto3" json:"memory_usage,omitempty"`
+	UptimeSeconds   uint64                 `protobuf:"varint,4,opt,name=uptime_seconds,json=uptimeSeconds,proto3" json:"uptime_seconds,omitempty"`
+	Goroutines      uint32                 `protobuf:"varint,5,opt,name=goroutines,proto3" json:"goroutines,omitempty"`
+	DiskUsage       uint64                 `protobuf:"varint,6,opt,name=disk_usage,json=diskUsage,proto3" json:"disk_usage,omitempty"`
+	OpenFiles       uint32                 `protobuf:"varint,7,opt,name=open_files,json=openFiles,proto3" json:"open_files,omitempty"`
+	CpuCores        uint32                 `protobuf:"varint,8,opt,name=cpu_cores,json=cpuCores,proto3" json:"cpu_cores,omitempty"`
+	TotalMemory     uint64                 `protobuf:"varint,9,opt,name=total_memory,json=totalMemory,proto3" json:"total_memory,omitempty"`
+	SystemLoad_15   float64                `protobuf:"fixed64,10,opt,name=system_load_15,json=systemLoad15,proto3" json:"system_load_15,omitempty"`
+	ResourceHistory []*ResourcePoint       `protobuf:"bytes,11,rep,name=resource_history,json=resourceHistory,proto3" json:"resource_history,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
 func (x *GetPerformanceMetricsResponse) Reset() {
 	*x = GetPerformanceMetricsResponse{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[6]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -353,7 +425,7 @@ func (x *GetPerformanceMetricsResponse) String() string {
 func (*GetPerformanceMetricsResponse) ProtoMessage() {}
 
 func (x *GetPerformanceMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[6]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -366,7 +438,7 @@ func (x *GetPerformanceMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPerformanceMetricsResponse.ProtoReflect.Descriptor instead.
 func (*GetPerformanceMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{6}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetPerformanceMetricsResponse) GetSentPerSecond() float64 {
@@ -418,6 +490,34 @@ func (x *GetPerformanceMetricsResponse) GetOpenFiles() uint32 {
 	return 0
 }
 
+func (x *GetPerformanceMetricsResponse) GetCpuCores() uint32 {
+	if x != nil {
+		return x.CpuCores
+	}
+	return 0
+}
+
+func (x *GetPerformanceMetricsResponse) GetTotalMemory() uint64 {
+	if x != nil {
+		return x.TotalMemory
+	}
+	return 0
+}
+
+func (x *GetPerformanceMetricsResponse) GetSystemLoad_15() float64 {
+	if x != nil {
+		return x.SystemLoad_15
+	}
+	return 0
+}
+
+func (x *GetPerformanceMetricsResponse) GetResourceHistory() []*ResourcePoint {
+	if x != nil {
+		return x.ResourceHistory
+	}
+	return nil
+}
+
 type GetEventRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -427,7 +527,7 @@ type GetEventRequest struct {
 
 func (x *GetEventRequest) Reset() {
 	*x = GetEventRequest{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[7]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -439,7 +539,7 @@ func (x *GetEventRequest) String() string {
 func (*GetEventRequest) ProtoMessage() {}
 
 func (x *GetEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[7]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -452,7 +552,7 @@ func (x *GetEventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventRequest.ProtoReflect.Descriptor instead.
 func (*GetEventRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{7}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetEventRequest) GetId() string {
@@ -472,7 +572,7 @@ type GetEventResponse struct {
 
 func (x *GetEventResponse) Reset() {
 	*x = GetEventResponse{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[8]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -484,7 +584,7 @@ func (x *GetEventResponse) String() string {
 func (*GetEventResponse) ProtoMessage() {}
 
 func (x *GetEventResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[8]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -497,7 +597,7 @@ func (x *GetEventResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventResponse.ProtoReflect.Descriptor instead.
 func (*GetEventResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{8}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetEventResponse) GetEvent() *EmailEvent {
@@ -524,7 +624,7 @@ type GetMetricsRequest struct {
 
 func (x *GetMetricsRequest) Reset() {
 	*x = GetMetricsRequest{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[9]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -536,7 +636,7 @@ func (x *GetMetricsRequest) String() string {
 func (*GetMetricsRequest) ProtoMessage() {}
 
 func (x *GetMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[9]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -549,7 +649,7 @@ func (x *GetMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetricsRequest.ProtoReflect.Descriptor instead.
 func (*GetMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{9}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetMetricsRequest) GetStartTime() *timestamppb.Timestamp {
@@ -579,7 +679,7 @@ type MetricInfo struct {
 
 func (x *MetricInfo) Reset() {
 	*x = MetricInfo{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[10]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -591,7 +691,7 @@ func (x *MetricInfo) String() string {
 func (*MetricInfo) ProtoMessage() {}
 
 func (x *MetricInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[10]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -604,7 +704,7 @@ func (x *MetricInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricInfo.ProtoReflect.Descriptor instead.
 func (*MetricInfo) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{10}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *MetricInfo) GetKey() string {
@@ -652,7 +752,7 @@ type GetMetricsResponse struct {
 
 func (x *GetMetricsResponse) Reset() {
 	*x = GetMetricsResponse{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[11]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -664,7 +764,7 @@ func (x *GetMetricsResponse) String() string {
 func (*GetMetricsResponse) ProtoMessage() {}
 
 func (x *GetMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[11]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -677,7 +777,7 @@ func (x *GetMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetricsResponse.ProtoReflect.Descriptor instead.
 func (*GetMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{11}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetMetricsResponse) GetMetrics() map[string]int64 {
@@ -705,7 +805,7 @@ type GetTimeSeriesMetricsRequest struct {
 
 func (x *GetTimeSeriesMetricsRequest) Reset() {
 	*x = GetTimeSeriesMetricsRequest{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[12]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -717,7 +817,7 @@ func (x *GetTimeSeriesMetricsRequest) String() string {
 func (*GetTimeSeriesMetricsRequest) ProtoMessage() {}
 
 func (x *GetTimeSeriesMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[12]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -730,7 +830,7 @@ func (x *GetTimeSeriesMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTimeSeriesMetricsRequest.ProtoReflect.Descriptor instead.
 func (*GetTimeSeriesMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{12}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetTimeSeriesMetricsRequest) GetStartTime() *timestamppb.Timestamp {
@@ -763,7 +863,7 @@ type TimeSeriesData struct {
 
 func (x *TimeSeriesData) Reset() {
 	*x = TimeSeriesData{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[13]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -775,7 +875,7 @@ func (x *TimeSeriesData) String() string {
 func (*TimeSeriesData) ProtoMessage() {}
 
 func (x *TimeSeriesData) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[13]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -788,7 +888,7 @@ func (x *TimeSeriesData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TimeSeriesData.ProtoReflect.Descriptor instead.
 func (*TimeSeriesData) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{13}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *TimeSeriesData) GetMetrics() map[string]int64 {
@@ -807,7 +907,7 @@ type GetTimeSeriesMetricsResponse struct {
 
 func (x *GetTimeSeriesMetricsResponse) Reset() {
 	*x = GetTimeSeriesMetricsResponse{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[14]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -819,7 +919,7 @@ func (x *GetTimeSeriesMetricsResponse) String() string {
 func (*GetTimeSeriesMetricsResponse) ProtoMessage() {}
 
 func (x *GetTimeSeriesMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[14]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -832,7 +932,7 @@ func (x *GetTimeSeriesMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTimeSeriesMetricsResponse.ProtoReflect.Descriptor instead.
 func (*GetTimeSeriesMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{14}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetTimeSeriesMetricsResponse) GetData() map[string]*TimeSeriesData {
@@ -856,7 +956,7 @@ type ListEventsRequest struct {
 
 func (x *ListEventsRequest) Reset() {
 	*x = ListEventsRequest{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[15]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -868,7 +968,7 @@ func (x *ListEventsRequest) String() string {
 func (*ListEventsRequest) ProtoMessage() {}
 
 func (x *ListEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[15]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -881,7 +981,7 @@ func (x *ListEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventsRequest.ProtoReflect.Descriptor instead.
 func (*ListEventsRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{15}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListEventsRequest) GetPageSize() int32 {
@@ -936,7 +1036,7 @@ type ListEventsResponse struct {
 
 func (x *ListEventsResponse) Reset() {
 	*x = ListEventsResponse{}
-	mi := &file_panmail_v1_event_service_proto_msgTypes[16]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -948,7 +1048,7 @@ func (x *ListEventsResponse) String() string {
 func (*ListEventsResponse) ProtoMessage() {}
 
 func (x *ListEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_event_service_proto_msgTypes[16]
+	mi := &file_panmail_v1_event_service_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -961,7 +1061,7 @@ func (x *ListEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventsResponse.ProtoReflect.Descriptor instead.
 func (*ListEventsResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{16}
+	return file_panmail_v1_event_service_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListEventsResponse) GetEvents() []*EmailEvent {
@@ -1002,7 +1102,12 @@ const file_panmail_v1_event_service_proto_rawDesc = "" +
 	"\x17DownloadArchiveResponse\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\fR\acontent\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\"\x1e\n" +
-	"\x1cGetPerformanceMetricsRequest\"\x8c\x02\n" +
+	"\x1cGetPerformanceMetricsRequest\"\xaf\x01\n" +
+	"\rResourcePoint\x128\n" +
+	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1b\n" +
+	"\tcpu_usage\x18\x02 \x01(\x01R\bcpuUsage\x12!\n" +
+	"\fmemory_usage\x18\x03 \x01(\x04R\vmemoryUsage\x12$\n" +
+	"\x0esystem_load_15\x18\x04 \x01(\x01R\fsystemLoad15\"\xb8\x03\n" +
 	"\x1dGetPerformanceMetricsResponse\x12&\n" +
 	"\x0fsent_per_second\x18\x01 \x01(\x01R\rsentPerSecond\x12\x1b\n" +
 	"\tcpu_usage\x18\x02 \x01(\x01R\bcpuUsage\x12!\n" +
@@ -1014,7 +1119,12 @@ const file_panmail_v1_event_service_proto_rawDesc = "" +
 	"\n" +
 	"disk_usage\x18\x06 \x01(\x04R\tdiskUsage\x12\x1d\n" +
 	"\n" +
-	"open_files\x18\a \x01(\rR\topenFiles\"!\n" +
+	"open_files\x18\a \x01(\rR\topenFiles\x12\x1b\n" +
+	"\tcpu_cores\x18\b \x01(\rR\bcpuCores\x12!\n" +
+	"\ftotal_memory\x18\t \x01(\x04R\vtotalMemory\x12$\n" +
+	"\x0esystem_load_15\x18\n" +
+	" \x01(\x01R\fsystemLoad15\x12D\n" +
+	"\x10resource_history\x18\v \x03(\v2\x19.panmail.v1.ResourcePointR\x0fresourceHistory\"!\n" +
 	"\x0fGetEventRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"t\n" +
 	"\x10GetEventResponse\x12,\n" +
@@ -1091,7 +1201,7 @@ func file_panmail_v1_event_service_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_event_service_proto_rawDescData
 }
 
-var file_panmail_v1_event_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_panmail_v1_event_service_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_panmail_v1_event_service_proto_goTypes = []any{
 	(*ListArchivesRequest)(nil),           // 0: panmail.v1.ListArchivesRequest
 	(*ArchiveInfo)(nil),                   // 1: panmail.v1.ArchiveInfo
@@ -1099,62 +1209,65 @@ var file_panmail_v1_event_service_proto_goTypes = []any{
 	(*DownloadArchiveRequest)(nil),        // 3: panmail.v1.DownloadArchiveRequest
 	(*DownloadArchiveResponse)(nil),       // 4: panmail.v1.DownloadArchiveResponse
 	(*GetPerformanceMetricsRequest)(nil),  // 5: panmail.v1.GetPerformanceMetricsRequest
-	(*GetPerformanceMetricsResponse)(nil), // 6: panmail.v1.GetPerformanceMetricsResponse
-	(*GetEventRequest)(nil),               // 7: panmail.v1.GetEventRequest
-	(*GetEventResponse)(nil),              // 8: panmail.v1.GetEventResponse
-	(*GetMetricsRequest)(nil),             // 9: panmail.v1.GetMetricsRequest
-	(*MetricInfo)(nil),                    // 10: panmail.v1.MetricInfo
-	(*GetMetricsResponse)(nil),            // 11: panmail.v1.GetMetricsResponse
-	(*GetTimeSeriesMetricsRequest)(nil),   // 12: panmail.v1.GetTimeSeriesMetricsRequest
-	(*TimeSeriesData)(nil),                // 13: panmail.v1.TimeSeriesData
-	(*GetTimeSeriesMetricsResponse)(nil),  // 14: panmail.v1.GetTimeSeriesMetricsResponse
-	(*ListEventsRequest)(nil),             // 15: panmail.v1.ListEventsRequest
-	(*ListEventsResponse)(nil),            // 16: panmail.v1.ListEventsResponse
-	nil,                                   // 17: panmail.v1.GetMetricsResponse.MetricsEntry
-	nil,                                   // 18: panmail.v1.TimeSeriesData.MetricsEntry
-	nil,                                   // 19: panmail.v1.GetTimeSeriesMetricsResponse.DataEntry
-	(*timestamppb.Timestamp)(nil),         // 20: google.protobuf.Timestamp
-	(*EmailEvent)(nil),                    // 21: panmail.v1.EmailEvent
-	(*EmailMessage)(nil),                  // 22: panmail.v1.EmailMessage
-	(EmailEventType)(0),                   // 23: panmail.v1.EmailEventType
+	(*ResourcePoint)(nil),                 // 6: panmail.v1.ResourcePoint
+	(*GetPerformanceMetricsResponse)(nil), // 7: panmail.v1.GetPerformanceMetricsResponse
+	(*GetEventRequest)(nil),               // 8: panmail.v1.GetEventRequest
+	(*GetEventResponse)(nil),              // 9: panmail.v1.GetEventResponse
+	(*GetMetricsRequest)(nil),             // 10: panmail.v1.GetMetricsRequest
+	(*MetricInfo)(nil),                    // 11: panmail.v1.MetricInfo
+	(*GetMetricsResponse)(nil),            // 12: panmail.v1.GetMetricsResponse
+	(*GetTimeSeriesMetricsRequest)(nil),   // 13: panmail.v1.GetTimeSeriesMetricsRequest
+	(*TimeSeriesData)(nil),                // 14: panmail.v1.TimeSeriesData
+	(*GetTimeSeriesMetricsResponse)(nil),  // 15: panmail.v1.GetTimeSeriesMetricsResponse
+	(*ListEventsRequest)(nil),             // 16: panmail.v1.ListEventsRequest
+	(*ListEventsResponse)(nil),            // 17: panmail.v1.ListEventsResponse
+	nil,                                   // 18: panmail.v1.GetMetricsResponse.MetricsEntry
+	nil,                                   // 19: panmail.v1.TimeSeriesData.MetricsEntry
+	nil,                                   // 20: panmail.v1.GetTimeSeriesMetricsResponse.DataEntry
+	(*timestamppb.Timestamp)(nil),         // 21: google.protobuf.Timestamp
+	(*EmailEvent)(nil),                    // 22: panmail.v1.EmailEvent
+	(*EmailMessage)(nil),                  // 23: panmail.v1.EmailMessage
+	(EmailEventType)(0),                   // 24: panmail.v1.EmailEventType
 }
 var file_panmail_v1_event_service_proto_depIdxs = []int32{
-	20, // 0: panmail.v1.ArchiveInfo.created_at:type_name -> google.protobuf.Timestamp
+	21, // 0: panmail.v1.ArchiveInfo.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: panmail.v1.ListArchivesResponse.archives:type_name -> panmail.v1.ArchiveInfo
-	21, // 2: panmail.v1.GetEventResponse.event:type_name -> panmail.v1.EmailEvent
-	22, // 3: panmail.v1.GetEventResponse.message:type_name -> panmail.v1.EmailMessage
-	20, // 4: panmail.v1.GetMetricsRequest.start_time:type_name -> google.protobuf.Timestamp
-	20, // 5: panmail.v1.GetMetricsRequest.end_time:type_name -> google.protobuf.Timestamp
-	17, // 6: panmail.v1.GetMetricsResponse.metrics:type_name -> panmail.v1.GetMetricsResponse.MetricsEntry
-	10, // 7: panmail.v1.GetMetricsResponse.extended_metrics:type_name -> panmail.v1.MetricInfo
-	20, // 8: panmail.v1.GetTimeSeriesMetricsRequest.start_time:type_name -> google.protobuf.Timestamp
-	20, // 9: panmail.v1.GetTimeSeriesMetricsRequest.end_time:type_name -> google.protobuf.Timestamp
-	18, // 10: panmail.v1.TimeSeriesData.metrics:type_name -> panmail.v1.TimeSeriesData.MetricsEntry
-	19, // 11: panmail.v1.GetTimeSeriesMetricsResponse.data:type_name -> panmail.v1.GetTimeSeriesMetricsResponse.DataEntry
-	23, // 12: panmail.v1.ListEventsRequest.event_type:type_name -> panmail.v1.EmailEventType
-	20, // 13: panmail.v1.ListEventsRequest.start_time:type_name -> google.protobuf.Timestamp
-	20, // 14: panmail.v1.ListEventsRequest.end_time:type_name -> google.protobuf.Timestamp
-	21, // 15: panmail.v1.ListEventsResponse.events:type_name -> panmail.v1.EmailEvent
-	13, // 16: panmail.v1.GetTimeSeriesMetricsResponse.DataEntry.value:type_name -> panmail.v1.TimeSeriesData
-	15, // 17: panmail.v1.EventService.ListEvents:input_type -> panmail.v1.ListEventsRequest
-	9,  // 18: panmail.v1.EventService.GetMetrics:input_type -> panmail.v1.GetMetricsRequest
-	12, // 19: panmail.v1.EventService.GetTimeSeriesMetrics:input_type -> panmail.v1.GetTimeSeriesMetricsRequest
-	7,  // 20: panmail.v1.EventService.GetEvent:input_type -> panmail.v1.GetEventRequest
-	5,  // 21: panmail.v1.EventService.GetPerformanceMetrics:input_type -> panmail.v1.GetPerformanceMetricsRequest
-	0,  // 22: panmail.v1.EventService.ListArchives:input_type -> panmail.v1.ListArchivesRequest
-	3,  // 23: panmail.v1.EventService.DownloadArchive:input_type -> panmail.v1.DownloadArchiveRequest
-	16, // 24: panmail.v1.EventService.ListEvents:output_type -> panmail.v1.ListEventsResponse
-	11, // 25: panmail.v1.EventService.GetMetrics:output_type -> panmail.v1.GetMetricsResponse
-	14, // 26: panmail.v1.EventService.GetTimeSeriesMetrics:output_type -> panmail.v1.GetTimeSeriesMetricsResponse
-	8,  // 27: panmail.v1.EventService.GetEvent:output_type -> panmail.v1.GetEventResponse
-	6,  // 28: panmail.v1.EventService.GetPerformanceMetrics:output_type -> panmail.v1.GetPerformanceMetricsResponse
-	2,  // 29: panmail.v1.EventService.ListArchives:output_type -> panmail.v1.ListArchivesResponse
-	4,  // 30: panmail.v1.EventService.DownloadArchive:output_type -> panmail.v1.DownloadArchiveResponse
-	24, // [24:31] is the sub-list for method output_type
-	17, // [17:24] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	21, // 2: panmail.v1.ResourcePoint.timestamp:type_name -> google.protobuf.Timestamp
+	6,  // 3: panmail.v1.GetPerformanceMetricsResponse.resource_history:type_name -> panmail.v1.ResourcePoint
+	22, // 4: panmail.v1.GetEventResponse.event:type_name -> panmail.v1.EmailEvent
+	23, // 5: panmail.v1.GetEventResponse.message:type_name -> panmail.v1.EmailMessage
+	21, // 6: panmail.v1.GetMetricsRequest.start_time:type_name -> google.protobuf.Timestamp
+	21, // 7: panmail.v1.GetMetricsRequest.end_time:type_name -> google.protobuf.Timestamp
+	18, // 8: panmail.v1.GetMetricsResponse.metrics:type_name -> panmail.v1.GetMetricsResponse.MetricsEntry
+	11, // 9: panmail.v1.GetMetricsResponse.extended_metrics:type_name -> panmail.v1.MetricInfo
+	21, // 10: panmail.v1.GetTimeSeriesMetricsRequest.start_time:type_name -> google.protobuf.Timestamp
+	21, // 11: panmail.v1.GetTimeSeriesMetricsRequest.end_time:type_name -> google.protobuf.Timestamp
+	19, // 12: panmail.v1.TimeSeriesData.metrics:type_name -> panmail.v1.TimeSeriesData.MetricsEntry
+	20, // 13: panmail.v1.GetTimeSeriesMetricsResponse.data:type_name -> panmail.v1.GetTimeSeriesMetricsResponse.DataEntry
+	24, // 14: panmail.v1.ListEventsRequest.event_type:type_name -> panmail.v1.EmailEventType
+	21, // 15: panmail.v1.ListEventsRequest.start_time:type_name -> google.protobuf.Timestamp
+	21, // 16: panmail.v1.ListEventsRequest.end_time:type_name -> google.protobuf.Timestamp
+	22, // 17: panmail.v1.ListEventsResponse.events:type_name -> panmail.v1.EmailEvent
+	14, // 18: panmail.v1.GetTimeSeriesMetricsResponse.DataEntry.value:type_name -> panmail.v1.TimeSeriesData
+	16, // 19: panmail.v1.EventService.ListEvents:input_type -> panmail.v1.ListEventsRequest
+	10, // 20: panmail.v1.EventService.GetMetrics:input_type -> panmail.v1.GetMetricsRequest
+	13, // 21: panmail.v1.EventService.GetTimeSeriesMetrics:input_type -> panmail.v1.GetTimeSeriesMetricsRequest
+	8,  // 22: panmail.v1.EventService.GetEvent:input_type -> panmail.v1.GetEventRequest
+	5,  // 23: panmail.v1.EventService.GetPerformanceMetrics:input_type -> panmail.v1.GetPerformanceMetricsRequest
+	0,  // 24: panmail.v1.EventService.ListArchives:input_type -> panmail.v1.ListArchivesRequest
+	3,  // 25: panmail.v1.EventService.DownloadArchive:input_type -> panmail.v1.DownloadArchiveRequest
+	17, // 26: panmail.v1.EventService.ListEvents:output_type -> panmail.v1.ListEventsResponse
+	12, // 27: panmail.v1.EventService.GetMetrics:output_type -> panmail.v1.GetMetricsResponse
+	15, // 28: panmail.v1.EventService.GetTimeSeriesMetrics:output_type -> panmail.v1.GetTimeSeriesMetricsResponse
+	9,  // 29: panmail.v1.EventService.GetEvent:output_type -> panmail.v1.GetEventResponse
+	7,  // 30: panmail.v1.EventService.GetPerformanceMetrics:output_type -> panmail.v1.GetPerformanceMetricsResponse
+	2,  // 31: panmail.v1.EventService.ListArchives:output_type -> panmail.v1.ListArchivesResponse
+	4,  // 32: panmail.v1.EventService.DownloadArchive:output_type -> panmail.v1.DownloadArchiveResponse
+	26, // [26:33] is the sub-list for method output_type
+	19, // [19:26] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_event_service_proto_init() }
@@ -1169,7 +1282,7 @@ func file_panmail_v1_event_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_event_service_proto_rawDesc), len(file_panmail_v1_event_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

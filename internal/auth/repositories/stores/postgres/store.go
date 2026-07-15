@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	_ "embed"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -103,9 +102,9 @@ func (s *store) ListByTenantID(ctx context.Context, tenantID string, pageSize in
 	}
 
 	query := strings.TrimSuffix(strings.TrimSpace(listUsersByTenantQuery), ";")
-	query += fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, offset)
+	query += " LIMIT $2 OFFSET $3"
 
-	rows, err := dbConn.QueryContext(ctx, query, tenantID)
+	rows, err := dbConn.QueryContext(ctx, query, tenantID, pageSize, offset)
 	if err != nil {
 		return nil, "", err
 	}

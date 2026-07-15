@@ -1,6 +1,7 @@
 import React from 'react';
 import { useForm } from '@mantine/form';
-import { TextInput, Select, NumberInput, Checkbox, Button, Stack, Group, Paper, Title, Divider, Text } from '@mantine/core';
+import { TextInput, Select, NumberInput, Checkbox, Button, Stack, Group, Paper, Title, Divider, Text, CopyButton, Tooltip, ActionIcon } from '@mantine/core';
+import { IconCopy, IconCheck } from '@tabler/icons-react';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
 
 interface ProviderFormProps {
@@ -113,6 +114,28 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
             <Title order={3} fw={800}>{initialValues ? 'Edit' : 'Connect'} Email Provider</Title>
             <Text size="sm" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))">Configure your SMTP, IMAP, or POP3 server to start sending and receiving emails.</Text>
           </Stack>
+
+          {initialValues && (
+            <TextInput
+              label="Provider ID"
+              value={initialValues.id}
+              readOnly
+              variant="filled"
+              size="md"
+              radius="md"
+              rightSection={
+                <CopyButton value={initialValues.id}>
+                  {({ copied, copy }) => (
+                    <Tooltip label={copied ? 'Copied' : 'Copy ID'} withArrow position="right">
+                      <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy}>
+                        {copied ? <IconCheck size={16} stroke={2} /> : <IconCopy size={16} stroke={2} />}
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </CopyButton>
+              }
+            />
+          )}
 
           <Divider />
 

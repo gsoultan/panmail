@@ -36,3 +36,10 @@ type ArchiveInfo struct {
 	Size      int64     `json:"size"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+type ResourcePoint struct {
+	Timestamp    time.Time `json:"timestamp"`
+	CPUUsage     float64   `json:"cpu_usage"`
+	MemoryUsage  uint64    `json:"memory_usage"`
+	SystemLoad15 float64   `json:"system_load_15"`
+}

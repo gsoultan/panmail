@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
@@ -81,9 +80,9 @@ func (s *store) List(ctx context.Context, tenantID string, pageSize int, pageTok
 	}
 
 	query := strings.TrimSuffix(strings.TrimSpace(listProvidersQuery), ";")
-	query += fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, offset)
+	query += " LIMIT $2 OFFSET $3"
 
-	rows, err := dbConn.QueryContext(ctx, query, tenantID)
+	rows, err := dbConn.QueryContext(ctx, query, tenantID, pageSize, offset)
 	if err != nil {
 		return nil, "", err
 	}

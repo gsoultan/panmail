@@ -6,7 +6,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
 
@@ -26,9 +26,9 @@ func Connect(cfg Config) (*sql.DB, error) {
 
 	switch cfg.Type {
 	case "postgres":
-		driverName = "postgres"
-		dataSourceName = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
+		driverName = "pgx"
+		dataSourceName = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&default_query_exec_mode=simple_protocol",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName)
 	case "mysql", "mariadb":
 		driverName = "mysql"
 		dataSourceName = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",

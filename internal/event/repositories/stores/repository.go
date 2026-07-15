@@ -32,5 +32,9 @@ type EventRepository interface {
 	ListArchives(ctx context.Context, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error)
 	GetArchive(ctx context.Context, id string) ([]byte, string, error)
 
+	// Resource metrics for system health
+	WriteResourceMetric(ctx context.Context, cpuUsage float64, memUsage uint64, load15 float64) error
+	GetResourceHistory(ctx context.Context, since time.Time) ([]entities.ResourcePoint, error)
+
 	Close() error
 }

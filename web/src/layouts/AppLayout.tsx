@@ -37,7 +37,8 @@ import {
   IconKey,
   IconWebhook,
   IconBuildingCommunity,
-  IconUsers
+  IconUsers,
+  IconSend
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, Link, useLocation } from '@tanstack/react-router';
 import { useAuthStore } from '../store/authStore';
@@ -295,6 +296,18 @@ export const AppLayout: React.FC = () => {
                 label="Webhooks"
                 to="/webhooks"
                 active={location.pathname === '/webhooks'}
+              />
+
+              {!collapsed && (
+                <Text size="xs" fw={700} c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))" tt="uppercase" px="md" mb={4} mt="md">
+                  Test
+                </Text>
+              )}
+              <NavItem
+                icon={IconSend}
+                label="Delivery"
+                to="/test-delivery"
+                active={location.pathname === '/test-delivery'}
               />
 
               {(user?.role === UserRole.SUPER_ADMIN || user?.role === UserRole.ADMIN) && (

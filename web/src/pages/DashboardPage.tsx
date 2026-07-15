@@ -126,6 +126,18 @@ export const DashboardPage: React.FC = () => {
       Inbound: Number(values.metrics['INBOUND_RECEIVED'] || 0),
     }));
 
+  const resourceChartData = useMemo(() => {
+    return (perfData?.resourceHistory || [])
+      .map(p => ({
+        time: p.timestamp ? new Date(Number(p.timestamp.seconds) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+        CPU: Number(p.cpuUsage.toFixed(1)),
+        Memory: Number((Number(p.memoryUsage) / 1024 / 1024 / 1024).toFixed(2)), // GB
+        Load: Number(p.systemLoad15.toFixed(2)),
+        timestamp: Number(p.timestamp?.seconds || 0)
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
+  }, [perfData?.resourceHistory]);
+
   const outboundMetrics = extendedMetrics.filter(m => m.category === 'outbound');
 
   return (
@@ -322,39 +334,100 @@ export const DashboardPage: React.FC = () => {
              <Stack gap="md">
                 <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
                    <StatCard
-                     title="Emails / Sec"
-                     value={perfData?.sentPerSecond?.toFixed(2) || '0.00'}
+                     title="CPU Usage"
+                     value={`${perfData?.cpuUsage?.toFixed(1) || '0.0'}%`}
+                     icon={IconCpu}
+                     color="red"
+                     description="Current overall CPU utilization across all cores."
+                   />
+                   <StatCard
+                     title="System Load"
+                     value={`${perfData?.cpuCores ? ((perfData.systemLoad15 / perfData.cpuCores) * 100).toFixed(1) : '0.0'}%`}
                      icon={IconActivity}
-                     color="indigo"
-                     description="Real-time outbound throughput."
+                     color="orange"
+                     description="System load average (15m) relative to available CPU cores."
                    />
                    <StatCard
                      title="Memory Usage"
-                     value={perfData?.memoryUsage ? `${(Number(perfData.memoryUsage) / 1024 / 1024).toFixed(2)} MB` : '0 MB'}
-                     icon={IconCpu}
+                     value={perfData?.memoryUsage ? `${(Number(perfData.memoryUsage) / 1024 / 1024 / 1024).toFixed(2)} GB` : '0 GB'}
+                     icon={IconServer}
                      color="teal"
-                     description="Current heap memory allocated by the application."
+                     description="Current physical memory in use by the system."
                    />
                    <StatCard
-                     title="Disk Usage"
-                     value={perfData?.diskUsage ? `${(Number(perfData.diskUsage) / 1024 / 1024).toFixed(2)} MB` : '0 MB'}
+                     title="Total Memory"
+                     value={perfData?.totalMemory ? `${(Number(perfData.totalMemory) / 1024 / 1024 / 1024).toFixed(1)} GB` : '0 GB'}
                      icon={IconDatabase}
-                     color="orange"
-                     description="Total size of all local Pebble databases (events, inbound, logs)."
-                   />
-                   <StatCard
-                     title="Uptime"
-                     value={perfData?.uptimeSeconds ? `${Math.floor(Number(perfData.uptimeSeconds) / 3600)}h ${Math.floor((Number(perfData.uptimeSeconds) % 3600) / 60)}m` : '0m'}
-                     icon={IconClock}
-                     color="gray"
-                     description="Time elapsed since the last service restart."
+                     color="violet"
+                     description="Total physical memory installed on the host."
                    />
                 </SimpleGrid>
+
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
+                    <StatCard
+                      title="Emails / Sec"
+                      value={perfData?.sentPerSecond?.toFixed(2) || '0.00'}
+                      icon={IconSend}
+                      color="indigo"
+                      description="Real-time outbound throughput."
+                    />
+                    <StatCard
+                      title="CPU Cores"
+                      value={perfData?.cpuCores || '0'}
+                      icon={IconCpu}
+                      color="blue"
+                      description="Total number of logical CPU cores available."
+                    />
+                    <StatCard
+                      title="Disk Usage"
+                      value={perfData?.diskUsage ? `${(Number(perfData.diskUsage) / 1024 / 1024).toFixed(2)} MB` : '0 MB'}
+                      icon={IconDatabase}
+                      color="yellow"
+                      description="Total size of all local Pebble databases."
+                    />
+                    <StatCard
+                      title="Uptime"
+                      value={perfData?.uptimeSeconds ? `${Math.floor(Number(perfData.uptimeSeconds) / 3600)}h ${Math.floor((Number(perfData.uptimeSeconds) % 3600) / 60)}m` : '0m'}
+                      icon={IconClock}
+                      color="gray"
+                      description="Time elapsed since the last service restart."
+                    />
+                </SimpleGrid>
                 
+                <Paper p="xl" radius="md" withBorder>
+                   <Title order={4} mb="xl" fw={700}>Resource Consumption Trends (24h)</Title>
+                   {resourceChartData.length > 0 ? (
+                      <AreaChart
+                        h={300}
+                        data={resourceChartData}
+                        dataKey="time"
+                        series={[
+                          { name: 'CPU', color: 'red.6', label: 'CPU Usage (%)' },
+                          { name: 'Load', color: 'orange.6', label: 'System Load (%)' },
+                          { name: 'Memory', color: 'blue.6', label: 'Memory (GB)' },
+                        ]}
+                        curveType="monotone"
+                        tickLine="none"
+                        gridAxis="xy"
+                        withLegend
+                        valueFormatter={(value) => value.toString()}
+                      />
+                   ) : (
+                      <Box h={300} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                         <Stack align="center" gap="xs">
+                            <ThemeIcon size="xl" radius="xl" color="gray" variant="light">
+                               <IconChartBar size={24} />
+                            </ThemeIcon>
+                            <Text c="dimmed" size="sm">Collecting historical performance data points...</Text>
+                         </Stack>
+                      </Box>
+                   )}
+                </Paper>
+
                 <Grid>
                    <Grid.Col span={{ base: 12, md: 6 }}>
-                      <Paper p="xl" radius="md" withBorder>
-                         <Title order={4} mb="lg" fw={700}>Resource Consumption</Title>
+                      <Paper p="xl" radius="md" withBorder h="100%">
+                         <Title order={4} mb="lg" fw={700}>Runtime Metrics</Title>
                          <Stack gap="xs">
                             <Group justify="space-between">
                                <Text size="sm" fw={600}>Goroutines</Text>
@@ -365,14 +438,14 @@ export const DashboardPage: React.FC = () => {
                                <Badge variant="light" color="cyan" radius="xl">{perfData?.openFiles || 0}</Badge>
                             </Group>
                             <Group justify="space-between">
-                               <Text size="sm" fw={600}>GC Cycles</Text>
-                               <Badge variant="light" color="teal" radius="xl">N/A</Badge>
+                               <Text size="sm" fw={600}>Heap Allocated</Text>
+                               <Badge variant="light" color="teal" radius="xl">{perfData?.memoryUsage ? `${(Number(perfData.memoryUsage) / 1024 / 1024).toFixed(2)} MB` : 'N/A'}</Badge>
                             </Group>
                          </Stack>
                       </Paper>
                    </Grid.Col>
                    <Grid.Col span={{ base: 12, md: 6 }}>
-                      <Paper p="xl" radius="md" withBorder>
+                      <Paper p="xl" radius="md" withBorder h="100%">
                          <Title order={4} mb="lg" fw={700}>System Health</Title>
                          <Group grow>
                             <Stack gap={4} align="center">

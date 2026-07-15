@@ -47,6 +47,13 @@ message DownloadArchiveResponse {
 
 message GetPerformanceMetricsRequest {}
 
+message ResourcePoint {
+  google.protobuf.Timestamp timestamp = 1;
+  double cpu_usage = 2;
+  uint64 memory_usage = 3;
+  double system_load_15 = 4;
+}
+
 message GetPerformanceMetricsResponse {
   double sent_per_second = 1;
   double cpu_usage = 2;
@@ -55,6 +62,10 @@ message GetPerformanceMetricsResponse {
   uint32 goroutines = 5;
   uint64 disk_usage = 6;
   uint32 open_files = 7;
+  uint32 cpu_cores = 8;
+  uint64 total_memory = 9;
+  double system_load_15 = 10;
+  repeated ResourcePoint resource_history = 11;
 }
 
 message GetEventRequest {

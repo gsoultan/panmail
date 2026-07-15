@@ -64,7 +64,7 @@ import (
 	"github.com/gsoultan/panmail/pkg/auth"
 	"github.com/gsoultan/panmail/pkg/db"
 	"github.com/gsoultan/panmail/web"
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	_ "modernc.org/sqlite"
@@ -72,7 +72,6 @@ import (
 
 const (
 	defaultPort = "8080"
-	dbConnStr   = "host=localhost port=5432 user=panmail password=panmail dbname=panmail sslmode=disable"
 )
 
 func (m *multiHandler) WithGroup(name string) slog.Handler {

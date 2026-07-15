@@ -20,7 +20,10 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, onEdit, o
   const rows = providers.map((provider) => (
     <Table.Tr key={provider.id} style={{ borderBottom: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))' }}>
       <Table.Td>
-        <Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">{provider.name}</Text>
+        <Stack gap={0}>
+          <Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">{provider.name}</Text>
+          <Text size="xs" c="dimmed" ff="monospace" style={{ fontSize: rem(10) }}>{provider.id}</Text>
+        </Stack>
       </Table.Td>
       <Table.Td>
         <Badge variant="light" color="brand" radius="sm" size="sm" fw={700}>

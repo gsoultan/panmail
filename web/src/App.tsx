@@ -19,6 +19,7 @@ import { UsersPage } from './pages/UsersPage';
 import { TenantsPage } from './pages/TenantsPage';
 import { ArchivesPage } from './pages/ArchivesPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TestDeliveryPage } from './pages/TestDeliveryPage';
 import { AppLayout } from './layouts/AppLayout';
 import { useAuthStore } from './store/authStore';
 import { setupClient } from './services/client';
@@ -173,6 +174,12 @@ const archivesRoute = createRoute({
   component: ArchivesPage,
 });
 
+const testDeliveryRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/test-delivery',
+  component: TestDeliveryPage,
+});
+
 const routeTree = rootRoute.addChildren([
   appLayoutRoute.addChildren([
     indexRoute, 
@@ -183,6 +190,7 @@ const routeTree = rootRoute.addChildren([
     logsRoute, 
     analyticsRoute, 
     archivesRoute,
+    testDeliveryRoute,
     suppressionsRoute, 
     inboundRoute, 
     apiKeysRoute, 

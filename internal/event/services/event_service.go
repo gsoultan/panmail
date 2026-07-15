@@ -121,14 +121,28 @@ func (s *eventService) GetPerformanceMetrics(ctx context.Context, req *connect.R
 		return nil, err
 	}
 
+	history := make([]*panmailv1.ResourcePoint, len(metrics.ResourceHistory))
+	for i, p := range metrics.ResourceHistory {
+		history[i] = &panmailv1.ResourcePoint{
+			Timestamp:     timestamppb.New(p.Timestamp),
+			CpuUsage:      p.CPUUsage,
+			MemoryUsage:   p.MemoryUsage,
+			SystemLoad_15: p.SystemLoad15,
+		}
+	}
+
 	return connect.NewResponse(&panmailv1.GetPerformanceMetricsResponse{
-		SentPerSecond: metrics.SentPerSecond,
-		CpuUsage:      metrics.CPUUsage,
-		MemoryUsage:   metrics.MemoryUsage,
-		UptimeSeconds: metrics.UptimeSeconds,
-		Goroutines:    metrics.Goroutines,
-		DiskUsage:     metrics.DiskUsage,
-		OpenFiles:     metrics.OpenFiles,
+		SentPerSecond:   metrics.SentPerSecond,
+		CpuUsage:        metrics.CPUUsage,
+		MemoryUsage:     metrics.MemoryUsage,
+		UptimeSeconds:   metrics.UptimeSeconds,
+		Goroutines:      metrics.Goroutines,
+		DiskUsage:       metrics.DiskUsage,
+		OpenFiles:       metrics.OpenFiles,
+		CpuCores:        metrics.CPUCores,
+		TotalMemory:     metrics.TotalMemory,
+		SystemLoad_15:   metrics.SystemLoad15,
+		ResourceHistory: history,
 	}), nil
 }
 

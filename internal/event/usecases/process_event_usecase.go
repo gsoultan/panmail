@@ -16,6 +16,9 @@ import (
 	"github.com/gsoultan/panmail/internal/event/repositories/stores"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores"
 	"github.com/gsoultan/panmail/pkg/emailutil"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/load"
+	"github.com/shirou/gopsutil/v4/mem"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -29,6 +32,10 @@ type processEventUsecase struct {
 	sentPerSec  atomic.Pointer[float64]
 	startTime   time.Time
 	diskUsage   atomic.Uint64
+	cpuUsage    atomic.Pointer[float64]
+	cpuCores    atomic.Uint32
+	totalMemory atomic.Uint64
+	load15      atomic.Pointer[float64]
 }
 
 func NewProcessEventUsecase(repo stores.EventRepository, inboundRepo inboundstores.InboundRepository, webhookTrigger WebhookTrigger) ProcessEventUsecase {
@@ -40,6 +47,17 @@ func NewProcessEventUsecase(repo stores.EventRepository, inboundRepo inboundstor
 	}
 	zero := 0.0
 	u.sentPerSec.Store(&zero)
+	u.cpuUsage.Store(&zero)
+	u.load15.Store(&zero)
+
+	// Initial collection for static metrics
+	if cores, err := cpu.Counts(true); err == nil {
+		u.cpuCores.Store(uint32(cores))
+	}
+	if v, err := mem.VirtualMemory(); err == nil {
+		u.totalMemory.Store(v.Total)
+	}
+
 	go u.startPerformanceTracker()
 	return u
 }
@@ -47,14 +65,39 @@ func NewProcessEventUsecase(repo stores.EventRepository, inboundRepo inboundstor
 func (u *processEventUsecase) startPerformanceTracker() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
-		count := u.sentCounter.Swap(0)
-		rate := float64(count) / 5.0
-		u.sentPerSec.Store(&rate)
 
-		// Update disk usage periodically instead of every request
-		usage := getDirSize("events.db") + getDirSize("inbound.db") + getDirSize("logs.db")
-		u.diskUsage.Store(usage)
+	// Record resource metrics every 5 minutes for history
+	resourceTicker := time.NewTicker(5 * time.Minute)
+	defer resourceTicker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			count := u.sentCounter.Swap(0)
+			rate := float64(count) / 5.0
+			u.sentPerSec.Store(&rate)
+
+			// CPU Usage
+			if percentages, err := cpu.Percent(0, false); err == nil && len(percentages) > 0 {
+				u.cpuUsage.Store(&percentages[0])
+			}
+
+			// System Load
+			if l, err := load.Avg(); err == nil {
+				u.load15.Store(&l.Load15)
+			}
+
+			// Update disk usage periodically instead of every request
+			usage := getDirSize("events.db") + getDirSize("inbound.db") + getDirSize("logs.db")
+			u.diskUsage.Store(usage)
+
+		case <-resourceTicker.C:
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			cpuVal := *u.cpuUsage.Load()
+			loadVal := *u.load15.Load()
+			_ = u.repo.WriteResourceMetric(context.Background(), cpuVal, m.Alloc, loadVal)
+		}
 	}
 }
 
@@ -77,14 +120,30 @@ func (u *processEventUsecase) GetPerformanceMetrics(ctx context.Context) (Perfor
 		openFiles = uint32(len(entries))
 	}
 
+	// Get history for the last 24 hours
+	history, _ := u.repo.GetResourceHistory(ctx, time.Now().Add(-24*time.Hour))
+	historyPoints := make([]ResourcePoint, len(history))
+	for i, p := range history {
+		historyPoints[i] = ResourcePoint{
+			Timestamp:    p.Timestamp,
+			CPUUsage:     p.CPUUsage,
+			MemoryUsage:  p.MemoryUsage,
+			SystemLoad15: p.SystemLoad15,
+		}
+	}
+
 	return PerformanceMetrics{
-		SentPerSecond: *u.sentPerSec.Load(),
-		CPUUsage:      0, // Placeholder
-		MemoryUsage:   m.Alloc,
-		UptimeSeconds: uint64(time.Since(u.startTime).Seconds()),
-		Goroutines:    uint32(runtime.NumGoroutine()),
-		DiskUsage:     diskUsage,
-		OpenFiles:     openFiles,
+		SentPerSecond:   *u.sentPerSec.Load(),
+		CPUUsage:        *u.cpuUsage.Load(),
+		MemoryUsage:     m.Alloc,
+		UptimeSeconds:   uint64(time.Since(u.startTime).Seconds()),
+		Goroutines:      uint32(runtime.NumGoroutine()),
+		DiskUsage:       diskUsage,
+		OpenFiles:       openFiles,
+		CPUCores:        u.cpuCores.Load(),
+		TotalMemory:     u.totalMemory.Load(),
+		SystemLoad15:    *u.load15.Load(),
+		ResourceHistory: historyPoints,
 	}, nil
 }
 

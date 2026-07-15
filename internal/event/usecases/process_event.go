@@ -17,14 +17,25 @@ type ListFilter struct {
 	EndTime   time.Time
 }
 
+type ResourcePoint struct {
+	Timestamp    time.Time
+	CPUUsage     float64
+	MemoryUsage  uint64
+	SystemLoad15 float64
+}
+
 type PerformanceMetrics struct {
-	SentPerSecond float64
-	CPUUsage      float64
-	MemoryUsage   uint64
-	UptimeSeconds uint64
-	Goroutines    uint32
-	DiskUsage     uint64
-	OpenFiles     uint32
+	SentPerSecond   float64
+	CPUUsage        float64
+	MemoryUsage     uint64
+	UptimeSeconds   uint64
+	Goroutines      uint32
+	DiskUsage       uint64
+	OpenFiles       uint32
+	CPUCores        uint32
+	TotalMemory     uint64
+	SystemLoad15    float64
+	ResourceHistory []ResourcePoint
 }
 
 type ProcessEventUsecase interface {
