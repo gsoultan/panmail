@@ -173,3 +173,97 @@ func TestListLatestOnlyPagination(t *testing.T) {
 		t.Errorf("page 3: expected 1, got %d", len(res3))
 	}
 }
+
+func TestListLatestOnlyPerRecipient(t *testing.T) {
+	dir := "test_dedup_recipient.db"
+	_ = os.RemoveAll(dir)
+	defer os.RemoveAll(dir)
+
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := t.Context()
+	tenantID := "test-tenant"
+	messageID := "msg-1"
+
+	// 1. Write events for multiple recipients of the same message
+	events := []*entities.EmailEvent{
+		{
+			ID:        "e1-r1",
+			TenantID:  tenantID,
+			MessageID: messageID,
+			Recipient: "r1@example.com",
+			Type:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT,
+			Timestamp: time.Now().Add(-10 * time.Minute),
+		},
+		{
+			ID:        "e2-r1", // Latest for r1
+			TenantID:  tenantID,
+			MessageID: messageID,
+			Recipient: "r1@example.com",
+			Type:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED,
+			Timestamp: time.Now().Add(-5 * time.Minute),
+		},
+		{
+			ID:        "e1-r2",
+			TenantID:  tenantID,
+			MessageID: messageID,
+			Recipient: "r2@example.com",
+			Type:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT,
+			Timestamp: time.Now().Add(-8 * time.Minute),
+		},
+		{
+			ID:        "e2-r2", // Latest for r2
+			TenantID:  tenantID,
+			MessageID: messageID,
+			Recipient: "r2@example.com",
+			Type:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED,
+			Timestamp: time.Now(),
+		},
+	}
+
+	for _, e := range events {
+		if err := store.Write(ctx, e); err != nil {
+			t.Fatalf("failed to write event: %v", err)
+		}
+	}
+
+	// Wait for async processing
+	time.Sleep(1 * time.Second)
+
+	// 2. List with LatestOnly=true (should return 2, one for each recipient)
+	latestEvents, _, err := store.List(ctx, tenantID, stores.ListFilter{
+		PageSize:   10,
+		LatestOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("failed to list latest events: %v", err)
+	}
+	if len(latestEvents) != 2 {
+		t.Errorf("expected 2 events, got %d", len(latestEvents))
+	}
+
+	// Verify we got the latest for each
+	foundR1 := false
+	foundR2 := false
+	for _, e := range latestEvents {
+		if e.Recipient == "r1@example.com" {
+			foundR1 = true
+			if e.ID != "e2-r1" {
+				t.Errorf("r1: expected e2-r1, got %s", e.ID)
+			}
+		} else if e.Recipient == "r2@example.com" {
+			foundR2 = true
+			if e.ID != "e2-r2" {
+				t.Errorf("r2: expected e2-r2, got %s", e.ID)
+			}
+		}
+	}
+
+	if !foundR1 || !foundR2 {
+		t.Errorf("missing latest event for one of the recipients: r1=%v, r2=%v", foundR1, foundR2)
+	}
+}

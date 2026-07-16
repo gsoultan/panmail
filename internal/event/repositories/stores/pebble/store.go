@@ -260,10 +260,10 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 		copy(msgEventKey, buf)
 		_ = batch.Set(msgEventKey, val, nil)
 
-		// Latest events index: latest_events:{tenant_id}:{timestamp_desc}:{message_id}
-		// 1. Check if there is an existing latest event for this message
-		latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s", e.TenantID, e.MessageID))
-		cacheKey := e.TenantID + ":" + e.MessageID
+		// Latest events index: latest_events:{tenant_id}:{timestamp_desc}:{message_id}:{recipient}
+		// 1. Check if there is an existing latest event for this message + recipient
+		latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s:%s", e.TenantID, e.MessageID, e.Recipient))
+		cacheKey := e.TenantID + ":" + e.MessageID + ":" + e.Recipient
 		oldTsStr := ""
 
 		if ts, ok := batchLatestTs[cacheKey]; ok {
@@ -275,7 +275,7 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 
 		if oldTsStr != "" {
 			// Delete old entry from the time-ordered index
-			_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s", e.TenantID, oldTsStr, e.MessageID)), nil)
+			_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s", e.TenantID, oldTsStr, e.MessageID, e.Recipient)), nil)
 		}
 
 		// 2. Add new entry
@@ -289,6 +289,8 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 		buf = append(buf, tsDescStr...)
 		buf = append(buf, ':')
 		buf = append(buf, e.MessageID...)
+		buf = append(buf, ':')
+		buf = append(buf, e.Recipient...)
 		latestEventKey := make([]byte, len(buf))
 		copy(latestEventKey, buf)
 		_ = batch.Set(latestEventKey, val, nil)
@@ -449,11 +451,11 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
 					_ = batch.Delete([]byte(fmt.Sprintf("msg_events:%s:%s:%s:%s", parts[1], e.MessageID, parts[2], parts[3])), nil)
 
 					// Cleanup latest_events if this is the latest one
-					latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s", parts[1], e.MessageID))
+					latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s:%s", parts[1], e.MessageID, e.Recipient))
 					if currentTsVal, closer, err := s.db.Get(latestTsKey); err == nil {
 						if string(currentTsVal) == parts[2] {
 							// This IS the latest event being deleted
-							_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s", parts[1], parts[2], e.MessageID)), nil)
+							_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s", parts[1], parts[2], e.MessageID, e.Recipient)), nil)
 							_ = batch.Delete(latestTsKey, nil)
 						}
 						_ = closer.Close()
@@ -645,7 +647,7 @@ func (s *store) List(ctx context.Context, tenantID string, filter stores.ListFil
 		copy(upperBound, prefix)
 		upperBound[len(upperBound)-1]++
 	} else if filter.LatestOnly {
-		// Use latest_events index: latest_events:{tenant_id}:{timestamp_desc}:{message_id}
+		// Use latest_events index: latest_events:{tenant_id}:{timestamp_desc}:{message_id}:{recipient}
 		prefix := []byte(fmt.Sprintf("latest_events:%s:", tenantID))
 		lowerBound = prefix
 		upperBound = make([]byte, len(prefix))

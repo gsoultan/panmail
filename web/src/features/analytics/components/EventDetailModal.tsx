@@ -44,9 +44,14 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
     URL.revokeObjectURL(url);
   };
 
-  const timelineEvents = [...(timelineData?.events || [])].sort((a, b) =>
-    Number(a.timestamp?.seconds || 0) - Number(b.timestamp?.seconds || 0)
-  );
+  const timelineEvents = [...(timelineData?.events || [])].sort((a, b) => {
+    const secA = Number(a.timestamp?.seconds || 0);
+    const secB = Number(b.timestamp?.seconds || 0);
+    if (secA !== secB) return secB - secA;
+    const nanoA = Number(a.timestamp?.nanos || 0);
+    const nanoB = Number(b.timestamp?.nanos || 0);
+    return nanoB - nanoA;
+  });
 
   return (
     <Modal

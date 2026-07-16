@@ -222,10 +222,10 @@ export const AppLayout: React.FC = () => {
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="md">
-        <AppShell.Section grow>
-          <ScrollArea h="100%" scrollbarSize={4}>
-            <Stack gap="xs">
+      <AppShell.Navbar p={0}>
+        <AppShell.Section grow style={{ overflow: 'hidden' }}>
+          <ScrollArea h="100%" offsetScrollbars scrollbarSize={4}>
+            <Stack gap="xs" p="md">
               {!collapsed && (
                 <Text size="xs" fw={700} c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))" tt="uppercase" px="md" mb={4}>
                   General
@@ -350,8 +350,8 @@ export const AppLayout: React.FC = () => {
           </ScrollArea>
         </AppShell.Section>
 
-        <AppShell.Section>
-          <Box pt="md" style={{ borderTop: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))` }}>
+        <AppShell.Section p="md">
+          <Box style={{ borderTop: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))`, paddingTop: rem(12) }}>
             <Text size="xs" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))" ta="center" fw={600}>
               Panmail Gateway v{import.meta.env.VITE_APP_VERSION || '1.0.0'}
             </Text>
