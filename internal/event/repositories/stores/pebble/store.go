@@ -108,13 +108,17 @@ func (s *store) worker() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
+	// Cache to track latest timestamps within the current batch
+	// Key: tenantID + ":" + messageID
+	batchLatestTs := make(map[string]string)
+
 	count := 0
 	for {
 		select {
 		case op := <-s.opChan:
 			switch v := op.(type) {
 			case writeOp:
-				_ = s.performWrite(batch, v.event)
+				_ = s.performWrite(batch, v.event, batchLatestTs)
 			case messageOp:
 				_ = s.performWriteMessage(batch, v.message)
 			case resourceOp:
@@ -124,12 +128,14 @@ func (s *store) worker() {
 			if count >= 500 {
 				_ = batch.Commit(nil)
 				batch = s.db.NewBatch()
+				clear(batchLatestTs)
 				count = 0
 			}
 		case <-ticker.C:
 			if count > 0 {
 				_ = batch.Commit(nil)
 				batch = s.db.NewBatch()
+				clear(batchLatestTs)
 				count = 0
 			}
 		case <-s.stopCh:
@@ -141,7 +147,7 @@ func (s *store) worker() {
 	}
 }
 
-func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent) error {
+func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchLatestTs map[string]string) error {
 	timestampDesc := math.MaxInt64 - e.Timestamp.UnixNano()
 	tsDescStr := strconv.FormatInt(timestampDesc, 10)
 	// Ensure 19 digits for sorting
@@ -253,6 +259,39 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent) error 
 		msgEventKey := make([]byte, len(buf))
 		copy(msgEventKey, buf)
 		_ = batch.Set(msgEventKey, val, nil)
+
+		// Latest events index: latest_events:{tenant_id}:{timestamp_desc}:{message_id}
+		// 1. Check if there is an existing latest event for this message
+		latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s", e.TenantID, e.MessageID))
+		cacheKey := e.TenantID + ":" + e.MessageID
+		oldTsStr := ""
+
+		if ts, ok := batchLatestTs[cacheKey]; ok {
+			oldTsStr = ts
+		} else if oldTsVal, closer, err := s.db.Get(latestTsKey); err == nil {
+			oldTsStr = string(oldTsVal)
+			_ = closer.Close()
+		}
+
+		if oldTsStr != "" {
+			// Delete old entry from the time-ordered index
+			_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s", e.TenantID, oldTsStr, e.MessageID)), nil)
+		}
+
+		// 2. Add new entry
+		batchLatestTs[cacheKey] = tsDescStr
+		_ = batch.Set(latestTsKey, []byte(tsDescStr), nil)
+
+		buf = buf[:0]
+		buf = append(buf, "latest_events:"...)
+		buf = append(buf, e.TenantID...)
+		buf = append(buf, ':')
+		buf = append(buf, tsDescStr...)
+		buf = append(buf, ':')
+		buf = append(buf, e.MessageID...)
+		latestEventKey := make([]byte, len(buf))
+		copy(latestEventKey, buf)
+		_ = batch.Set(latestEventKey, val, nil)
 	}
 
 	return nil
@@ -408,6 +447,17 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
 				// Cleanup msg_events index
 				if e.MessageID != "" {
 					_ = batch.Delete([]byte(fmt.Sprintf("msg_events:%s:%s:%s:%s", parts[1], e.MessageID, parts[2], parts[3])), nil)
+
+					// Cleanup latest_events if this is the latest one
+					latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s", parts[1], e.MessageID))
+					if currentTsVal, closer, err := s.db.Get(latestTsKey); err == nil {
+						if string(currentTsVal) == parts[2] {
+							// This IS the latest event being deleted
+							_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s", parts[1], parts[2], e.MessageID)), nil)
+							_ = batch.Delete(latestTsKey, nil)
+						}
+						_ = closer.Close()
+					}
 				}
 			}
 
@@ -594,6 +644,23 @@ func (s *store) List(ctx context.Context, tenantID string, filter stores.ListFil
 		upperBound = make([]byte, len(prefix))
 		copy(upperBound, prefix)
 		upperBound[len(upperBound)-1]++
+	} else if filter.LatestOnly {
+		// Use latest_events index: latest_events:{tenant_id}:{timestamp_desc}:{message_id}
+		prefix := []byte(fmt.Sprintf("latest_events:%s:", tenantID))
+		lowerBound = prefix
+		upperBound = make([]byte, len(prefix))
+		copy(upperBound, prefix)
+		upperBound[len(upperBound)-1]++
+
+		if !filter.EndTime.IsZero() {
+			timestampDesc := math.MaxInt64 - filter.EndTime.UnixNano()
+			lowerBound = []byte(fmt.Sprintf("latest_events:%s:%019d:", tenantID, timestampDesc))
+		}
+
+		if !filter.StartTime.IsZero() {
+			timestampDesc := math.MaxInt64 - filter.StartTime.UnixNano()
+			upperBound = []byte(fmt.Sprintf("latest_events:%s:%019d:", tenantID, timestampDesc+1))
+		}
 	} else {
 		prefix := []byte(fmt.Sprintf("events:%s:", tenantID))
 		lowerBound = prefix
@@ -625,9 +692,6 @@ func (s *store) List(ctx context.Context, tenantID string, filter stores.ListFil
 
 	if filter.PageToken != "" {
 		iter.SeekGE([]byte(filter.PageToken))
-		if iter.Valid() && string(iter.Key()) == filter.PageToken {
-			iter.Next()
-		}
 	} else {
 		iter.SeekGE(lowerBound)
 	}

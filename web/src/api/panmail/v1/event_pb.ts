@@ -125,6 +125,11 @@ export class EmailEvent extends Message<EmailEvent> {
   providerId = "";
 
   /**
+   * @generated from field: string provider_name = 10;
+   */
+  providerName = "";
+
+  /**
    * @generated from field: string message_id = 4;
    */
   messageId = "";
@@ -138,6 +143,11 @@ export class EmailEvent extends Message<EmailEvent> {
    * @generated from field: string recipient = 6;
    */
   recipient = "";
+
+  /**
+   * @generated from field: string subject = 11;
+   */
+  subject = "";
 
   /**
    * @generated from field: google.protobuf.Timestamp timestamp = 7;
@@ -165,9 +175,11 @@ export class EmailEvent extends Message<EmailEvent> {
     { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "tenant_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "provider_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 10, name: "provider_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "message_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "type", kind: "enum", T: proto3.getEnumType(EmailEventType) },
     { no: 6, name: "recipient", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 11, name: "subject", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 7, name: "timestamp", kind: "message", T: Timestamp },
     { no: 8, name: "metadata", kind: "message", T: Struct },
     { no: 9, name: "error_message", kind: "scalar", T: 9 /* ScalarType.STRING */ },

@@ -242,7 +242,7 @@ func main() {
 	outboundWebhookWorker := webhookworker.NewWebhookWorker(webhookUsecase)
 	go outboundWebhookWorker.Start(context.Background())
 
-	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, outboundWebhookWorker)
+	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
 	eventService := eventservices.NewEventService(processEventUsecase)
 	webhookHandler := eventhttp.NewWebhookHandler(processEventUsecase, providerRepo)
 

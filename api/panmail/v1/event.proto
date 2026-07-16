@@ -30,9 +30,11 @@ message EmailEvent {
   string id = 1;
   string tenant_id = 2;
   string provider_id = 3;
+  string provider_name = 10;
   string message_id = 4;
   EmailEventType type = 5;
   string recipient = 6;
+  string subject = 11;
   google.protobuf.Timestamp timestamp = 7;
   google.protobuf.Struct metadata = 8;
   string error_message = 9;

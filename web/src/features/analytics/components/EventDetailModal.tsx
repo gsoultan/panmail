@@ -102,16 +102,22 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
                 <Grid.Col span={12}>
                   <Divider />
                 </Grid.Col>
+                <Grid.Col span={12}>
+                  <Stack gap={4}>
+                    <Text size="xs" c="dimmed" fw={700} tt="uppercase">Subject</Text>
+                    <Text fw={600} size="md" c="brand">{event.subject || 'No Subject'}</Text>
+                  </Stack>
+                </Grid.Col>
                 <Grid.Col span={6}>
                   <Stack gap={4}>
-                    <Text size="xs" c="dimmed" fw={700} tt="uppercase">Provider ID</Text>
-                    <Text size="sm" style={{ fontFamily: 'monospace' }}>{event.providerId || 'N/A'}</Text>
+                    <Text size="xs" c="dimmed" fw={700} tt="uppercase">Provider Name</Text>
+                    <Text fw={600}>{event.providerName || event.providerId || 'N/A'}</Text>
                   </Stack>
                 </Grid.Col>
                 <Grid.Col span={6}>
                   <Stack gap={4}>
                     <Text size="xs" c="dimmed" fw={700} tt="uppercase">Message ID</Text>
-                    <Text size="sm" style={{ fontFamily: 'monospace' }}>{event.messageId}</Text>
+                    <Text size="xs" style={{ fontFamily: 'monospace' }} c="dimmed">{event.messageId}</Text>
                   </Stack>
                 </Grid.Col>
               </Grid>

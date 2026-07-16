@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/config"
 	emailstores "github.com/gsoultan/panmail/internal/email/repositories/stores"
+	providerstores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 	evententities "github.com/gsoultan/panmail/internal/event/repositories/entities"
 	eventstores "github.com/gsoultan/panmail/internal/event/repositories/stores"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores"
@@ -28,6 +30,7 @@ type processEventUsecase struct {
 	repo           eventstores.EventRepository
 	inboundRepo    inboundstores.InboundRepository
 	outboxRepo     emailstores.OutboxRepository
+	providerRepo   providerstores.Repository
 	webhookTrigger WebhookTrigger
 
 	sentCounter atomic.Uint64
@@ -38,13 +41,22 @@ type processEventUsecase struct {
 	cpuCores    atomic.Uint32
 	totalMemory atomic.Uint64
 	load15      atomic.Pointer[float64]
+
+	providerNames sync.Map // cache: tenantID+providerID -> providerName
 }
 
-func NewProcessEventUsecase(repo eventstores.EventRepository, inboundRepo inboundstores.InboundRepository, outboxRepo emailstores.OutboxRepository, webhookTrigger WebhookTrigger) ProcessEventUsecase {
+func NewProcessEventUsecase(
+	repo eventstores.EventRepository,
+	inboundRepo inboundstores.InboundRepository,
+	outboxRepo emailstores.OutboxRepository,
+	providerRepo providerstores.Repository,
+	webhookTrigger WebhookTrigger,
+) ProcessEventUsecase {
 	u := &processEventUsecase{
 		repo:           repo,
 		inboundRepo:    inboundRepo,
 		outboxRepo:     outboxRepo,
+		providerRepo:   providerRepo,
 		webhookTrigger: webhookTrigger,
 		startTime:      time.Now(),
 	}
@@ -164,6 +176,23 @@ func getDirSize(path string) uint64 {
 	return uint64(size)
 }
 
+func (u *processEventUsecase) getProviderName(ctx context.Context, tenantID, providerID string) string {
+	if providerID == "" {
+		return ""
+	}
+	cacheKey := tenantID + ":" + providerID
+	if val, ok := u.providerNames.Load(cacheKey); ok {
+		return val.(string)
+	}
+
+	p, err := u.providerRepo.GetByID(ctx, tenantID, providerID)
+	if err == nil && p != nil {
+		u.providerNames.Store(cacheKey, p.Name)
+		return p.Name
+	}
+	return ""
+}
+
 func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, errorMessage string, metadata map[string]any) error {
 	// If it's a generic bounce, try to classify it better using the error message
 	if eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED && errorMessage != "" {
@@ -173,8 +202,10 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 	if eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT {
 		u.sentCounter.Add(1)
 	}
+
+	var subject string
 	// Attempt to recover missing fields from stored message
-	if (providerID == "" || recipient == "") && messageID != "" {
+	if messageID != "" {
 		msg, _ := u.repo.GetMessage(ctx, tenantID, messageID)
 		if msg != nil {
 			if providerID == "" {
@@ -183,16 +214,21 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 			if recipient == "" && len(msg.To) > 0 {
 				recipient = msg.To[0]
 			}
+			subject = msg.Subject
 		}
 	}
+
+	providerName := u.getProviderName(ctx, tenantID, providerID)
 
 	e := &evententities.EmailEvent{
 		ID:           uuid.New().String(),
 		TenantID:     tenantID,
 		ProviderID:   providerID,
+		ProviderName: providerName,
 		MessageID:    messageID,
 		Type:         eventType,
 		Recipient:    recipient,
+		Subject:      subject,
 		Timestamp:    time.Now(),
 		Metadata:     metadata,
 		ErrorMessage: errorMessage,
@@ -305,9 +341,11 @@ func (u *processEventUsecase) ListByMessageID(ctx context.Context, tenantID stri
 			Id:           e.ID,
 			TenantId:     e.TenantID,
 			ProviderId:   e.ProviderID,
+			ProviderName: e.ProviderName,
 			MessageId:    e.MessageID,
 			Type:         e.Type,
 			Recipient:    e.Recipient,
+			Subject:      e.Subject,
 			Timestamp:    timestamppb.New(e.Timestamp),
 			Metadata:     meta,
 			ErrorMessage: e.ErrorMessage,
@@ -318,13 +356,14 @@ func (u *processEventUsecase) ListByMessageID(ctx context.Context, tenantID stri
 
 func (u *processEventUsecase) ListEvents(ctx context.Context, tenantID string, filter ListFilter) ([]*panmailv1.EmailEvent, string, error) {
 	repoFilter := eventstores.ListFilter{
-		PageSize:  filter.PageSize,
-		PageToken: filter.PageToken,
-		Recipient: filter.Recipient,
-		EventType: filter.EventType,
-		StartTime: filter.StartTime,
-		EndTime:   filter.EndTime,
-		MessageID: filter.MessageID,
+		PageSize:   filter.PageSize,
+		PageToken:  filter.PageToken,
+		Recipient:  filter.Recipient,
+		EventType:  filter.EventType,
+		StartTime:  filter.StartTime,
+		EndTime:    filter.EndTime,
+		MessageID:  filter.MessageID,
+		LatestOnly: filter.LatestOnly,
 	}
 	events, nextToken, err := u.repo.List(ctx, tenantID, repoFilter)
 	if err != nil {
@@ -338,9 +377,11 @@ func (u *processEventUsecase) ListEvents(ctx context.Context, tenantID string, f
 			Id:           e.ID,
 			TenantId:     e.TenantID,
 			ProviderId:   e.ProviderID,
+			ProviderName: e.ProviderName,
 			MessageId:    e.MessageID,
 			Type:         e.Type,
 			Recipient:    e.Recipient,
+			Subject:      e.Subject,
 			Timestamp:    timestamppb.New(e.Timestamp),
 			Metadata:     meta,
 			ErrorMessage: e.ErrorMessage,
@@ -363,9 +404,11 @@ func (u *processEventUsecase) GetEvent(ctx context.Context, tenantID string, id 
 		Id:           e.ID,
 		TenantId:     e.TenantID,
 		ProviderId:   e.ProviderID,
+		ProviderName: e.ProviderName,
 		MessageId:    e.MessageID,
 		Type:         e.Type,
 		Recipient:    e.Recipient,
+		Subject:      e.Subject,
 		Timestamp:    timestamppb.New(e.Timestamp),
 		Metadata:     meta,
 		ErrorMessage: e.ErrorMessage,

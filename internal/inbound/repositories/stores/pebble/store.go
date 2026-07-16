@@ -120,9 +120,6 @@ func (s *store) List(ctx context.Context, tenantID string, pageSize int, pageTok
 
 	if pageToken != "" {
 		iter.SeekGE([]byte(pageToken))
-		if iter.Valid() && string(iter.Key()) == pageToken {
-			iter.Next()
-		}
 	} else {
 		iter.SeekGE(prefix)
 	}

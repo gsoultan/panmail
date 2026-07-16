@@ -9,9 +9,11 @@ type EmailEvent struct {
 	ID           string                   `json:"id"`
 	TenantID     string                   `json:"tenant_id"`
 	ProviderID   string                   `json:"provider_id"`
+	ProviderName string                   `json:"provider_name"`
 	MessageID    string                   `json:"message_id"`
 	Type         panmailv1.EmailEventType `json:"type"`
 	Recipient    string                   `json:"recipient"`
+	Subject      string                   `json:"subject"`
 	Timestamp    time.Time                `json:"timestamp"`
 	Metadata     map[string]any           `json:"metadata"`
 	ErrorMessage string                   `json:"error_message"`

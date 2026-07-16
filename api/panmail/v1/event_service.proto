@@ -117,6 +117,7 @@ message ListEventsRequest {
   google.protobuf.Timestamp start_time = 5;
   google.protobuf.Timestamp end_time = 6;
   string message_id = 7;
+  bool latest_only = 8;
 }
 
 message ListEventsResponse {

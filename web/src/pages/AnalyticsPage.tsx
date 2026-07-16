@@ -66,7 +66,9 @@ export const AnalyticsPage: React.FC = () => {
       debouncedRecipient,
       eventType ? Number(eventType) : 0,
       dateRange[0] || undefined,
-      dateRange[1] || undefined
+      dateRange[1] || undefined,
+      undefined, // messageId
+      true // latestOnly
     ),
     refetchInterval: 10000,
   });
@@ -208,8 +210,8 @@ export const AnalyticsPage: React.FC = () => {
                 <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Timestamp</Text></Table.Th>
                 <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Recipient</Text></Table.Th>
                 <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Event Type</Text></Table.Th>
-                <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Provider ID</Text></Table.Th>
-                <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Message ID</Text></Table.Th>
+                <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Provider Name</Text></Table.Th>
+                <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Subject</Text></Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -254,12 +256,12 @@ export const AnalyticsPage: React.FC = () => {
                         </Badge>
                       </Table.Td>
                       <Table.Td>
-                        <Text size="xs" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))" style={{ fontFamily: 'monospace' }}>{event.providerId}</Text>
+                        <Text size="sm" fw={500} c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))">{event.providerName || event.providerId}</Text>
                       </Table.Td>
                       <Table.Td>
                         <Group justify="space-between" wrap="nowrap">
-                          <Text size="xs" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))" truncate style={{ maxWidth: rem(150), fontFamily: 'monospace' }}>
-                            {event.messageId}
+                          <Text size="sm" fw={600} c="light-dark(var(--mantine-color-black), var(--mantine-color-white))" truncate style={{ maxWidth: rem(200) }}>
+                            {event.subject || event.messageId}
                           </Text>
                           <ActionIcon variant="subtle" size="sm" color="gray">
                             <IconExternalLink size={14} />

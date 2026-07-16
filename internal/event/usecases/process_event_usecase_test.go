@@ -7,10 +7,24 @@ import (
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	emailstores "github.com/gsoultan/panmail/internal/email/repositories/stores"
+	providerentities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
+	providerstores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 	evententities "github.com/gsoultan/panmail/internal/event/repositories/entities"
 	"github.com/gsoultan/panmail/internal/event/repositories/stores"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores"
 )
+
+type mockProviderRepo struct {
+	providerstores.Repository
+	providers map[string]*providerentities.EmailProvider
+}
+
+func (m *mockProviderRepo) GetByID(ctx context.Context, tenantID, id string) (*providerentities.EmailProvider, error) {
+	if m.providers == nil {
+		return nil, nil
+	}
+	return m.providers[id], nil
+}
 
 type mockEventRepo struct {
 	stores.EventRepository
@@ -60,12 +74,22 @@ func TestRecordEventRecovery(t *testing.T) {
 	}
 	inboundRepo := &mockInboundRepo{}
 	outboxRepo := &mockOutboxRepo{}
-	uc := NewProcessEventUsecase(repo, inboundRepo, outboxRepo, nil)
+	providerRepo := &mockProviderRepo{
+		providers: make(map[string]*providerentities.EmailProvider),
+	}
+	uc := NewProcessEventUsecase(repo, inboundRepo, outboxRepo, providerRepo, nil)
 
 	tenantID := "tenant-1"
 	messageID := "msg-1"
 	providerID := "prov-1"
+	providerName := "IMPC"
 	recipient := "user@example.com"
+	subject := "Test Subject"
+
+	providerRepo.providers[providerID] = &providerentities.EmailProvider{
+		ID:   providerID,
+		Name: providerName,
+	}
 
 	// 1. Save a message
 	repo.messages[messageID] = &evententities.EmailMessage{
@@ -73,9 +97,10 @@ func TestRecordEventRecovery(t *testing.T) {
 		TenantID:   tenantID,
 		To:         []string{recipient},
 		ProviderID: "", // Not set yet
+		Subject:    subject,
 	}
 
-	// 2. Record DELIVERED event - should update message providerID
+	// 2. Record DELIVERED event - should update message providerID and populate event subject/providerName
 	err := uc.RecordEvent(t.Context(), tenantID, providerID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, "", nil)
 	if err != nil {
 		t.Fatalf("RecordEvent failed: %v", err)
@@ -83,6 +108,21 @@ func TestRecordEventRecovery(t *testing.T) {
 
 	if repo.messages[messageID].ProviderID != providerID {
 		t.Errorf("expected providerID %s, got %s", providerID, repo.messages[messageID].ProviderID)
+	}
+
+	// Find the DELIVERED event
+	var deliveredEvent *evententities.EmailEvent
+	for _, e := range repo.events {
+		if e.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+			deliveredEvent = e
+			break
+		}
+	}
+	if deliveredEvent.Subject != subject {
+		t.Errorf("expected subject %s, got %s", subject, deliveredEvent.Subject)
+	}
+	if deliveredEvent.ProviderName != providerName {
+		t.Errorf("expected providerName %s, got %s", providerName, deliveredEvent.ProviderName)
 	}
 
 	// 3. Record OPENED event with missing providerID and recipient
@@ -110,5 +150,9 @@ func TestRecordEventRecovery(t *testing.T) {
 
 	if openedEvent.Recipient != recipient {
 		t.Errorf("expected recovered recipient %s, got %s", recipient, openedEvent.Recipient)
+	}
+
+	if openedEvent.Subject != subject {
+		t.Errorf("expected recovered subject %s, got %s", subject, openedEvent.Subject)
 	}
 }

@@ -170,9 +170,6 @@ func (s *pebbleStore) List(pageSize int, pageToken string, tenantID string) ([]L
 
 	if pageToken != "" {
 		iter.SeekGE([]byte(pageToken))
-		if iter.Valid() && string(iter.Key()) == pageToken {
-			iter.Prev()
-		}
 	} else {
 		iter.Last() // Start from most recent if no token
 	}

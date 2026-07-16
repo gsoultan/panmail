@@ -113,9 +113,11 @@ type EmailEvent struct {
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	ProviderId    string                 `protobuf:"bytes,3,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	ProviderName  string                 `protobuf:"bytes,10,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
 	MessageId     string                 `protobuf:"bytes,4,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
 	Type          EmailEventType         `protobuf:"varint,5,opt,name=type,proto3,enum=panmail.v1.EmailEventType" json:"type,omitempty"`
 	Recipient     string                 `protobuf:"bytes,6,opt,name=recipient,proto3" json:"recipient,omitempty"`
+	Subject       string                 `protobuf:"bytes,11,opt,name=subject,proto3" json:"subject,omitempty"`
 	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Metadata      *structpb.Struct       `protobuf:"bytes,8,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	ErrorMessage  string                 `protobuf:"bytes,9,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
@@ -174,6 +176,13 @@ func (x *EmailEvent) GetProviderId() string {
 	return ""
 }
 
+func (x *EmailEvent) GetProviderName() string {
+	if x != nil {
+		return x.ProviderName
+	}
+	return ""
+}
+
 func (x *EmailEvent) GetMessageId() string {
 	if x != nil {
 		return x.MessageId
@@ -191,6 +200,13 @@ func (x *EmailEvent) GetType() EmailEventType {
 func (x *EmailEvent) GetRecipient() string {
 	if x != nil {
 		return x.Recipient
+	}
+	return ""
+}
+
+func (x *EmailEvent) GetSubject() string {
+	if x != nil {
+		return x.Subject
 	}
 	return ""
 }
@@ -337,17 +353,20 @@ var File_panmail_v1_event_proto protoreflect.FileDescriptor
 const file_panmail_v1_event_proto_rawDesc = "" +
 	"\n" +
 	"\x16panmail/v1/event.proto\x12\n" +
-	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x17panmail/v1/common.proto\"\xdb\x02\n" +
+	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x17panmail/v1/common.proto\"\x9a\x03\n" +
 	"\n" +
 	"EmailEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x1f\n" +
 	"\vprovider_id\x18\x03 \x01(\tR\n" +
-	"providerId\x12\x1d\n" +
+	"providerId\x12#\n" +
+	"\rprovider_name\x18\n" +
+	" \x01(\tR\fproviderName\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x04 \x01(\tR\tmessageId\x12.\n" +
 	"\x04type\x18\x05 \x01(\x0e2\x1a.panmail.v1.EmailEventTypeR\x04type\x12\x1c\n" +
-	"\trecipient\x18\x06 \x01(\tR\trecipient\x128\n" +
+	"\trecipient\x18\x06 \x01(\tR\trecipient\x12\x18\n" +
+	"\asubject\x18\v \x01(\tR\asubject\x128\n" +
 	"\ttimestamp\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x123\n" +
 	"\bmetadata\x18\b \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12#\n" +
 	"\rerror_message\x18\t \x01(\tR\ferrorMessage\"\xc9\x02\n" +
