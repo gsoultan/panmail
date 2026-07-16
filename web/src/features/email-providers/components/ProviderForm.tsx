@@ -25,6 +25,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
     if (!initialValues) return defaultValues;
 
     return {
+      id: initialValues.id || '',
       name: initialValues.name || '',
       type: initialValues.type || ProviderType.SMTP,
       smtp: initialValues.config?.case === 'smtp' ? initialValues.config.value : (initialValues.smtp || defaultValues.smtp),
@@ -36,7 +37,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
   const form = useForm({
     initialValues: getInitialValues(),
     validate: {
-      name: (value) => (value.length < 2 ? 'Name must have at least 2 characters' : null),
+      name: (value: string) => (value.length < 2 ? 'Name must have at least 2 characters' : null),
     }
   });
 

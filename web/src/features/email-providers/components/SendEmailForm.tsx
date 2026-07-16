@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { 
   TextInput, 
   Textarea, 
+  TagsInput,
   Button, 
   Stack, 
   Group, 
@@ -81,7 +82,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     initialValues: {
       providerId: initialProviderId || '',
       from: '',
-      to: '',
+      to: [] as string[],
       subject: 'Test Email from Panmail',
       bodyHtml: '<h1>Test Email</h1><p>This is a test email sent from Panmail Email Gateway.</p>',
       bodyText: 'This is a test email sent from Panmail Email Gateway.',
@@ -92,7 +93,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     validate: {
       providerId: (value) => (value ? null : 'Email provider is required'),
       from: (value) => (value ? null : 'From address is required'),
-      to: (value) => (value ? null : 'To address is required'),
+      to: (value) => (value && value.length > 0 ? null : 'At least one recipient is required'),
       templateData: (value) => {
         if (!value) return null;
         try {
@@ -203,7 +204,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
   const handleSubmit = (values: typeof form.values) => {
     const data: any = {
       ...values,
-      to: values.to.split(',').map((email) => email.trim()).filter(e => e !== ''),
+      to: values.to,
     };
 
     if (values.templateId) {
@@ -219,14 +220,19 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
   };
 
   const templateOptions = templates.map(t => ({ value: t.id, label: t.name }));
-  const providerOptions = providers.map(p => ({ value: p.id, label: p.name }));
+  const providerOptions = providers.map(p => ({ 
+    value: p.id, 
+    label: `${p.name} (${p.id.substring(0, 8)}...)` 
+  }));
+
+  const selectedProvider = providers.find(p => p.id === form.values.providerId);
 
   const generateJson = () => {
     const values = form.values;
     const data: any = {
       providerId: values.providerId || 'YOUR_PROVIDER_ID',
       from: values.from || 'sender@example.com',
-      to: values.to.split(',').map(e => e.trim()).filter(e => e !== '') || ['recipient@example.com'],
+      to: values.to.length > 0 ? values.to : ['recipient@example.com'],
     };
 
     if (values.templateId) {
@@ -281,7 +287,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                     </ThemeIcon>
                     <Text fw={700} size="sm">1. Sender & Recipients</Text>
                   </Group>
-                  <SimpleGrid cols={2}>
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
                     <Select
                       label="Email Provider"
                       placeholder="Select SMTP/API Provider"
@@ -299,11 +305,34 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                     />
                   </SimpleGrid>
 
-                  <TextInput
+                  {selectedProvider && (
+                    <TextInput
+                      label="Selected Provider ID"
+                      value={selectedProvider.id}
+                      readOnly
+                      variant="filled"
+                      size="sm"
+                      radius="md"
+                      rightSection={
+                        <CopyButton value={selectedProvider.id}>
+                          {({ copied, copy }) => (
+                            <Tooltip label={copied ? 'Copied' : 'Copy ID'} withArrow position="right">
+                              <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy}>
+                                {copied ? <IconCheck size={14} stroke={2} /> : <IconCopy size={14} stroke={2} />}
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                        </CopyButton>
+                      }
+                    />
+                  )}
+
+                  <TagsInput
                     label="To (Recipients)"
-                    placeholder="recipient@example.com (comma separated for multiple)"
+                    placeholder="Type email and press Enter"
                     {...form.getInputProps('to')}
                     required
+                    clearable
                   />
                 </Stack>
               </Paper>

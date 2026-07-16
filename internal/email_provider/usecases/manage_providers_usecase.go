@@ -2,7 +2,6 @@ package usecases
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +11,8 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -46,7 +47,7 @@ func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, re
 		config = c.Pop3
 	}
 
-	configBytes, err := json.Marshal(config)
+	configBytes, err := protojson.Marshal(config.(proto.Message))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -119,7 +120,7 @@ func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, re
 	}
 
 	if config != nil {
-		configBytes, err := json.Marshal(config)
+		configBytes, err := protojson.Marshal(config.(proto.Message))
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal config: %w", err)
 		}
@@ -187,7 +188,7 @@ func (u *manageProvidersUsecase) TestConfig(ctx context.Context, req *panmailv1.
 		return fmt.Errorf("provider configuration is required")
 	}
 
-	configBytes, err := json.Marshal(config)
+	configBytes, err := protojson.Marshal(config.(proto.Message))
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -227,19 +228,19 @@ func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.
 	switch p.Type {
 	case panmailv1.ProviderType_PROVIDER_TYPE_SMTP:
 		c := &panmailv1.SmtpConfig{}
-		if err := json.Unmarshal(p.Config, c); err != nil {
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
 		proto.Config = &panmailv1.EmailProvider_Smtp{Smtp: c}
 	case panmailv1.ProviderType_PROVIDER_TYPE_IMAP:
 		c := &panmailv1.ImapConfig{}
-		if err := json.Unmarshal(p.Config, c); err != nil {
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
 		proto.Config = &panmailv1.EmailProvider_Imap{Imap: c}
 	case panmailv1.ProviderType_PROVIDER_TYPE_POP3:
 		c := &panmailv1.Pop3Config{}
-		if err := json.Unmarshal(p.Config, c); err != nil {
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
 		proto.Config = &panmailv1.EmailProvider_Pop3{Pop3: c}

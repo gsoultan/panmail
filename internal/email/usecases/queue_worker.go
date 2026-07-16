@@ -2,7 +2,6 @@ package usecases
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -15,10 +14,12 @@ import (
 	suppressionusecases "github.com/gsoultan/panmail/internal/suppression/usecases"
 	tenantusecases "github.com/gsoultan/panmail/internal/tenant/usecases"
 	"github.com/gsoultan/panmail/pkg/emailutil"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type QueueWorker interface {
 	Start(ctx context.Context)
+	Trigger()
 }
 
 type queueWorker struct {
@@ -27,6 +28,7 @@ type queueWorker struct {
 	suppressionUsecase suppressionusecases.ManageSuppressionsUsecase
 	tenantUsecase      tenantusecases.TenantUsecase
 	interval           time.Duration
+	trigger            chan struct{}
 
 	retryPatternCache  sync.Map
 	globalRetryPattern []string
@@ -45,6 +47,7 @@ func NewQueueWorker(
 		suppressionUsecase: suppressionUsecase,
 		tenantUsecase:      tenantUsecase,
 		interval:           interval,
+		trigger:            make(chan struct{}, 1),
 	}
 
 	// Pre-load global retry pattern
@@ -58,6 +61,13 @@ func NewQueueWorker(
 	return w
 }
 
+func (w *queueWorker) Trigger() {
+	select {
+	case w.trigger <- struct{}{}:
+	default:
+	}
+}
+
 func (w *queueWorker) Start(ctx context.Context) {
 	slog.Info("queue worker started", "interval", w.interval)
 
@@ -68,7 +78,7 @@ func (w *queueWorker) Start(ctx context.Context) {
 		// Try to process a batch
 		count := w.processPending(ctx)
 
-		// If we processed a full batch, don't wait for the ticker, go again immediately
+		// If we processed a full batch, don't wait, go again immediately
 		if count >= 500 {
 			continue
 		}
@@ -77,7 +87,9 @@ func (w *queueWorker) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Just a heartbeat to trigger the loop again if it was idling
+			// Regular polling
+		case <-w.trigger:
+			// Immediate trigger from new email
 		}
 	}
 }
@@ -95,6 +107,8 @@ func (w *queueWorker) processPending(ctx context.Context) int {
 	if count == 0 {
 		return 0
 	}
+
+	slog.Info("queue worker processing batch", "count", count)
 
 	var wg sync.WaitGroup
 	// Limit concurrency to reach high throughput without resource exhaustion
@@ -118,8 +132,14 @@ func (w *queueWorker) processPending(ctx context.Context) int {
 }
 
 func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail) {
+	// Add per-request timeout to avoid worker hanging
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	slog.Info("worker processing email", "id", e.ID, "tenant_id", e.TenantID, "retry_count", e.RetryCount)
+
 	var req panmailv1.SendEmailRequest
-	if err := json.Unmarshal(e.Request, &req); err != nil {
+	if err := protojson.Unmarshal(e.Request, &req); err != nil {
 		slog.Error("failed to unmarshal outbox email request", "error", err, "id", e.ID)
 		_ = w.outboxRepo.Delete(ctx, e.ID)
 		return
@@ -132,11 +152,15 @@ func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail)
 	res, err := w.emailUsecase.SendEmail(ctx, e.TenantID, &req)
 	if err == nil && res != nil {
 		// Successfully sent
-		_ = w.outboxRepo.Delete(ctx, e.ID)
+		slog.Info("email sent successfully from worker", "id", e.ID)
+		if err := w.outboxRepo.Delete(ctx, e.ID); err != nil {
+			slog.Error("failed to delete outbox email after successful send", "error", err, "id", e.ID)
+		}
 		return
 	}
 
 	// Failed again
+	slog.Warn("email delivery attempt failed", "id", e.ID, "error", err)
 	e.RetryCount++
 	e.UpdatedAt = time.Now()
 	e.LastError = err.Error()
@@ -168,9 +192,19 @@ func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail)
 		e.Status = entities.OutboxStatusDeferred
 		e.NextRetryAt = time.Now().Add(nextDelay)
 		slog.Info("email delivery deferred for retry", "id", e.ID, "retry_count", e.RetryCount, "next_retry_at", e.NextRetryAt)
+
+		// Record DEFERRED event
+		for _, recipient := range req.To {
+			_ = w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED, recipient, e.LastError, nil)
+		}
 	} else {
 		e.Status = entities.OutboxStatusFailed
 		slog.Info("email delivery failed permanently", "id", e.ID, "bounce_type", bounceType.String(), "error", e.LastError)
+
+		// Record permanent failure event
+		for _, recipient := range req.To {
+			_ = w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, bounceType, recipient, e.LastError, nil)
+		}
 
 		// Automatically suppress if hard bounce, spam report, etc.
 		if bounceType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE ||
@@ -188,7 +222,9 @@ func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail)
 		}
 	}
 
-	_ = w.outboxRepo.Update(ctx, e)
+	if err := w.outboxRepo.Update(ctx, e); err != nil {
+		slog.Error("failed to update outbox email status", "error", err, "id", e.ID, "status", e.Status)
+	}
 }
 
 func (w *queueWorker) getRetryPattern(ctx context.Context, tenantID string) []string {

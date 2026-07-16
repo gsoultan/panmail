@@ -242,7 +242,7 @@ func main() {
 	outboundWebhookWorker := webhookworker.NewWebhookWorker(webhookUsecase)
 	go outboundWebhookWorker.Start(context.Background())
 
-	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboundWebhookWorker)
+	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, outboundWebhookWorker)
 	eventService := eventservices.NewEventService(processEventUsecase)
 	webhookHandler := eventhttp.NewWebhookHandler(processEventUsecase, providerRepo)
 
@@ -267,6 +267,7 @@ func main() {
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
 	queueWorker := emailusecases.NewQueueWorker(outboxRepo, sendEmailUsecase, manageSuppressionsUsecase, tenantUsecase, 5*time.Second)
+	sendEmailUsecase.RegisterQueueWorker(queueWorker)
 	go queueWorker.Start(context.Background())
 
 	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase)

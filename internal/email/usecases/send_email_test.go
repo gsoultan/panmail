@@ -2,6 +2,8 @@ package usecases
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -16,6 +18,7 @@ import (
 	suppressionentities "github.com/gsoultan/panmail/internal/suppression/repositories/entities"
 	templateentities "github.com/gsoultan/panmail/internal/template/repositories/entities"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type mockProviderRepo struct {
@@ -55,6 +58,9 @@ func (m *mockOutboxRepo) ListPending(ctx context.Context, limit int) ([]*entitie
 }
 func (m *mockOutboxRepo) Update(ctx context.Context, e *entities.OutboxEmail) error { return nil }
 func (m *mockOutboxRepo) Delete(ctx context.Context, id string) error               { return nil }
+func (m *mockOutboxRepo) CountPending(ctx context.Context, tenantID string) (int64, error) {
+	return int64(len(m.emails)), nil
+}
 
 type mockEventRepo struct {
 	events []*evententities.EmailEvent
@@ -106,6 +112,26 @@ func (m *mockEventUsecase) GetTimeSeriesMetrics(ctx context.Context, tenantID st
 }
 func (m *mockEventUsecase) GetEvent(ctx context.Context, tenantID string, id string) (*panmailv1.EmailEvent, *panmailv1.EmailMessage, error) {
 	return nil, nil, nil
+}
+func (m *mockEventUsecase) ListByMessageID(ctx context.Context, tenantID string, messageID string) ([]*panmailv1.EmailEvent, error) {
+	var res []*panmailv1.EmailEvent
+	for _, e := range m.events {
+		if e.MessageID == messageID {
+			meta, _ := structpb.NewStruct(e.Metadata)
+			res = append(res, &panmailv1.EmailEvent{
+				Id:           e.ID,
+				TenantId:     e.TenantID,
+				ProviderId:   e.ProviderID,
+				MessageId:    e.MessageID,
+				Type:         e.Type,
+				Recipient:    e.Recipient,
+				Timestamp:    timestamppb.New(e.Timestamp),
+				Metadata:     meta,
+				ErrorMessage: e.ErrorMessage,
+			})
+		}
+	}
+	return res, nil
 }
 func (m *mockEventUsecase) SaveMessage(ctx context.Context, message *panmailv1.EmailMessage) error {
 	m.messages = append(m.messages, message)
@@ -169,10 +195,12 @@ func (m *mockFactory) CreateReceiver(p *providerEntities.EmailProvider) (any, er
 }
 
 type mockSender struct {
-	err error
+	err        error
+	sentEmails []gsmail.Email
 }
 
 func (m *mockSender) Send(ctx context.Context, email gsmail.Email) error {
+	m.sentEmails = append(m.sentEmails, email)
 	return m.err
 }
 func (m *mockSender) Validate(ctx context.Context, email string) error { return nil }
@@ -224,6 +252,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 			req: &panmailv1.SendEmailRequest{
 				ProviderId: "p1",
 				From:       "from@example.com",
+				To:         []string{"to@example.com"},
 				TemplateId: "t1",
 				TemplateData: func() *structpb.Struct {
 					s, _ := structpb.NewStruct(map[string]any{"name": "Junie", "product": "Panmail"})
@@ -250,6 +279,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 			req: &panmailv1.SendEmailRequest{
 				ProviderId: "p1",
 				From:       "from@example.com",
+				To:         []string{"to@example.com"},
 				TemplateId: "t2",
 				TemplateData: func() *structpb.Struct {
 					s, _ := structpb.NewStruct(map[string]any{"name": "Junie", "product": "Panmail"})
@@ -283,6 +313,50 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 				To:         []string{"to@example.com"},
 			},
 			wantErr: false, // Now returns res with PENDING status, not error
+		},
+		{
+			name: "Domain Mismatch",
+			provider: &providerEntities.EmailProvider{
+				ID:   "p1",
+				Name: "SMTP Provider",
+				Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+				Config: func() []byte {
+					c := &panmailv1.SmtpConfig{Host: "smtp.example.com"}
+					b, _ := json.Marshal(c)
+					return b
+				}(),
+			},
+			sender: &mockSender{},
+			req: &panmailv1.SendEmailRequest{
+				ProviderId: "p1",
+				From:       "user@wrongdomain.com",
+				To:         []string{"to@example.com"},
+				Subject:    "Hello",
+				Body:       "World",
+			},
+			wantErr: true,
+		},
+		{
+			name: "Domain Match",
+			provider: &providerEntities.EmailProvider{
+				ID:   "p1",
+				Name: "SMTP Provider",
+				Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+				Config: func() []byte {
+					c := &panmailv1.SmtpConfig{Host: "smtp.example.com"}
+					b, _ := json.Marshal(c)
+					return b
+				}(),
+			},
+			sender: &mockSender{},
+			req: &panmailv1.SendEmailRequest{
+				ProviderId: "p1",
+				From:       "user@example.com",
+				To:         []string{"to@example.com"},
+				Subject:    "Hello",
+				Body:       "World",
+			},
+			wantErr: false,
 		},
 	}
 
@@ -328,5 +402,86 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
+	provider := &providerEntities.EmailProvider{
+		ID: "p1", Name: "SMTP", Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+	}
+	repo := &mockProviderRepo{provider: provider}
+	sender := &mockSender{}
+	eventUsecase := &mockEventUsecase{}
+	factory := &mockFactory{sender: sender}
+	u := NewSendEmailUsecase(repo, nil, nil, nil, eventUsecase, factory, NewTemplateRenderer(), "http://localhost")
+
+	req := &panmailv1.SendEmailRequest{
+		ProviderId: "p1",
+		From:       "from@example.com",
+		To:         []string{"a@example.com", "b@example.com"},
+		Subject:    "Hello",
+		BodyHtml:   "<html><body><a href=\"https://google.com\">Click me</a></body></html>",
+	}
+
+	ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
+	_, err := u.SendEmail(ctx, "test-tenant", req)
+	if err != nil {
+		t.Fatalf("doSend failed: %v", err)
+	}
+
+	// Verify we sent 2 separate emails
+	if len(sender.sentEmails) != 2 {
+		t.Errorf("expected 2 sent emails, got %d", len(sender.sentEmails))
+	}
+
+	// Verify events: each recipient should have SENT and DELIVERED
+	sentA, deliveredA, sentB, deliveredB := false, false, false, false
+	for _, e := range eventUsecase.events {
+		if e.Recipient == "a@example.com" {
+			if e.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT {
+				sentA = true
+			}
+			if e.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+				deliveredA = true
+			}
+		}
+		if e.Recipient == "b@example.com" {
+			if e.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT {
+				sentB = true
+			}
+			if e.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+				deliveredB = true
+			}
+		}
+	}
+
+	if !sentA || !deliveredA || !sentB || !deliveredB {
+		t.Errorf("missing events for recipients. A: sent=%v, deliv=%v; B: sent=%v, deliv=%v", sentA, deliveredA, sentB, deliveredB)
+	}
+
+	// Verify tracking URLs are unique per recipient
+	urlA := ""
+	urlB := ""
+	for _, email := range sender.sentEmails {
+		body := string(email.HTMLBody)
+		if strings.Contains(string(email.To[0]), "a@example.com") {
+			urlA = body
+		} else if strings.Contains(string(email.To[0]), "b@example.com") {
+			urlB = body
+		}
+	}
+
+	if urlA == urlB {
+		t.Error("tracking URLs should be unique for each recipient")
+	}
+
+	recipientAEncoded := base64.RawURLEncoding.EncodeToString([]byte("a@example.com"))
+	recipientBEncoded := base64.RawURLEncoding.EncodeToString([]byte("b@example.com"))
+
+	if !strings.Contains(urlA, recipientAEncoded) {
+		t.Errorf("urlA missing recipient encoding: %s", urlA)
+	}
+	if !strings.Contains(urlB, recipientBEncoded) {
+		t.Errorf("urlB missing recipient encoding: %s", urlB)
 	}
 }

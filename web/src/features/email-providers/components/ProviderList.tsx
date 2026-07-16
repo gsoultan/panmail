@@ -1,6 +1,6 @@
 import React from 'react';
-import { Table, Group, Text, Badge, ActionIcon, Stack, Paper, rem, useComputedColorScheme } from '@mantine/core';
-import { IconTrash, IconEdit, IconPlayerPlay, IconSend } from '@tabler/icons-react';
+import { Table, Group, Text, Badge, ActionIcon, Stack, Paper, rem, useComputedColorScheme, CopyButton } from '@mantine/core';
+import { IconTrash, IconEdit, IconPlayerPlay, IconSend, IconCheck, IconCopy } from '@tabler/icons-react';
 import type { EmailProvider } from '../../../api/panmail/v1/email_provider_pb';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
 
@@ -20,10 +20,19 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, onEdit, o
   const rows = providers.map((provider) => (
     <Table.Tr key={provider.id} style={{ borderBottom: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))' }}>
       <Table.Td>
-        <Stack gap={0}>
-          <Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">{provider.name}</Text>
+        <Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">{provider.name}</Text>
+      </Table.Td>
+      <Table.Td>
+        <Group gap="xs">
           <Text size="xs" c="dimmed" ff="monospace" style={{ fontSize: rem(10) }}>{provider.id}</Text>
-        </Stack>
+          <CopyButton value={provider.id}>
+            {({ copied, copy }: { copied: boolean; copy: () => void }) => (
+              <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy} size="xs">
+                {copied ? <IconCheck size={12} stroke={2} /> : <IconCopy size={12} stroke={2} />}
+              </ActionIcon>
+            )}
+          </CopyButton>
+        </Group>
       </Table.Td>
       <Table.Td>
         <Badge variant="light" color="brand" radius="sm" size="sm" fw={700}>
@@ -79,6 +88,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, onEdit, o
         <Table.Thead style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))' }}>
           <Table.Tr>
             <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Name</Text></Table.Th>
+            <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Provider ID</Text></Table.Th>
             <Table.Th><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Type</Text></Table.Th>
             <Table.Th style={{ textAlign: 'right' }}><Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">Actions</Text></Table.Th>
           </Table.Tr>
@@ -86,7 +96,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({ providers, onEdit, o
         <Table.Tbody>
           {providers.length > 0 ? rows : (
             <Table.Tr>
-              <Table.Td colSpan={3}>
+              <Table.Td colSpan={4}>
                 <Text ta="center" c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1))" fw={600} py={40}>
                   No email providers configured yet. Click "Add Provider" to get started.
                 </Text>

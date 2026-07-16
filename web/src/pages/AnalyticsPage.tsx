@@ -59,7 +59,7 @@ export const AnalyticsPage: React.FC = () => {
   const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['analyticsEvents', debouncedRecipient, eventType, dateRange, pageToken],
+    queryKey: ['analyticsEvents', debouncedRecipient, eventType, dateRange, pageToken, pageSize],
     queryFn: () => analyticsService.listEvents(
       Number(pageSize),
       pageToken || '',
@@ -68,6 +68,7 @@ export const AnalyticsPage: React.FC = () => {
       dateRange[0] || undefined,
       dateRange[1] || undefined
     ),
+    refetchInterval: 10000,
   });
 
   const handleNext = () => {
@@ -87,6 +88,7 @@ export const AnalyticsPage: React.FC = () => {
   const { data: metricsData } = useQuery({
     queryKey: ['analyticsMetrics'],
     queryFn: () => analyticsService.getMetrics(),
+    refetchInterval: 10000,
   });
 
   const metrics = metricsData?.metrics || {};

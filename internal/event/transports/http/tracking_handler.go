@@ -18,7 +18,7 @@ func NewTrackingHandler(u usecases.ProcessEventUsecase) *TrackingHandler {
 }
 
 func (h *TrackingHandler) HandleOpen(w http.ResponseWriter, r *http.Request) {
-	// Path: /track/open/{tenant_id}/{message_id}
+	// Path: /track/open/{tenant_id}/{message_id}/{recipient_base64}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		h.servePixel(w)
@@ -27,14 +27,21 @@ func (h *TrackingHandler) HandleOpen(w http.ResponseWriter, r *http.Request) {
 
 	tenantID := parts[2]
 	messageID := parts[3]
+	recipient := ""
 
-	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, "", "", nil)
+	if len(parts) >= 5 {
+		if decoded, err := base64.RawURLEncoding.DecodeString(parts[4]); err == nil {
+			recipient = string(decoded)
+		}
+	}
+
+	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, recipient, "", nil)
 
 	h.servePixel(w)
 }
 
 func (h *TrackingHandler) HandleClick(w http.ResponseWriter, r *http.Request) {
-	// Path: /track/click/{tenant_id}/{message_id}?url=...
+	// Path: /track/click/{tenant_id}/{message_id}/{recipient_base64}?url=...
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		http.Error(w, "Invalid tracking URL", http.StatusBadRequest)
@@ -49,8 +56,15 @@ func (h *TrackingHandler) HandleClick(w http.ResponseWriter, r *http.Request) {
 
 	tenantID := parts[2]
 	messageID := parts[3]
+	recipient := ""
 
-	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED, "", "", map[string]any{"url": targetURL})
+	if len(parts) >= 5 {
+		if decoded, err := base64.RawURLEncoding.DecodeString(parts[4]); err == nil {
+			recipient = string(decoded)
+		}
+	}
+
+	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED, recipient, "", map[string]any{"url": targetURL})
 
 	http.Redirect(w, r, targetURL, http.StatusFound)
 }

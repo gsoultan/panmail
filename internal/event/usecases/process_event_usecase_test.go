@@ -6,6 +6,7 @@ import (
 	"time"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	emailstores "github.com/gsoultan/panmail/internal/email/repositories/stores"
 	evententities "github.com/gsoultan/panmail/internal/event/repositories/entities"
 	"github.com/gsoultan/panmail/internal/event/repositories/stores"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores"
@@ -45,12 +46,21 @@ func (m *mockInboundRepo) Count(ctx context.Context, tenantID string, startTime,
 	return 0, nil
 }
 
+type mockOutboxRepo struct {
+	emailstores.OutboxRepository
+}
+
+func (m *mockOutboxRepo) CountPending(ctx context.Context, tenantID string) (int64, error) {
+	return 0, nil
+}
+
 func TestRecordEventRecovery(t *testing.T) {
 	repo := &mockEventRepo{
 		messages: make(map[string]*evententities.EmailMessage),
 	}
 	inboundRepo := &mockInboundRepo{}
-	uc := NewProcessEventUsecase(repo, inboundRepo, nil)
+	outboxRepo := &mockOutboxRepo{}
+	uc := NewProcessEventUsecase(repo, inboundRepo, outboxRepo, nil)
 
 	tenantID := "tenant-1"
 	messageID := "msg-1"

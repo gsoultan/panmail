@@ -208,6 +208,19 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent) error 
 	copy(hourKey, buf)
 	_ = s.incrementCounter(batch, hourKey)
 
+	// Minute timeseries
+	minuteStr := e.Timestamp.Format("2006-01-02 15:04")
+	buf = buf[:0]
+	buf = append(buf, "timeseries:minute:"...)
+	buf = append(buf, e.TenantID...)
+	buf = append(buf, ':')
+	buf = append(buf, minuteStr...)
+	buf = append(buf, ':')
+	buf = append(buf, typeStr...)
+	minuteKey := make([]byte, len(buf))
+	copy(minuteKey, buf)
+	_ = s.incrementCounter(batch, minuteKey)
+
 	_ = batch.Set(key, val, nil)
 
 	// event_id index
@@ -224,7 +237,25 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent) error 
 	idVal := make([]byte, len(buf))
 	copy(idVal, buf)
 
-	return batch.Set(idKey, idVal, nil)
+	_ = batch.Set(idKey, idVal, nil)
+
+	// msg_events index: msg_events:{tenant_id}:{message_id}:{timestamp_desc}:{event_id}
+	if e.MessageID != "" {
+		buf = buf[:0]
+		buf = append(buf, "msg_events:"...)
+		buf = append(buf, e.TenantID...)
+		buf = append(buf, ':')
+		buf = append(buf, e.MessageID...)
+		buf = append(buf, ':')
+		buf = append(buf, tsDescStr...)
+		buf = append(buf, ':')
+		buf = append(buf, e.ID...)
+		msgEventKey := make([]byte, len(buf))
+		copy(msgEventKey, buf)
+		_ = batch.Set(msgEventKey, val, nil)
+	}
+
+	return nil
 }
 
 func (s *store) performWriteMessage(batch *pebble.Batch, m *entities.EmailMessage) error {
@@ -240,9 +271,8 @@ func (s *store) Write(ctx context.Context, e *entities.EmailEvent) error {
 	select {
 	case s.opChan <- writeOp{event: e}:
 		return nil
-	default:
-		// Queue full, drop for events at very high load to avoid blocking hot paths
-		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -288,6 +318,24 @@ func (s *store) GetByID(ctx context.Context, tenantID string, id string) (*entit
 		return nil, err
 	}
 	return &e, nil
+}
+
+func (s *store) ListByMessageID(ctx context.Context, tenantID string, messageID string) ([]*entities.EmailEvent, error) {
+	prefix := []byte(fmt.Sprintf("msg_events:%s:%s:", tenantID, messageID))
+	iter, _ := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: append(slices.Clone(prefix), 0xFF),
+	})
+	defer iter.Close()
+
+	var events []*entities.EmailEvent
+	for iter.First(); iter.Valid() && strings.HasPrefix(string(iter.Key()), string(prefix)); iter.Next() {
+		var e entities.EmailEvent
+		if err := json.Unmarshal(iter.Value(), &e); err == nil {
+			events = append(events, &e)
+		}
+	}
+	return events, nil
 }
 
 func (s *store) GetMessage(ctx context.Context, tenantID string, messageID string) (*entities.EmailMessage, error) {
@@ -356,6 +404,11 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
 				data, _ := json.Marshal(e)
 				_, _ = archiveFile.Write(append(data, '\n'))
 				archivedCount++
+
+				// Cleanup msg_events index
+				if e.MessageID != "" {
+					_ = batch.Delete([]byte(fmt.Sprintf("msg_events:%s:%s:%s:%s", parts[1], e.MessageID, parts[2], parts[3])), nil)
+				}
 			}
 
 			id := parts[3]
@@ -531,24 +584,34 @@ func (s *store) incrementCounter(batch *pebble.Batch, key []byte) error {
 }
 
 func (s *store) List(ctx context.Context, tenantID string, filter stores.ListFilter) ([]*entities.EmailEvent, string, error) {
-	prefix := []byte(fmt.Sprintf("events:%s:", tenantID))
+	var lowerBound []byte
+	var upperBound []byte
 
-	// Determine bounds based on time filter
-	lowerBound := prefix
-	upperBound := make([]byte, len(prefix))
-	copy(upperBound, prefix)
-	upperBound[len(upperBound)-1]++
+	if filter.MessageID != "" {
+		// Use msg_events index: msg_events:{tenant_id}:{message_id}:{timestamp_desc}:{event_id}
+		prefix := []byte(fmt.Sprintf("msg_events:%s:%s:", tenantID, filter.MessageID))
+		lowerBound = prefix
+		upperBound = make([]byte, len(prefix))
+		copy(upperBound, prefix)
+		upperBound[len(upperBound)-1]++
+	} else {
+		prefix := []byte(fmt.Sprintf("events:%s:", tenantID))
+		lowerBound = prefix
+		upperBound = make([]byte, len(prefix))
+		copy(upperBound, prefix)
+		upperBound[len(upperBound)-1]++
 
-	if !filter.EndTime.IsZero() {
-		// end_time is more recent -> smaller timestampDesc
-		timestampDesc := math.MaxInt64 - filter.EndTime.UnixNano()
-		lowerBound = []byte(fmt.Sprintf("events:%s:%019d:", tenantID, timestampDesc))
-	}
+		if !filter.EndTime.IsZero() {
+			// end_time is more recent -> smaller timestampDesc
+			timestampDesc := math.MaxInt64 - filter.EndTime.UnixNano()
+			lowerBound = []byte(fmt.Sprintf("events:%s:%019d:", tenantID, timestampDesc))
+		}
 
-	if !filter.StartTime.IsZero() {
-		// start_time is older -> larger timestampDesc
-		timestampDesc := math.MaxInt64 - filter.StartTime.UnixNano()
-		upperBound = []byte(fmt.Sprintf("events:%s:%019d:", tenantID, timestampDesc+1))
+		if !filter.StartTime.IsZero() {
+			// start_time is older -> larger timestampDesc
+			timestampDesc := math.MaxInt64 - filter.StartTime.UnixNano()
+			upperBound = []byte(fmt.Sprintf("events:%s:%019d:", tenantID, timestampDesc+1))
+		}
 	}
 
 	iter, err := s.db.NewIter(&pebble.IterOptions{
@@ -630,7 +693,19 @@ func (s *store) GetMetrics(ctx context.Context, tenantID string, startTime, endT
 		return res, nil
 	}
 
-	// Calculate metrics by iterating over events in the time range
+	// Calculate metrics using aggregated minute timeseries for better performance and persistence
+	ts, err := s.GetTimeSeriesMetrics(ctx, tenantID, startTime, endTime, "minute")
+	if err == nil && len(ts) > 0 {
+		res := make(map[string]int64)
+		for _, minMetrics := range ts {
+			for eventType, count := range minMetrics {
+				res[eventType] += count
+			}
+		}
+		return res, nil
+	}
+
+	// FALLBACK: Calculate metrics by iterating over events in the time range
 	prefix := []byte(fmt.Sprintf("events:%s:", tenantID))
 	lower := prefix
 	upper := make([]byte, len(prefix))
@@ -675,10 +750,12 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 	}
 
 	// Use aggregated metrics where possible
-	if granularity == "day" || granularity == "hour" {
+	if granularity == "day" || granularity == "hour" || granularity == "minute" {
 		prefixStr := "timeseries:"
 		if granularity == "hour" {
 			prefixStr = "timeseries:hour:"
+		} else if granularity == "minute" {
+			prefixStr = "timeseries:minute:"
 		}
 		prefix := []byte(fmt.Sprintf("%s%s:", prefixStr, tenantID))
 
@@ -691,6 +768,8 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 			format := "2006-01-02"
 			if granularity == "hour" {
 				format = "2006-01-02 15"
+			} else if granularity == "minute" {
+				format = "2006-01-02 15:04"
 			}
 			lowerBound = []byte(fmt.Sprintf("%s%s:%s", prefixStr, tenantID, startTime.Format(format)))
 		}
@@ -699,6 +778,8 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 			format := "2006-01-02"
 			if granularity == "hour" {
 				format = "2006-01-02 15"
+			} else if granularity == "minute" {
+				format = "2006-01-02 15:04"
 			}
 			upperBound = []byte(fmt.Sprintf("%s%s:%s\xff", prefixStr, tenantID, endTime.Format(format)))
 		}
@@ -716,8 +797,6 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 		for iter.SeekGE(lowerBound); iter.Valid(); iter.Next() {
 			key := string(iter.Key())
 			parts := strings.Split(key, ":")
-			// timeseries:{tenant_id}:{date}:{type} -> 4 parts
-			// timeseries:hour:{tenant_id}:{date_hour}:{type} -> 5 parts
 
 			var timeKey, eventType string
 			if granularity == "day" && len(parts) >= 4 {
@@ -726,6 +805,9 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 			} else if granularity == "hour" && len(parts) >= 5 {
 				timeKey = parts[3]
 				eventType = parts[4]
+			} else if granularity == "minute" && len(parts) >= 6 {
+				timeKey = parts[3] + ":" + parts[4]
+				eventType = parts[5]
 			} else {
 				continue
 			}
@@ -736,10 +818,18 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 			}
 			res[timeKey][eventType] = val
 		}
-		return res, nil
+
+		// If we found data in aggregated timeseries, return it
+		if len(res) > 0 {
+			return res, nil
+		}
+
+		// FALLBACK: if no aggregated data found, try to scan events log
+		// This happens for very recent data that might not be fully flushed
+		// or for periods where aggregation was not yet enabled.
 	}
 
-	// For minute granularity, we must iterate events (not pre-aggregated)
+	// For minute granularity (fallback) or other cases, we must iterate events
 	prefix := []byte(fmt.Sprintf("events:%s:", tenantID))
 	lower := prefix
 	upper := make([]byte, len(prefix))

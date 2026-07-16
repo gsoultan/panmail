@@ -47,7 +47,7 @@ func (s *store) Create(ctx context.Context, p *entities.EmailProvider) error {
 		return err
 	}
 	allowedDomainsJSON, _ := json.Marshal(p.AllowedDomains)
-	_, err = db.ExecContext(ctx, createProviderQuery, p.ID, p.TenantID, p.Name, p.Type, p.Config, allowedDomainsJSON, p.CreatedAt, p.UpdatedAt)
+	_, err = db.ExecContext(ctx, createProviderQuery, p.ID, p.TenantID, p.Name, p.Type, string(p.Config), string(allowedDomainsJSON), p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
@@ -115,7 +115,7 @@ func (s *store) Update(ctx context.Context, p *entities.EmailProvider) error {
 		return err
 	}
 	allowedDomainsJSON, _ := json.Marshal(p.AllowedDomains)
-	_, err = db.ExecContext(ctx, updateProviderQuery, p.TenantID, p.ID, p.Name, p.Config, allowedDomainsJSON, p.UpdatedAt)
+	_, err = db.ExecContext(ctx, updateProviderQuery, p.TenantID, p.ID, p.Name, string(p.Config), string(allowedDomainsJSON), p.UpdatedAt)
 	return err
 }
 

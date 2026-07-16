@@ -83,13 +83,13 @@ export const DashboardPage: React.FC = () => {
   const { data: metricsData } = useQuery({
     queryKey: ['dashboardMetrics', startTime?.getTime(), endTime?.getTime()],
     queryFn: () => analyticsService.getMetrics(startTime, endTime),
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const { data: tsData } = useQuery({
     queryKey: ['timeSeriesMetrics', startTime?.getTime(), endTime?.getTime(), granularity],
     queryFn: () => analyticsService.getTimeSeriesMetrics(startTime, endTime, granularity),
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const { data: perfData } = useQuery({
@@ -102,7 +102,8 @@ export const DashboardPage: React.FC = () => {
   const extendedMetrics = metricsData?.extendedMetrics || [];
 
   const getMetric = (type: EmailEventType) => {
-    return Number(metrics[EmailEventType[type]] || 0);
+    const key = EmailEventType[type].replace('EMAIL_EVENT_TYPE_', '');
+    return Number(metrics[key] || 0);
   };
 
   const sent = getMetric(EmailEventType.SENT);
@@ -120,9 +121,9 @@ export const DashboardPage: React.FC = () => {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, values]) => ({
       date: granularity === 'minute' ? date.split(' ')[1] : date,
-      Sent: Number(values.metrics[EmailEventType[EmailEventType.SENT]] || 0),
-      Delivered: Number(values.metrics[EmailEventType[EmailEventType.DELIVERED]] || 0),
-      Opened: Number(values.metrics[EmailEventType[EmailEventType.OPENED]] || 0),
+      Sent: Number(values.metrics['SENT'] || 0),
+      Delivered: Number(values.metrics['DELIVERED'] || 0),
+      Opened: Number(values.metrics['OPENED'] || 0),
       Inbound: Number(values.metrics['INBOUND_RECEIVED'] || 0),
     }));
 

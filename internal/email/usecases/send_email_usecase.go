@@ -2,8 +2,9 @@ package usecases
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strings"
@@ -21,6 +22,8 @@ import (
 	suppressionStores "github.com/gsoultan/panmail/internal/suppression/repositories/stores"
 	templateEntities "github.com/gsoultan/panmail/internal/template/repositories/entities"
 	templateStores "github.com/gsoultan/panmail/internal/template/repositories/stores"
+	"github.com/gsoultan/panmail/pkg/emailutil"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type sendEmailUsecase struct {
@@ -32,6 +35,7 @@ type sendEmailUsecase struct {
 	providerFactory providerEntities.ProviderFactory
 	renderer        TemplateRenderer
 	baseURL         string
+	queueWorker     QueueWorker
 
 	providerCache sync.Map
 	templateCache sync.Map
@@ -66,9 +70,48 @@ const (
 	MessageIDKey  contextKey = "message_id"
 )
 
+func (u *sendEmailUsecase) RegisterQueueWorker(w QueueWorker) {
+	u.queueWorker = w
+}
+
 func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *panmailv1.SendEmailRequest) (*panmailv1.SendEmailResponse, error) {
 	if req.From == "" {
 		return nil, fmt.Errorf("from address is mandatory")
+	}
+	if req.ProviderId == "" {
+		return nil, fmt.Errorf("provider id is mandatory")
+	}
+	if len(req.To) == 0 {
+		return nil, fmt.Errorf("at least one recipient is required")
+	}
+
+	// Extract domain from From address
+	fromDomain := emailutil.GetRootDomain(req.From)
+
+	// Fetch provider to validate domain
+	provider, err := u.getProvider(ctx, tenantID, req.ProviderId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider: %w", err)
+	}
+	if provider == nil {
+		return nil, fmt.Errorf("provider not found: %s", req.ProviderId)
+	}
+
+	// Extract domain from provider host
+	var host string
+	switch provider.Type {
+	case panmailv1.ProviderType_PROVIDER_TYPE_SMTP:
+		c := &panmailv1.SmtpConfig{}
+		if err := protojson.Unmarshal(provider.Config, c); err == nil {
+			host = c.Host
+		}
+	}
+
+	if host != "" {
+		hostDomain := emailutil.GetRootDomain(host)
+		if fromDomain != hostDomain {
+			return nil, fmt.Errorf("domain mismatch: from address domain (%s) does not match provider host domain (%s)", fromDomain, hostDomain)
+		}
 	}
 
 	// 1. Worker mode (Actual Sending)
@@ -90,40 +133,46 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	for _, recipient := range req.To {
 		isSuppressed, reason, err := u.isSuppressed(ctx, tenantID, recipient)
 		if err != nil {
+			slog.Error("failed to check suppression", "error", err, "recipient", recipient)
 			return nil, err
 		}
 		if isSuppressed {
-			u.recordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, reason, nil)
+			_ = u.RecordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, reason, nil)
 			return nil, fmt.Errorf("recipient %s is suppressed: %s", recipient, reason)
 		}
-		// Record initial SENT event
-		u.recordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, recipient, "", nil)
+		// Record initial PENDING event (queued in outbox)
+		if err := u.RecordEvent(ctx, tenantID, req.ProviderId, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING, recipient, "", nil); err != nil {
+			slog.Error("failed to record pending event", "error", err, "id", messageID)
+		}
 	}
 
 	subject, bodyHTML, bodyText, err := u.renderTemplate(ctx, tenantID, req)
 	if err != nil {
+		slog.Error("failed to render template", "error", err, "id", messageID)
 		return nil, err
 	}
 
-	// Inject tracking if enabled
-	if bodyHTML != "" && u.baseURL != "" {
-		bodyHTML = u.injectTracking(tenantID, messageID, bodyHTML)
-	}
-
-	// Save message content for analytics
-	_ = u.eventUsecase.SaveMessage(ctx, &panmailv1.EmailMessage{
+	// Save message content for analytics (before tracking injection for clean preview)
+	if err := u.eventUsecase.SaveMessage(ctx, &panmailv1.EmailMessage{
 		Id:          messageID,
 		TenantId:    tenantID,
+		ProviderId:  req.ProviderId,
 		From:        req.From,
 		To:          req.To,
 		Subject:     subject,
 		BodyHtml:    bodyHTML,
 		BodyText:    bodyText,
 		Attachments: req.Attachments,
-	})
+	}); err != nil {
+		slog.Error("failed to save message for analytics", "error", err, "id", messageID)
+	}
 
 	// Save to outbox for the worker to pick up
-	reqBytes, _ := json.Marshal(req)
+	reqBytes, err := protojson.Marshal(req)
+	if err != nil {
+		slog.Error("failed to marshal outbox email request", "error", err, "id", messageID)
+		return nil, fmt.Errorf("failed to enqueue email: %w", err)
+	}
 	outboxEmail := &entities.OutboxEmail{
 		ID:          messageID,
 		TenantID:    tenantID,
@@ -134,7 +183,17 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	_ = u.outboxRepo.Create(ctx, outboxEmail)
+	if err := u.outboxRepo.Create(ctx, outboxEmail); err != nil {
+		slog.Error("failed to create outbox email", "error", err, "id", messageID)
+		return nil, fmt.Errorf("failed to enqueue email: %w", err)
+	}
+
+	// Trigger worker to process immediately
+	if u.queueWorker != nil {
+		u.queueWorker.Trigger()
+	}
+
+	slog.Info("email enqueued successfully", "id", messageID, "tenant_id", tenantID)
 
 	return &panmailv1.SendEmailResponse{
 		MessageId: messageID,
@@ -229,72 +288,114 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 
 	subject, bodyHTML, bodyText, err := u.renderTemplate(ctx, tenantID, req)
 	if err != nil {
+		slog.Error("failed to render template for sending", "error", err, "id", messageID)
 		return nil, err
 	}
 
-	// Inject tracking if enabled
-	if bodyHTML != "" && u.baseURL != "" {
-		bodyHTML = u.injectTracking(tenantID, messageID, bodyHTML)
-	}
-
-	msg := gsmail.Email{
-		From:     req.From,
-		To:       req.To,
-		Subject:  subject,
-		Body:     []byte(bodyText),
-		HTMLBody: []byte(bodyHTML),
-	}
-
-	for _, a := range req.Attachments {
-		msg.Attachments = append(msg.Attachments, gsmail.Attachment{
-			Filename:    a.Filename,
-			ContentType: a.ContentType,
-			Data:        a.Content,
-		})
-	}
-
 	var lastErr error
-	for _, p := range providers {
-		// Skip receivers
-		if p.Type == panmailv1.ProviderType_PROVIDER_TYPE_IMAP || p.Type == panmailv1.ProviderType_PROVIDER_TYPE_POP3 {
-			continue
+	// Fetch existing events to ensure idempotency (prevent duplicate sends on retry)
+	existingEvents, err := u.eventUsecase.ListByMessageID(ctx, tenantID, messageID)
+	if err != nil {
+		slog.Error("failed to list existing events for message", "error", err, "id", messageID)
+	}
+	deliveredMap := make(map[string]bool)
+	for _, ee := range existingEvents {
+		if ee.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+			deliveredMap[ee.Recipient] = true
 		}
-
-		senderObj, err := u.providerFactory.CreateSender(p)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		sender, ok := senderObj.(gsmail.Sender)
-		if !ok {
-			continue
-		}
-
-		err = sender.Send(ctx, msg)
-		if err == nil {
-			for _, recipient := range req.To {
-				u.recordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, "", nil)
-			}
-			return &panmailv1.SendEmailResponse{
-				MessageId: messageID,
-				Status:    panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED,
-			}, nil
-		}
-		lastErr = err
-		fmt.Printf("Provider %s failed: %v. Trying next...\n", p.Name, err)
 	}
 
-	return nil, lastErr
+	slog.Info("starting actual delivery", "id", messageID, "recipient_count", len(req.To), "provider_count", len(providers))
+
+	// We iterate through recipients to support individual tracking and status
+	for _, recipient := range req.To {
+		if deliveredMap[recipient] {
+			slog.Info("email already delivered to recipient, skipping", "id", messageID, "recipient", recipient)
+			continue
+		}
+
+		slog.Info("processing recipient", "id", messageID, "recipient", recipient)
+
+		sent := false
+		for _, p := range providers {
+			// Skip receivers
+			if p.Type == panmailv1.ProviderType_PROVIDER_TYPE_IMAP || p.Type == panmailv1.ProviderType_PROVIDER_TYPE_POP3 {
+				continue
+			}
+
+			slog.Info("trying provider", "id", messageID, "provider", p.Name, "type", p.Type.String())
+
+			senderObj, err := u.providerFactory.CreateSender(p)
+			if err != nil {
+				slog.Error("failed to create sender for provider", "error", err, "provider", p.Name)
+				lastErr = err
+				continue
+			}
+
+			sender, ok := senderObj.(gsmail.Sender)
+			if !ok {
+				continue
+			}
+
+			// Inject tracking per recipient
+			currentBodyHTML := bodyHTML
+			if currentBodyHTML != "" && u.baseURL != "" {
+				currentBodyHTML = u.injectTracking(tenantID, messageID, recipient, currentBodyHTML)
+			}
+
+			msg := gsmail.Email{
+				From:     req.From,
+				To:       []string{recipient},
+				Subject:  subject,
+				Body:     []byte(bodyText),
+				HTMLBody: []byte(currentBodyHTML),
+			}
+
+			for _, a := range req.Attachments {
+				msg.Attachments = append(msg.Attachments, gsmail.Attachment{
+					Filename:    a.Filename,
+					ContentType: a.ContentType,
+					Data:        a.Content,
+				})
+			}
+
+			// Record SENT event (actually handing over to provider)
+			_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, recipient, "", nil)
+
+			err = sender.Send(ctx, msg)
+			if err == nil {
+				slog.Info("email delivered successfully", "id", messageID, "provider", p.Name, "recipient", recipient)
+				_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, "", nil)
+				sent = true
+				break
+			}
+			lastErr = err
+			slog.Error("provider delivery failed", "provider", p.Name, "error", err, "id", messageID, "recipient", recipient)
+			// Record DEFERRED event for this attempt
+			_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED, recipient, err.Error(), nil)
+		}
+
+		if !sent && lastErr != nil {
+			// Failed all providers for this recipient
+			slog.Error("failed to deliver email to recipient via all providers", "id", messageID, "recipient", recipient, "error", lastErr)
+			return nil, fmt.Errorf("failed to deliver to recipient %s: %w", recipient, lastErr)
+		}
+	}
+
+	return &panmailv1.SendEmailResponse{
+		MessageId: messageID,
+		Status:    panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED,
+	}, nil
 }
 
 var (
 	hrefRegexp = regexp.MustCompile(`href="([^"]+)"`)
 )
 
-func (u *sendEmailUsecase) injectTracking(tenantID, messageID, html string) string {
+func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, html string) string {
+	recipientEncoded := base64.RawURLEncoding.EncodeToString([]byte(recipient))
 	// 1. Add tracking pixel before </body>
-	pixel := fmt.Sprintf(`<img src="%s/track/open/%s/%s" width="1" height="1" style="display:none">`, u.baseURL, tenantID, messageID)
+	pixel := fmt.Sprintf(`<img src="%s/track/open/%s/%s/%s" width="1" height="1" style="display:none">`, u.baseURL, tenantID, messageID, recipientEncoded)
 	if idx := strings.LastIndex(html, "</body>"); idx != -1 {
 		html = html[:idx] + pixel + html[idx:]
 	} else {
@@ -313,13 +414,13 @@ func (u *sendEmailUsecase) injectTracking(tenantID, messageID, html string) stri
 		}
 
 		encodedURL := url.QueryEscape(originalURL)
-		trackingURL := fmt.Sprintf(`href="%s/track/click/%s/%s?url=%s"`, u.baseURL, tenantID, messageID, encodedURL)
+		trackingURL := fmt.Sprintf(`href="%s/track/click/%s/%s/%s?url=%s"`, u.baseURL, tenantID, messageID, recipientEncoded, encodedURL)
 		return trackingURL
 	})
 }
 
-func (u *sendEmailUsecase) recordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, errorMessage string, metadata map[string]any) {
-	_ = u.eventUsecase.RecordEvent(ctx, tenantID, providerID, messageID, eventType, recipient, errorMessage, metadata)
+func (u *sendEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, errorMessage string, metadata map[string]any) error {
+	return u.eventUsecase.RecordEvent(ctx, tenantID, providerID, messageID, eventType, recipient, errorMessage, metadata)
 }
 
 func (u *sendEmailUsecase) renderTemplate(ctx context.Context, tenantID string, req *panmailv1.SendEmailRequest) (string, string, string, error) {
@@ -412,6 +513,21 @@ func (u *sendEmailUsecase) getProviders(ctx context.Context, tenantID string) ([
 	}
 	u.providerCache.Store(tenantID, cacheEntry{data: providers, createdAt: time.Now()})
 	return providers, nil
+}
+
+func (u *sendEmailUsecase) getProvider(ctx context.Context, tenantID, providerID string) (*providerEntities.EmailProvider, error) {
+	// Try to find in cached list first
+	all, err := u.getProviders(ctx, tenantID)
+	if err == nil {
+		for _, p := range all {
+			if p.ID == providerID {
+				return p, nil
+			}
+		}
+	}
+
+	// Fallback to DB
+	return u.providerRepo.GetByID(ctx, tenantID, providerID)
 }
 
 func (u *sendEmailUsecase) isSuppressed(ctx context.Context, tenantID, email string) (bool, string, error) {

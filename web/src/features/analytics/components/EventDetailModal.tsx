@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Stack, Group, Text, Badge, Divider, Box, Paper, ScrollArea, Tabs, ThemeIcon, Table, Button, Grid, rem, Alert, SegmentedControl } from '@mantine/core';
-import { IconMail, IconUser, IconCalendar, IconPaperclip, IconCode, IconBrowser, IconInfoCircle, IconDownload, IconAlertCircle } from '@tabler/icons-react';
+import { Modal, Stack, Group, Text, Badge, Divider, Box, Paper, ScrollArea, Tabs, ThemeIcon, Table, Button, Grid, rem, Alert, SegmentedControl, Timeline } from '@mantine/core';
+import { IconMail, IconUser, IconCalendar, IconPaperclip, IconCode, IconBrowser, IconInfoCircle, IconDownload, IconAlertCircle, IconHistory } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsService } from '../services/analytics';
 import { EmailEventType } from '../../../api/panmail/v1/event_pb';
@@ -20,10 +20,17 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
     enabled: !!eventId,
   });
 
-  if (!eventId) return null;
-
   const event = data?.event;
   const message = data?.message;
+
+  const { data: timelineData } = useQuery({
+    queryKey: ['eventTimeline', event?.messageId, event?.recipient],
+    queryFn: () => event ? analyticsService.listEvents(100, '', event.recipient, 0, undefined, undefined, event.messageId) : null,
+    enabled: !!event,
+  });
+
+  if (!eventId) return null;
+
   const config = event?.type !== undefined ? eventTypeConfig[event.type] : eventTypeConfig[EmailEventType.UNSPECIFIED];
   const StatusIcon = config.icon;
 
@@ -36,6 +43,10 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const timelineEvents = [...(timelineData?.events || [])].sort((a, b) =>
+    Number(a.timestamp?.seconds || 0) - Number(b.timestamp?.seconds || 0)
+  );
 
   return (
     <Modal
@@ -73,7 +84,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
                     <Text size="xs" c="dimmed" fw={700} tt="uppercase">Recipient</Text>
                     <Group gap="xs">
                       <IconUser size={14} />
-                      <Text fw={600}>{event.recipient}</Text>
+                      <Text fw={600} truncate>{event.recipient}</Text>
                     </Group>
                   </Stack>
                 </Grid.Col>
@@ -89,7 +100,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
                   </Stack>
                 </Grid.Col>
                 <Grid.Col span={12}>
-                  <Divider my="sm" />
+                  <Divider />
                 </Grid.Col>
                 <Grid.Col span={6}>
                   <Stack gap={4}>
@@ -106,17 +117,50 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
               </Grid>
             </Paper>
 
-            {message && (
-              <Tabs defaultValue="content">
-                <Tabs.List>
-                  <Tabs.Tab value="content" leftSection={<IconBrowser size={14} />}>Content</Tabs.Tab>
-                  <Tabs.Tab value="attachments" leftSection={<IconPaperclip size={14} />}>
-                    Attachments {message.attachments.length > 0 && `(${message.attachments.length})`}
-                  </Tabs.Tab>
-                  <Tabs.Tab value="metadata" leftSection={<IconInfoCircle size={14} />}>Metadata</Tabs.Tab>
-                </Tabs.List>
+            <Tabs defaultValue="timeline">
+              <Tabs.List>
+                <Tabs.Tab value="timeline" leftSection={<IconHistory size={14} />}>Timeline</Tabs.Tab>
+                <Tabs.Tab value="content" leftSection={<IconBrowser size={14} />}>Content</Tabs.Tab>
+                <Tabs.Tab value="attachments" leftSection={<IconPaperclip size={14} />}>
+                  Attachments {message?.attachments && message.attachments.length > 0 && `(${message.attachments.length})`}
+                </Tabs.Tab>
+                <Tabs.Tab value="metadata" leftSection={<IconInfoCircle size={14} />}>Metadata</Tabs.Tab>
+              </Tabs.List>
 
-                <Tabs.Panel value="content" pt="md">
+              <Tabs.Panel value="timeline" pt="md">
+                <Box py="md" px="lg">
+                  {timelineEvents.length > 0 ? (
+                    <Timeline active={timelineEvents.length - 1} bulletSize={24} lineWidth={2}>
+                      {timelineEvents.map((te, index) => {
+                        const teConfig = eventTypeConfig[te.type] || eventTypeConfig[EmailEventType.UNSPECIFIED];
+                        const TeIcon = teConfig.icon;
+                        return (
+                          <Timeline.Item
+                            key={te.id}
+                            bullet={<TeIcon size={12} />}
+                            title={teConfig.label}
+                            color={teConfig.color}
+                          >
+                            <Text size="xs" c="dimmed" mt={4}>
+                              {te.timestamp ? new Date(Number(te.timestamp.seconds) * 1000).toLocaleString() : '-'}
+                            </Text>
+                            {te.errorMessage && (
+                              <Text size="xs" color="red" mt={4} style={{ fontStyle: 'italic' }}>
+                                {te.errorMessage}
+                              </Text>
+                            )}
+                          </Timeline.Item>
+                        );
+                      })}
+                    </Timeline>
+                  ) : (
+                    <Text ta="center" py="xl" c="dimmed">No timeline data available.</Text>
+                  )}
+                </Box>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="content" pt="md">
+                {message ? (
                   <Stack gap="xs">
                     <Group justify="flex-end">
                       <SegmentedControl
@@ -156,53 +200,55 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
                       </Paper>
                     )}
                   </Stack>
-                </Tabs.Panel>
+                ) : (
+                  <Text ta="center" py="xl" c="dimmed">Message content not found.</Text>
+                )}
+              </Tabs.Panel>
 
-                <Tabs.Panel value="attachments" pt="md">
-                  {message.attachments.length > 0 ? (
-                    <Table withTableBorder withColumnBorders>
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>Filename</Table.Th>
-                          <Table.Th>Content Type</Table.Th>
-                          <Table.Th>Action</Table.Th>
+              <Tabs.Panel value="attachments" pt="md">
+                {message?.attachments && message.attachments.length > 0 ? (
+                  <Table withTableBorder withColumnBorders>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Filename</Table.Th>
+                        <Table.Th>Content Type</Table.Th>
+                        <Table.Th>Action</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {message.attachments.map((att, index) => (
+                        <Table.Tr key={index}>
+                          <Table.Td>{att.filename}</Table.Td>
+                          <Table.Td>{att.contentType}</Table.Td>
+                          <Table.Td>
+                            <Button
+                              variant="light"
+                              size="xs"
+                              leftSection={<IconDownload size={14} />}
+                              onClick={() => downloadAttachment(att.filename, att.contentType, att.content)}
+                            >
+                              Download
+                            </Button>
+                          </Table.Td>
                         </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {message.attachments.map((att, index) => (
-                          <Table.Tr key={index}>
-                            <Table.Td>{att.filename}</Table.Td>
-                            <Table.Td>{att.contentType}</Table.Td>
-                            <Table.Td>
-                              <Button
-                                variant="light"
-                                size="xs"
-                                leftSection={<IconDownload size={14} />}
-                                onClick={() => downloadAttachment(att.filename, att.contentType, att.content)}
-                              >
-                                Download
-                              </Button>
-                            </Table.Td>
-                          </Table.Tr>
-                        ))}
-                      </Table.Tbody>
-                    </Table>
-                  ) : (
-                    <Text ta="center" c="dimmed" py="xl">No attachments.</Text>
-                  )}
-                </Tabs.Panel>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                ) : (
+                  <Text ta="center" c="dimmed" py="xl">No attachments.</Text>
+                )}
+              </Tabs.Panel>
 
-                <Tabs.Panel value="metadata" pt="md">
-                   <Paper withBorder p="md" radius="md">
-                    <ScrollArea.Autosize mah={400} type="always">
-                      <pre style={{ margin: 0, fontSize: '12px' }}>
-                        {JSON.stringify(event.metadata?.fields || {}, null, 2)}
-                      </pre>
-                    </ScrollArea.Autosize>
-                  </Paper>
-                </Tabs.Panel>
-              </Tabs>
-            )}
+              <Tabs.Panel value="metadata" pt="md">
+                 <Paper withBorder p="md" radius="md">
+                  <ScrollArea.Autosize mah={400} type="always">
+                    <pre style={{ margin: 0, fontSize: '12px' }}>
+                      {JSON.stringify(event.metadata?.fields || {}, null, 2)}
+                    </pre>
+                  </ScrollArea.Autosize>
+                </Paper>
+              </Tabs.Panel>
+            </Tabs>
           </>
         )}
       </Stack>

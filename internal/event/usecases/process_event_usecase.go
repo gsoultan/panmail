@@ -12,8 +12,9 @@ import (
 	"github.com/google/uuid"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/config"
+	emailstores "github.com/gsoultan/panmail/internal/email/repositories/stores"
 	evententities "github.com/gsoultan/panmail/internal/event/repositories/entities"
-	"github.com/gsoultan/panmail/internal/event/repositories/stores"
+	eventstores "github.com/gsoultan/panmail/internal/event/repositories/stores"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores"
 	"github.com/gsoultan/panmail/pkg/emailutil"
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -24,8 +25,9 @@ import (
 )
 
 type processEventUsecase struct {
-	repo           stores.EventRepository
+	repo           eventstores.EventRepository
 	inboundRepo    inboundstores.InboundRepository
+	outboxRepo     emailstores.OutboxRepository
 	webhookTrigger WebhookTrigger
 
 	sentCounter atomic.Uint64
@@ -38,10 +40,11 @@ type processEventUsecase struct {
 	load15      atomic.Pointer[float64]
 }
 
-func NewProcessEventUsecase(repo stores.EventRepository, inboundRepo inboundstores.InboundRepository, webhookTrigger WebhookTrigger) ProcessEventUsecase {
+func NewProcessEventUsecase(repo eventstores.EventRepository, inboundRepo inboundstores.InboundRepository, outboxRepo emailstores.OutboxRepository, webhookTrigger WebhookTrigger) ProcessEventUsecase {
 	u := &processEventUsecase{
 		repo:           repo,
 		inboundRepo:    inboundRepo,
+		outboxRepo:     outboxRepo,
 		webhookTrigger: webhookTrigger,
 		startTime:      time.Now(),
 	}
@@ -196,6 +199,9 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 	}
 
 	err := u.repo.Write(ctx, e)
+	if err != nil {
+		slog.Error("failed to write event to repository", "error", err, "id", e.ID, "type", e.Type.String())
+	}
 
 	// If it's a DELIVERED event, update the message with the provider used if not already set
 	if err == nil && eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED && providerID != "" && messageID != "" {
@@ -250,6 +256,12 @@ func (u *processEventUsecase) GetMetrics(ctx context.Context, tenantID string, s
 		metrics["INBOUND_RECEIVED"] = inboundCount
 	}
 
+	// Add accurate pending count from outbox
+	pendingCount, err := u.outboxRepo.CountPending(ctx, tenantID)
+	if err == nil {
+		metrics["PENDING"] = pendingCount
+	}
+
 	// Build extended metrics with explanations
 	var extended []*panmailv1.MetricInfo
 
@@ -280,14 +292,39 @@ func (u *processEventUsecase) GetTimeSeriesMetrics(ctx context.Context, tenantID
 	return u.repo.GetTimeSeriesMetrics(ctx, tenantID, startTime, endTime, granularity)
 }
 
+func (u *processEventUsecase) ListByMessageID(ctx context.Context, tenantID string, messageID string) ([]*panmailv1.EmailEvent, error) {
+	events, err := u.repo.ListByMessageID(ctx, tenantID, messageID)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]*panmailv1.EmailEvent, len(events))
+	for i, e := range events {
+		meta, _ := structpb.NewStruct(e.Metadata)
+		res[i] = &panmailv1.EmailEvent{
+			Id:           e.ID,
+			TenantId:     e.TenantID,
+			ProviderId:   e.ProviderID,
+			MessageId:    e.MessageID,
+			Type:         e.Type,
+			Recipient:    e.Recipient,
+			Timestamp:    timestamppb.New(e.Timestamp),
+			Metadata:     meta,
+			ErrorMessage: e.ErrorMessage,
+		}
+	}
+	return res, nil
+}
+
 func (u *processEventUsecase) ListEvents(ctx context.Context, tenantID string, filter ListFilter) ([]*panmailv1.EmailEvent, string, error) {
-	repoFilter := stores.ListFilter{
+	repoFilter := eventstores.ListFilter{
 		PageSize:  filter.PageSize,
 		PageToken: filter.PageToken,
 		Recipient: filter.Recipient,
 		EventType: filter.EventType,
 		StartTime: filter.StartTime,
 		EndTime:   filter.EndTime,
+		MessageID: filter.MessageID,
 	}
 	events, nextToken, err := u.repo.List(ctx, tenantID, repoFilter)
 	if err != nil {

@@ -2,7 +2,6 @@ package usecases
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -10,6 +9,7 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
 	tenantentities "github.com/gsoultan/panmail/internal/tenant/entities"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type workerMockOutboxRepo struct {
@@ -50,16 +50,34 @@ func (m *workerMockOutboxRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (m *workerMockOutboxRepo) CountPending(ctx context.Context, tenantID string) (int64, error) {
+	return int64(len(m.emails)), nil
+}
+
 type mockEmailUsecase struct {
-	err error
+	err   error
+	delay time.Duration
 }
 
 func (m *mockEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *panmailv1.SendEmailRequest) (*panmailv1.SendEmailResponse, error) {
+	if m.delay > 0 {
+		select {
+		case <-time.After(m.delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	if m.err != nil {
 		return nil, m.err
 	}
 	return &panmailv1.SendEmailResponse{MessageId: "123", Status: panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED}, nil
 }
+
+func (m *mockEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, errorMessage string, metadata map[string]any) error {
+	return nil
+}
+
+func (m *mockEmailUsecase) RegisterQueueWorker(w QueueWorker) {}
 
 type mockSuppressionUsecase struct {
 	suppressedEmails []string
@@ -144,7 +162,7 @@ func TestQueueWorker_ProcessEmail(t *testing.T) {
 				Subject: "Test",
 				Body:    "Hello",
 			}
-			reqBytes, _ := json.Marshal(&req)
+			reqBytes, _ := protojson.Marshal(&req)
 
 			email := &entities.OutboxEmail{
 				ID:          "123",

@@ -12,4 +12,5 @@ type OutboxRepository interface {
 	ListPending(ctx context.Context, limit int) ([]*entities.OutboxEmail, error)
 	Update(ctx context.Context, email *entities.OutboxEmail) error
 	Delete(ctx context.Context, id string) error
+	CountPending(ctx context.Context, tenantID string) (int64, error)
 }

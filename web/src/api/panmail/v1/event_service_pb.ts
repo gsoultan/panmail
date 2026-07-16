@@ -799,6 +799,11 @@ export class ListEventsRequest extends Message<ListEventsRequest> {
    */
   endTime?: Timestamp;
 
+  /**
+   * @generated from field: string message_id = 7;
+   */
+  messageId = "";
+
   constructor(data?: PartialMessage<ListEventsRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -813,6 +818,7 @@ export class ListEventsRequest extends Message<ListEventsRequest> {
     { no: 4, name: "event_type", kind: "enum", T: proto3.getEnumType(EmailEventType) },
     { no: 5, name: "start_time", kind: "message", T: Timestamp },
     { no: 6, name: "end_time", kind: "message", T: Timestamp },
+    { no: 7, name: "message_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListEventsRequest {

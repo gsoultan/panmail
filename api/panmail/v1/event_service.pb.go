@@ -950,6 +950,7 @@ type ListEventsRequest struct {
 	EventType     EmailEventType         `protobuf:"varint,4,opt,name=event_type,json=eventType,proto3,enum=panmail.v1.EmailEventType" json:"event_type,omitempty"`
 	StartTime     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
 	EndTime       *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
+	MessageId     string                 `protobuf:"bytes,7,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1024,6 +1025,13 @@ func (x *ListEventsRequest) GetEndTime() *timestamppb.Timestamp {
 		return x.EndTime
 	}
 	return nil
+}
+
+func (x *ListEventsRequest) GetMessageId() string {
+	if x != nil {
+		return x.MessageId
+	}
+	return ""
 }
 
 type ListEventsResponse struct {
@@ -1161,7 +1169,7 @@ const file_panmail_v1_event_service_proto_rawDesc = "" +
 	"\x04data\x18\x01 \x03(\v22.panmail.v1.GetTimeSeriesMetricsResponse.DataEntryR\x04data\x1aS\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
-	"\x05value\x18\x02 \x01(\v2\x1a.panmail.v1.TimeSeriesDataR\x05value:\x028\x01\"\x9a\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x1a.panmail.v1.TimeSeriesDataR\x05value:\x028\x01\"\xb9\x02\n" +
 	"\x11ListEventsRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -1171,7 +1179,9 @@ const file_panmail_v1_event_service_proto_rawDesc = "" +
 	"event_type\x18\x04 \x01(\x0e2\x1a.panmail.v1.EmailEventTypeR\teventType\x129\n" +
 	"\n" +
 	"start_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tstartTime\x125\n" +
-	"\bend_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\aendTime\"l\n" +
+	"\bend_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\aendTime\x12\x1d\n" +
+	"\n" +
+	"message_id\x18\a \x01(\tR\tmessageId\"l\n" +
 	"\x12ListEventsResponse\x12.\n" +
 	"\x06events\x18\x01 \x03(\v2\x16.panmail.v1.EmailEventR\x06events\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xf7\x04\n" +

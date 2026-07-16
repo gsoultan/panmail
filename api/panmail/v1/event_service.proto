@@ -116,6 +116,7 @@ message ListEventsRequest {
   EmailEventType event_type = 4;
   google.protobuf.Timestamp start_time = 5;
   google.protobuf.Timestamp end_time = 6;
+  string message_id = 7;
 }
 
 message ListEventsResponse {

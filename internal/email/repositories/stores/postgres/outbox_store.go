@@ -23,6 +23,8 @@ var (
 	updateOutboxQuery string
 	//go:embed sql/delete_outbox.sql
 	deleteOutboxQuery string
+	//go:embed sql/count_pending_outbox.sql
+	countPendingOutboxQuery string
 )
 
 type outboxStore struct {
@@ -45,7 +47,7 @@ func (s *outboxStore) Create(ctx context.Context, email *entities.OutboxEmail) e
 	if err != nil {
 		return err
 	}
-	_, err = db.ExecContext(ctx, createOutboxQuery, email.ID, email.TenantID, email.Request, email.Status, email.RetryCount, email.NextRetryAt, email.LastError, email.CreatedAt, email.UpdatedAt)
+	_, err = db.ExecContext(ctx, createOutboxQuery, email.ID, email.TenantID, string(email.Request), email.Status, email.RetryCount, email.NextRetryAt, email.LastError, email.CreatedAt, email.UpdatedAt)
 	return err
 }
 
@@ -104,4 +106,14 @@ func (s *outboxStore) Delete(ctx context.Context, id string) error {
 	}
 	_, err = db.ExecContext(ctx, deleteOutboxQuery, id)
 	return err
+}
+
+func (s *outboxStore) CountPending(ctx context.Context, tenantID string) (int64, error) {
+	db, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	err = db.QueryRowContext(ctx, countPendingOutboxQuery, tenantID).Scan(&count)
+	return count, err
 }

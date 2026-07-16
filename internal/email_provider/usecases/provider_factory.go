@@ -1,7 +1,6 @@
 package usecases
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/gsoultan/gsmail/imap"
@@ -9,6 +8,7 @@ import (
 	"github.com/gsoultan/gsmail/smtp"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type providerFactory struct{}
@@ -21,7 +21,7 @@ func (f *providerFactory) CreateSender(p *entities.EmailProvider) (any, error) {
 	switch p.Type {
 	case panmailv1.ProviderType_PROVIDER_TYPE_SMTP:
 		c := &panmailv1.SmtpConfig{}
-		if err := json.Unmarshal(p.Config, c); err != nil {
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
 		s := smtp.NewSender(c.Host, int(c.Port), c.Username, c.Password, c.UseSsl)
@@ -36,7 +36,7 @@ func (f *providerFactory) CreateReceiver(p *entities.EmailProvider) (any, error)
 	switch p.Type {
 	case panmailv1.ProviderType_PROVIDER_TYPE_IMAP:
 		c := &panmailv1.ImapConfig{}
-		if err := json.Unmarshal(p.Config, c); err != nil {
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
 		r := imap.NewReceiver(c.Host, int(c.Port), c.Username, c.Password, c.UseSsl)
@@ -44,7 +44,7 @@ func (f *providerFactory) CreateReceiver(p *entities.EmailProvider) (any, error)
 		return r, nil
 	case panmailv1.ProviderType_PROVIDER_TYPE_POP3:
 		c := &panmailv1.Pop3Config{}
-		if err := json.Unmarshal(p.Config, c); err != nil {
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
 		r := pop3.NewReceiver(c.Host, int(c.Port), c.Username, c.Password, c.UseSsl)

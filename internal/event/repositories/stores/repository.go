@@ -15,12 +15,14 @@ type ListFilter struct {
 	EventType panmailv1.EmailEventType
 	StartTime time.Time
 	EndTime   time.Time
+	MessageID string
 }
 
 type EventRepository interface {
 	Write(ctx context.Context, event *entities.EmailEvent) error
 	List(ctx context.Context, tenantID string, filter ListFilter) ([]*entities.EmailEvent, string, error)
 	GetByID(ctx context.Context, tenantID string, id string) (*entities.EmailEvent, error)
+	ListByMessageID(ctx context.Context, tenantID string, messageID string) ([]*entities.EmailEvent, error)
 	GetMetrics(ctx context.Context, tenantID string, startTime, endTime time.Time) (map[string]int64, error)
 	GetTimeSeriesMetrics(ctx context.Context, tenantID string, startTime, endTime time.Time, granularity string) (map[string]map[string]int64, error)
 

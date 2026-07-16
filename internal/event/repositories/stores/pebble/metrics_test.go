@@ -94,4 +94,41 @@ func TestMetricsRealtimeAccurate(t *testing.T) {
 	if dayMetrics["SENT"] != 2 {
 		t.Errorf("ts: expected SENT=2, got %v", dayMetrics["SENT"])
 	}
+
+	// 4. Check minute time series
+	var minTsMetrics map[string]map[string]int64
+	for range 10 {
+		minTsMetrics, err = store.GetTimeSeriesMetrics(ctx, tenantID, time.Now().Add(-1*time.Minute), time.Now().Add(1*time.Minute), "minute")
+		if err == nil {
+			minuteStr := time.Now().Format("2006-01-02 15:04")
+			if minTsMetrics[minuteStr] != nil && minTsMetrics[minuteStr]["SENT"] == 2 {
+				break
+			}
+			// Also check previous minute in case boundary crossed
+			minuteStr = time.Now().Add(-1 * time.Minute).Format("2006-01-02 15:04")
+			if minTsMetrics[minuteStr] != nil && minTsMetrics[minuteStr]["SENT"] == 2 {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if err != nil {
+		t.Fatalf("failed to get minute timeseries metrics: %v", err)
+	}
+
+	minuteStr := time.Now().Format("2006-01-02 15:04")
+	minuteMetrics := minTsMetrics[minuteStr]
+	if minuteMetrics == nil {
+		minuteStr = time.Now().Add(-1 * time.Minute).Format("2006-01-02 15:04")
+		minuteMetrics = minTsMetrics[minuteStr]
+	}
+
+	if minuteMetrics == nil {
+		t.Fatalf("no metrics found for minute around %s", time.Now().Format("15:04"))
+	}
+
+	if minuteMetrics["SENT"] != 2 {
+		t.Errorf("min ts: expected SENT=2, got %v", minuteMetrics["SENT"])
+	}
 }

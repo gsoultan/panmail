@@ -34,6 +34,7 @@ func (s *eventService) ListEvents(ctx context.Context, req *connect.Request[panm
 		PageToken: req.Msg.PageToken,
 		Recipient: req.Msg.Recipient,
 		EventType: req.Msg.EventType,
+		MessageID: req.Msg.MessageId,
 	}
 
 	if req.Msg.StartTime != nil {
