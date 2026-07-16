@@ -29,6 +29,7 @@ type EventRepository interface {
 
 	WriteMessage(ctx context.Context, message *entities.EmailMessage) error
 	GetMessage(ctx context.Context, tenantID string, messageID string) (*entities.EmailMessage, error)
+	GetLatestMessageForRecipient(ctx context.Context, tenantID string, recipient string) (*entities.EmailMessage, error)
 
 	TruncateBefore(ctx context.Context, before time.Time) error
 

@@ -267,3 +267,72 @@ func TestListLatestOnlyPerRecipient(t *testing.T) {
 		t.Errorf("missing latest event for one of the recipients: r1=%v, r2=%v", foundR1, foundR2)
 	}
 }
+
+func TestGetLatestMessageForRecipient(t *testing.T) {
+	dir := "test_recipient_msg.db"
+	_ = os.RemoveAll(dir)
+	defer os.RemoveAll(dir)
+
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := t.Context()
+	tenantID := "test-tenant"
+	recipient := "user@example.com"
+
+	// 1. Write an old message
+	msg1 := &entities.EmailMessage{
+		ID:        "msg-old",
+		TenantID:  tenantID,
+		To:        []string{recipient},
+		Subject:   "Old Subject",
+		CreatedAt: time.Now().Add(-10 * time.Minute),
+	}
+	if err := store.WriteMessage(ctx, msg1); err != nil {
+		t.Fatalf("WriteMessage failed: %v", err)
+	}
+
+	// 2. Write a newer message
+	msg2 := &entities.EmailMessage{
+		ID:        "msg-new",
+		TenantID:  tenantID,
+		To:        []string{recipient, "other@example.com"},
+		Subject:   "New Subject",
+		CreatedAt: time.Now(),
+	}
+	if err := store.WriteMessage(ctx, msg2); err != nil {
+		t.Fatalf("WriteMessage failed: %v", err)
+	}
+
+	// Wait for async processing
+	time.Sleep(1 * time.Second)
+
+	// 3. Get latest message for recipient
+	latest, err := store.GetLatestMessageForRecipient(ctx, tenantID, recipient)
+	if err != nil {
+		t.Fatalf("GetLatestMessageForRecipient failed: %v", err)
+	}
+
+	if latest == nil {
+		t.Fatal("expected message, got nil")
+	}
+
+	if latest.ID != "msg-new" {
+		t.Errorf("expected msg-new, got %s", latest.ID)
+	}
+
+	// 4. Test with different recipient
+	latestOther, _ := store.GetLatestMessageForRecipient(ctx, tenantID, "other@example.com")
+	if latestOther == nil || latestOther.ID != "msg-new" {
+		t.Errorf("expected msg-new for other@example.com")
+	}
+
+	// 5. Test with non-existent recipient
+	latestNone, _ := store.GetLatestMessageForRecipient(ctx, tenantID, "none@example.com")
+	if latestNone != nil {
+		t.Errorf("expected nil for non-existent recipient")
+	}
+}

@@ -305,7 +305,21 @@ func (s *store) performWriteMessage(batch *pebble.Batch, m *entities.EmailMessag
 	if err != nil {
 		return err
 	}
-	return batch.Set(key, val, nil)
+	_ = batch.Set(key, val, nil)
+
+	// Index by recipient for lookup
+	// Note: We use timestamp_desc to find the latest message quickly
+	timestampDesc := math.MaxInt64 - m.CreatedAt.UnixNano()
+	tsDescStr := strconv.FormatInt(timestampDesc, 10)
+	if len(tsDescStr) < 19 {
+		tsDescStr = strings.Repeat("0", 19-len(tsDescStr)) + tsDescStr
+	}
+
+	for _, r := range m.To {
+		idxKey := []byte(fmt.Sprintf("recipient_messages:%s:%s:%s:%s", m.TenantID, r, tsDescStr, m.ID))
+		_ = batch.Set(idxKey, []byte(m.ID), nil)
+	}
+	return nil
 }
 
 func (s *store) Write(ctx context.Context, e *entities.EmailEvent) error {
@@ -395,6 +409,22 @@ func (s *store) GetMessage(ctx context.Context, tenantID string, messageID strin
 		return nil, err
 	}
 	return &m, nil
+}
+
+func (s *store) GetLatestMessageForRecipient(ctx context.Context, tenantID string, recipient string) (*entities.EmailMessage, error) {
+	prefix := []byte(fmt.Sprintf("recipient_messages:%s:%s:", tenantID, recipient))
+	iter, _ := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: append(slices.Clone(prefix), 0xFF),
+	})
+	defer iter.Close()
+
+	if iter.First() {
+		// Since it's sorted by timestamp_desc, the first one is the latest
+		messageID := string(iter.Value())
+		return s.GetMessage(ctx, tenantID, messageID)
+	}
+	return nil, nil
 }
 
 func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {

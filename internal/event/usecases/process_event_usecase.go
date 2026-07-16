@@ -207,11 +207,20 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 	// Attempt to recover missing fields from stored message
 	if messageID != "" {
 		msg, _ := u.repo.GetMessage(ctx, tenantID, messageID)
+		if msg == nil && recipient != "" {
+			// Webhook might have sent a provider-specific message ID
+			// Try to find the internal ID by looking up recent messages for this recipient
+			msg, _ = u.repo.GetLatestMessageForRecipient(ctx, tenantID, recipient)
+			if msg != nil {
+				messageID = msg.ID
+			}
+		}
+
 		if msg != nil {
 			if providerID == "" {
 				providerID = msg.ProviderID
 			}
-			if recipient == "" && len(msg.To) > 0 {
+			if recipient == "" && len(msg.To) == 1 {
 				recipient = msg.To[0]
 			}
 			subject = msg.Subject
