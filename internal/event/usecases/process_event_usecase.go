@@ -392,6 +392,7 @@ func (u *processEventUsecase) ListEvents(ctx context.Context, tenantID string, f
 		MessageID:      filter.MessageID,
 		LatestOnly:     filter.LatestOnly,
 		RecipientExact: filter.RecipientExact,
+		Subject:        filter.Subject,
 	}
 	events, nextToken, err := u.repo.List(ctx, tenantID, repoFilter)
 	if err != nil {

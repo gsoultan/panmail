@@ -43,6 +43,8 @@ const eventTypeOptions = [
 export const AnalyticsPage: React.FC = () => {
   const [recipient, setRecipient] = useState('');
   const [debouncedRecipient] = useDebouncedValue(recipient, 300);
+  const [subject, setSubject] = useState('');
+  const [debouncedSubject] = useDebouncedValue(subject, 300);
   const [eventType, setEventType] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [pageToken, setPageToken] = useState<string | undefined>(undefined);
@@ -52,14 +54,14 @@ export const AnalyticsPage: React.FC = () => {
   useEffect(() => {
     setPageToken(undefined);
     setHistory([]);
-  }, [debouncedRecipient, eventType, dateRange, pageSize]);
+  }, [debouncedRecipient, debouncedSubject, eventType, dateRange, pageSize]);
 
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [detailOpened, { open: openDetail, close: closeDetail }] = useDisclosure(false);
   const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['analyticsEvents', debouncedRecipient, eventType, dateRange, pageToken, pageSize],
+    queryKey: ['analyticsEvents', debouncedRecipient, debouncedSubject, eventType, dateRange, pageToken, pageSize],
     queryFn: () => analyticsService.listEvents(
       Number(pageSize),
       pageToken || '',
@@ -68,9 +70,11 @@ export const AnalyticsPage: React.FC = () => {
       dateRange[0] || undefined,
       dateRange[1] || undefined,
       undefined, // messageId
-      true // latestOnly
+      true, // latestOnly
+      false, // recipientExact
+      debouncedSubject
     ),
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const handleNext = () => {
@@ -90,7 +94,7 @@ export const AnalyticsPage: React.FC = () => {
   const { data: metricsData } = useQuery({
     queryKey: ['analyticsMetrics'],
     queryFn: () => analyticsService.getMetrics(),
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const metrics = metricsData?.metrics || {};
@@ -100,6 +104,7 @@ export const AnalyticsPage: React.FC = () => {
 
   const resetFilters = () => {
     setRecipient('');
+    setSubject('');
     setEventType(null);
     setDateRange([null, null]);
   };
@@ -132,10 +137,18 @@ export const AnalyticsPage: React.FC = () => {
           <Group align="flex-end" gap="md">
             <TextInput
               label="Recipient"
-              placeholder="Search by email..."
+              placeholder="Email..."
               leftSection={<IconSearch size={16} />}
               value={recipient}
               onChange={(e) => setRecipient(e.currentTarget.value)}
+              style={{ width: rem(200) }}
+            />
+            <TextInput
+              label="Subject"
+              placeholder="Search by subject..."
+              leftSection={<IconSearch size={16} />}
+              value={subject}
+              onChange={(e) => setSubject(e.currentTarget.value)}
               style={{ flex: 1 }}
             />
             <Select

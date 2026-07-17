@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Button, Group, Stack, useComputedColorScheme, Modal, Box, Text, rem, ThemeIcon, Select } from '@mantine/core';
+import { Container, Title, Button, Group, Stack, useComputedColorScheme, Modal, Box, Text, rem, ThemeIcon, Select, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconMail, IconPlus, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { IconMail, IconPlus, IconChevronLeft, IconChevronRight, IconSearch, IconFilter } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ProviderList } from '../features/email-providers/components/ProviderList';
 import { ProviderForm } from '../features/email-providers/components/ProviderForm';
 import { SendEmailModal } from '../features/email-providers/components/SendEmailModal';
 import { emailProviderService } from '../features/email-providers/services/emailProvider';
+import { ProviderType } from '../api/panmail/v1/provider_type_pb';
 import type { EmailProvider } from '../api/panmail/v1/email_provider_pb';
 import type { TestEmailProviderResponse } from '../api/panmail/v1/email_provider_service_pb';
 
@@ -19,15 +20,22 @@ export const EmailProvidersPage: React.FC = () => {
   const [pageToken, setPageToken] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<string | null>('10');
+  const [nameSearch, setNameSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
 
   useEffect(() => {
     setPageToken(undefined);
     setHistory([]);
-  }, [pageSize]);
+  }, [pageSize, nameSearch, typeFilter]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['emailProviders', pageToken, pageSize],
-    queryFn: () => emailProviderService.listProviders(Number(pageSize), pageToken),
+    queryKey: ['emailProviders', pageToken, pageSize, nameSearch, typeFilter],
+    queryFn: () => emailProviderService.listProviders(
+      Number(pageSize),
+      pageToken,
+      nameSearch,
+      typeFilter ? Number(typeFilter) : undefined
+    ),
   });
 
   const providers = data?.providers ?? [];
@@ -160,6 +168,28 @@ export const EmailProvidersPage: React.FC = () => {
             <Text c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1))" fw={500}>Manage and test your email delivery infrastructure.</Text>
           </Box>
           <Group gap="md">
+            <TextInput
+              placeholder="Search by name..."
+              size="xs"
+              leftSection={<IconSearch size={14} />}
+              value={nameSearch}
+              onChange={(e) => setNameSearch(e.currentTarget.value)}
+              style={{ width: rem(200) }}
+            />
+            <Select
+              placeholder="Filter by type"
+              size="xs"
+              leftSection={<IconFilter size={14} />}
+              clearable
+              data={[
+                { label: 'SMTP', value: ProviderType.SMTP.toString() },
+                { label: 'IMAP', value: ProviderType.IMAP.toString() },
+                { label: 'POP3', value: ProviderType.POP3.toString() },
+              ]}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              style={{ width: rem(150) }}
+            />
             <Select
               label="Page Size"
               size="xs"

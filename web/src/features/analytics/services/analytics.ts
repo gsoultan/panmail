@@ -2,7 +2,7 @@ import { Timestamp } from '@bufbuild/protobuf';
 import { eventClient } from '../../../services/client';
 
 export const analyticsService = {
-  listEvents: async (pageSize = 50, pageToken = '', recipient = '', eventType = 0, startTime?: Date, endTime?: Date, messageId?: string, latestOnly = false, recipientExact = false) => {
+  listEvents: async (pageSize = 50, pageToken = '', recipient = '', eventType = 0, startTime?: Date, endTime?: Date, messageId?: string, latestOnly = false, recipientExact = false, subject = '') => {
     const res = await eventClient.listEvents({
       pageSize,
       pageToken,
@@ -13,6 +13,7 @@ export const analyticsService = {
       messageId,
       latestOnly,
       recipientExact,
+      subject,
     });
     return res;
   },

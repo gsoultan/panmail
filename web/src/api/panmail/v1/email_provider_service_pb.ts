@@ -208,6 +208,16 @@ export class ListEmailProvidersRequest extends Message<ListEmailProvidersRequest
    */
   pageToken = "";
 
+  /**
+   * @generated from field: string name = 3;
+   */
+  name = "";
+
+  /**
+   * @generated from field: panmail.v1.ProviderType type = 4;
+   */
+  type = ProviderType.UNSPECIFIED;
+
   constructor(data?: PartialMessage<ListEmailProvidersRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -218,6 +228,8 @@ export class ListEmailProvidersRequest extends Message<ListEmailProvidersRequest
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "page_size", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
     { no: 2, name: "page_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "type", kind: "enum", T: proto3.getEnumType(ProviderType) },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListEmailProvidersRequest {

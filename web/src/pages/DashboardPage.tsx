@@ -83,19 +83,19 @@ export const DashboardPage: React.FC = () => {
   const { data: metricsData } = useQuery({
     queryKey: ['dashboardMetrics', startTime?.getTime(), endTime?.getTime()],
     queryFn: () => analyticsService.getMetrics(startTime, endTime),
-    refetchInterval: 5000,
+    refetchInterval: 2000,
   });
 
   const { data: tsData } = useQuery({
     queryKey: ['timeSeriesMetrics', startTime?.getTime(), endTime?.getTime(), granularity],
     queryFn: () => analyticsService.getTimeSeriesMetrics(startTime, endTime, granularity),
-    refetchInterval: 5000,
+    refetchInterval: 2000,
   });
 
   const { data: perfData } = useQuery({
     queryKey: ['performanceMetrics'],
     queryFn: () => analyticsService.getPerformanceMetrics(),
-    refetchInterval: 5000,
+    refetchInterval: 2000,
   });
 
   const metrics = metricsData?.metrics || {};

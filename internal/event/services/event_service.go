@@ -37,6 +37,7 @@ func (s *eventService) ListEvents(ctx context.Context, req *connect.Request[panm
 		MessageID:      req.Msg.MessageId,
 		LatestOnly:     req.Msg.LatestOnly,
 		RecipientExact: req.Msg.RecipientExact,
+		Subject:        req.Msg.Subject,
 	}
 
 	if req.Msg.StartTime != nil {

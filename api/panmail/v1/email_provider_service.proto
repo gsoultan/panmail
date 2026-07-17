@@ -43,6 +43,8 @@ message GetEmailProviderResponse {
 message ListEmailProvidersRequest {
   int32 page_size = 1;
   string page_token = 2;
+  string name = 3;
+  ProviderType type = 4;
 }
 
 message ListEmailProvidersResponse {

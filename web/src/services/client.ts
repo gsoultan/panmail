@@ -1,5 +1,5 @@
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { createPromiseClient, Interceptor } from "@connectrpc/connect";
+import { createPromiseClient, Interceptor, ConnectError, Code } from "@connectrpc/connect";
 import { AuthService, ApiKeyService, UserService, TenantService } from "../api/panmail/v1/auth_connect";
 import { SetupService } from "../api/panmail/v1/setup_connect";
 import { EmailProviderService } from "../api/panmail/v1/email_provider_service_connect";
@@ -12,6 +12,21 @@ import { TemplateService } from "../api/panmail/v1/template_service_connect";
 import { SuppressionService } from "../api/panmail/v1/suppression_service_connect";
 import { SystemSettingsService } from "../api/panmail/v1/system_settings_connect";
 import { useAuthStore } from "../store/authStore";
+
+const errorInterceptor: Interceptor = (next) => async (req) => {
+  try {
+    return await next(req);
+  } catch (err) {
+    if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+      useAuthStore.getState().clearAuth();
+      // Redirect to login if not already there
+      if (window.location.pathname !== "/signin") {
+        window.location.href = "/signin";
+      }
+    }
+    throw err;
+  }
+};
 
 const authInterceptor: Interceptor = (next) => async (req) => {
   const { token, selectedTenantID } = useAuthStore.getState();
@@ -26,7 +41,7 @@ const authInterceptor: Interceptor = (next) => async (req) => {
 
 const transport = createConnectTransport({
   baseUrl: "", // Same host as UI in production
-  interceptors: [authInterceptor],
+  interceptors: [errorInterceptor, authInterceptor],
 });
 
 export const authClient = createPromiseClient(AuthService, transport);

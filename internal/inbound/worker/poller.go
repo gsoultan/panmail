@@ -67,7 +67,7 @@ func (p *Poller) pollAll(ctx context.Context) {
 	sem := make(chan struct{}, 50)
 
 	for _, tenant := range tenants {
-		providers, _, err := p.providerRepo.List(ctx, tenant.ID, 1000, "")
+		providers, _, err := p.providerRepo.List(ctx, tenant.ID, "", "", 1000, "")
 		if err != nil {
 			slog.Error("poller: failed to list providers", "tenant_id", tenant.ID, "error", err)
 			continue

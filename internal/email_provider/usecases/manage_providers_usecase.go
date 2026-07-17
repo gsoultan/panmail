@@ -30,7 +30,7 @@ func NewManageProvidersUsecase(repo stores.Repository, factory entities.Provider
 
 func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, req *panmailv1.CreateEmailProviderRequest) (*panmailv1.EmailProvider, error) {
 	// Check if name is unique for this tenant
-	existing, _, _ := u.repo.List(ctx, tenantID, 1000, "")
+	existing, _, _ := u.repo.List(ctx, tenantID, "", "", 1000, "")
 	for _, p := range existing {
 		if strings.EqualFold(p.Name, req.Name) {
 			return nil, fmt.Errorf("an email provider with the name '%s' already exists for this tenant", req.Name)
@@ -78,8 +78,12 @@ func (u *manageProvidersUsecase) Get(ctx context.Context, tenantID, id string) (
 	return u.toProto(p)
 }
 
-func (u *manageProvidersUsecase) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*panmailv1.EmailProvider, string, error) {
-	providers, nextPageToken, err := u.repo.List(ctx, tenantID, pageSize, pageToken)
+func (u *manageProvidersUsecase) List(ctx context.Context, tenantID string, name string, providerType panmailv1.ProviderType, pageSize int, pageToken string) ([]*panmailv1.EmailProvider, string, error) {
+	typeStr := ""
+	if providerType != panmailv1.ProviderType_PROVIDER_TYPE_UNSPECIFIED {
+		typeStr = fmt.Sprintf("%d", int32(providerType))
+	}
+	providers, nextPageToken, err := u.repo.List(ctx, tenantID, name, typeStr, pageSize, pageToken)
 	if err != nil {
 		return nil, "", err
 	}
@@ -97,7 +101,7 @@ func (u *manageProvidersUsecase) List(ctx context.Context, tenantID string, page
 
 func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, req *panmailv1.UpdateEmailProviderRequest) (*panmailv1.EmailProvider, error) {
 	// Check if name is unique for this tenant (if name changed)
-	existing, _, _ := u.repo.List(ctx, tenantID, 1000, "")
+	existing, _, _ := u.repo.List(ctx, tenantID, "", "", 1000, "")
 	for _, p := range existing {
 		if p.ID != req.Id && strings.EqualFold(p.Name, req.Name) {
 			return nil, fmt.Errorf("an email provider with the name '%s' already exists for this tenant", req.Name)

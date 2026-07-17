@@ -98,7 +98,6 @@ func authorize(procedure string, role string) error {
 	if strings.Contains(procedure, "EmailProviderService/Create") ||
 		strings.Contains(procedure, "EmailProviderService/Update") ||
 		strings.Contains(procedure, "EmailProviderService/Delete") ||
-		strings.Contains(procedure, "EmailProviderService/Test") ||
 		strings.Contains(procedure, "TemplateService/Create") ||
 		strings.Contains(procedure, "TemplateService/Update") ||
 		strings.Contains(procedure, "TemplateService/Delete") ||
@@ -106,8 +105,7 @@ func authorize(procedure string, role string) error {
 		strings.Contains(procedure, "SuppressionService/Remove") ||
 		strings.Contains(procedure, "WebhookService/Create") ||
 		strings.Contains(procedure, "WebhookService/Update") ||
-		strings.Contains(procedure, "WebhookService/Delete") ||
-		strings.Contains(procedure, "EmailService/SendEmail") {
+		strings.Contains(procedure, "WebhookService/Delete") {
 		if role == "USER_ROLE_VIEWER" {
 			return errors.New("insufficient permissions: requires Editor role")
 		}

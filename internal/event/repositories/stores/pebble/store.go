@@ -774,6 +774,13 @@ func (s *store) List(ctx context.Context, tenantID string, filter stores.ListFil
 			continue
 		}
 
+		// Filter by subject
+		if filter.Subject != "" {
+			if !strings.Contains(strings.ToLower(e.Subject), strings.ToLower(filter.Subject)) {
+				continue
+			}
+		}
+
 		res = append(res, &e)
 		count++
 	}

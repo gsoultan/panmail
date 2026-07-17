@@ -18,6 +18,7 @@ type ListFilter struct {
 	MessageID      string
 	LatestOnly     bool
 	RecipientExact bool
+	Subject        string
 }
 
 type ResourcePoint struct {

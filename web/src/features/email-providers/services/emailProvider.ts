@@ -12,8 +12,8 @@ import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
 import { SendEmailRequest } from '../../../api/panmail/v1/email_service_pb';
 
 export const emailProviderService = {
-  async listProviders(pageSize?: number, pageToken?: string) {
-    const res = await providerClient.listEmailProviders({ pageSize, pageToken });
+  async listProviders(pageSize?: number, pageToken?: string, name?: string, type?: ProviderType) {
+    const res = await providerClient.listEmailProviders({ pageSize, pageToken, name, type });
     return res;
   },
 

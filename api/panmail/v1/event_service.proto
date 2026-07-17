@@ -119,6 +119,7 @@ message ListEventsRequest {
   string message_id = 7;
   bool latest_only = 8;
   bool recipient_exact = 9;
+  string subject = 10;
 }
 
 message ListEventsResponse {

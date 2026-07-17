@@ -26,7 +26,7 @@ func (m *mockRepo) GetByID(ctx context.Context, tenantID, id string) (*entities.
 	return p, nil
 }
 
-func (m *mockRepo) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.EmailProvider, string, error) {
+func (m *mockRepo) List(ctx context.Context, tenantID string, name string, providerType string, pageSize int, pageToken string) ([]*entities.EmailProvider, string, error) {
 	var res []*entities.EmailProvider
 	for _, p := range m.providers {
 		if p.TenantID == tenantID {

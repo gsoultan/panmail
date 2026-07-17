@@ -6,8 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"strings"
-
+	"fmt"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 	"github.com/gsoultan/panmail/pkg/db"
@@ -68,7 +67,7 @@ func (s *store) GetByID(ctx context.Context, tenantID, id string) (*entities.Ema
 	return p, nil
 }
 
-func (s *store) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.EmailProvider, string, error) {
+func (s *store) List(ctx context.Context, tenantID string, name string, providerType string, pageSize int, pageToken string) ([]*entities.EmailProvider, string, error) {
 	dbConn, err := s.getDB()
 	if err != nil {
 		return nil, "", err
@@ -79,10 +78,33 @@ func (s *store) List(ctx context.Context, tenantID string, pageSize int, pageTok
 		pageSize = 20
 	}
 
-	query := strings.TrimSuffix(strings.TrimSpace(listProvidersQuery), ";")
-	query += " LIMIT $2 OFFSET $3"
+	query := "SELECT id, tenant_id, name, type, config, allowed_domains, created_at, updated_at FROM email_providers WHERE tenant_id = $1"
+	args := []any{tenantID}
+	argCount := 1
 
-	rows, err := dbConn.QueryContext(ctx, query, tenantID, pageSize, offset)
+	if name != "" {
+		argCount++
+		query += fmt.Sprintf(" AND name ILIKE $%d", argCount)
+		args = append(args, "%"+name+"%")
+	}
+
+	if providerType != "" {
+		argCount++
+		query += fmt.Sprintf(" AND type = $%d", argCount)
+		args = append(args, providerType)
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	argCount++
+	query += fmt.Sprintf(" LIMIT $%d", argCount)
+	args = append(args, pageSize)
+
+	argCount++
+	query += fmt.Sprintf(" OFFSET $%d", argCount)
+	args = append(args, offset)
+
+	rows, err := dbConn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, "", err
 	}

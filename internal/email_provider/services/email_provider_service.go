@@ -39,7 +39,7 @@ func (s *emailProviderService) GetEmailProvider(ctx context.Context, req *panmai
 
 func (s *emailProviderService) ListEmailProviders(ctx context.Context, req *panmailv1.ListEmailProvidersRequest) (*panmailv1.ListEmailProvidersResponse, error) {
 	tenantID := middlewares.GetTenantID(ctx)
-	providers, nextPageToken, err := s.manageProvidersUsecase.List(ctx, tenantID, int(req.PageSize), req.PageToken)
+	providers, nextPageToken, err := s.manageProvidersUsecase.List(ctx, tenantID, req.Name, req.Type, int(req.PageSize), req.PageToken)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

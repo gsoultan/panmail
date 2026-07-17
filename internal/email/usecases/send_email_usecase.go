@@ -554,7 +554,7 @@ func (u *sendEmailUsecase) getProviders(ctx context.Context, tenantID string) ([
 		}
 	}
 
-	providers, _, err := u.providerRepo.List(ctx, tenantID, 1000, "")
+	providers, _, err := u.providerRepo.List(ctx, tenantID, "", "", 1000, "")
 	if err != nil {
 		return nil, err
 	}

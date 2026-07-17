@@ -279,6 +279,8 @@ type ListEmailProvidersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Type          ProviderType           `protobuf:"varint,4,opt,name=type,proto3,enum=panmail.v1.ProviderType" json:"type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -325,6 +327,20 @@ func (x *ListEmailProvidersRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListEmailProvidersRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ListEmailProvidersRequest) GetType() ProviderType {
+	if x != nil {
+		return x.Type
+	}
+	return ProviderType_PROVIDER_TYPE_UNSPECIFIED
 }
 
 type ListEmailProvidersResponse struct {
@@ -741,11 +757,13 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\x17GetEmailProviderRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"Q\n" +
 	"\x18GetEmailProviderResponse\x125\n" +
-	"\bprovider\x18\x01 \x01(\v2\x19.panmail.v1.EmailProviderR\bprovider\"W\n" +
+	"\bprovider\x18\x01 \x01(\v2\x19.panmail.v1.EmailProviderR\bprovider\"\x99\x01\n" +
 	"\x19ListEmailProvidersRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tR\tpageToken\"}\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12,\n" +
+	"\x04type\x18\x04 \x01(\x0e2\x18.panmail.v1.ProviderTypeR\x04type\"}\n" +
 	"\x1aListEmailProvidersResponse\x127\n" +
 	"\tproviders\x18\x01 \x03(\v2\x19.panmail.v1.EmailProviderR\tproviders\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xfd\x01\n" +
@@ -819,30 +837,31 @@ var file_panmail_v1_email_provider_service_proto_depIdxs = []int32{
 	15, // 3: panmail.v1.CreateEmailProviderRequest.pop3:type_name -> panmail.v1.Pop3Config
 	16, // 4: panmail.v1.CreateEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
 	16, // 5: panmail.v1.GetEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
-	16, // 6: panmail.v1.ListEmailProvidersResponse.providers:type_name -> panmail.v1.EmailProvider
-	13, // 7: panmail.v1.UpdateEmailProviderRequest.smtp:type_name -> panmail.v1.SmtpConfig
-	14, // 8: panmail.v1.UpdateEmailProviderRequest.imap:type_name -> panmail.v1.ImapConfig
-	15, // 9: panmail.v1.UpdateEmailProviderRequest.pop3:type_name -> panmail.v1.Pop3Config
-	16, // 10: panmail.v1.UpdateEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
-	0,  // 11: panmail.v1.EmailProviderService.CreateEmailProvider:input_type -> panmail.v1.CreateEmailProviderRequest
-	2,  // 12: panmail.v1.EmailProviderService.GetEmailProvider:input_type -> panmail.v1.GetEmailProviderRequest
-	4,  // 13: panmail.v1.EmailProviderService.ListEmailProviders:input_type -> panmail.v1.ListEmailProvidersRequest
-	6,  // 14: panmail.v1.EmailProviderService.UpdateEmailProvider:input_type -> panmail.v1.UpdateEmailProviderRequest
-	8,  // 15: panmail.v1.EmailProviderService.DeleteEmailProvider:input_type -> panmail.v1.DeleteEmailProviderRequest
-	10, // 16: panmail.v1.EmailProviderService.TestEmailProvider:input_type -> panmail.v1.TestEmailProviderRequest
-	0,  // 17: panmail.v1.EmailProviderService.TestEmailProviderConfig:input_type -> panmail.v1.CreateEmailProviderRequest
-	1,  // 18: panmail.v1.EmailProviderService.CreateEmailProvider:output_type -> panmail.v1.CreateEmailProviderResponse
-	3,  // 19: panmail.v1.EmailProviderService.GetEmailProvider:output_type -> panmail.v1.GetEmailProviderResponse
-	5,  // 20: panmail.v1.EmailProviderService.ListEmailProviders:output_type -> panmail.v1.ListEmailProvidersResponse
-	7,  // 21: panmail.v1.EmailProviderService.UpdateEmailProvider:output_type -> panmail.v1.UpdateEmailProviderResponse
-	9,  // 22: panmail.v1.EmailProviderService.DeleteEmailProvider:output_type -> panmail.v1.DeleteEmailProviderResponse
-	11, // 23: panmail.v1.EmailProviderService.TestEmailProvider:output_type -> panmail.v1.TestEmailProviderResponse
-	11, // 24: panmail.v1.EmailProviderService.TestEmailProviderConfig:output_type -> panmail.v1.TestEmailProviderResponse
-	18, // [18:25] is the sub-list for method output_type
-	11, // [11:18] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	12, // 6: panmail.v1.ListEmailProvidersRequest.type:type_name -> panmail.v1.ProviderType
+	16, // 7: panmail.v1.ListEmailProvidersResponse.providers:type_name -> panmail.v1.EmailProvider
+	13, // 8: panmail.v1.UpdateEmailProviderRequest.smtp:type_name -> panmail.v1.SmtpConfig
+	14, // 9: panmail.v1.UpdateEmailProviderRequest.imap:type_name -> panmail.v1.ImapConfig
+	15, // 10: panmail.v1.UpdateEmailProviderRequest.pop3:type_name -> panmail.v1.Pop3Config
+	16, // 11: panmail.v1.UpdateEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
+	0,  // 12: panmail.v1.EmailProviderService.CreateEmailProvider:input_type -> panmail.v1.CreateEmailProviderRequest
+	2,  // 13: panmail.v1.EmailProviderService.GetEmailProvider:input_type -> panmail.v1.GetEmailProviderRequest
+	4,  // 14: panmail.v1.EmailProviderService.ListEmailProviders:input_type -> panmail.v1.ListEmailProvidersRequest
+	6,  // 15: panmail.v1.EmailProviderService.UpdateEmailProvider:input_type -> panmail.v1.UpdateEmailProviderRequest
+	8,  // 16: panmail.v1.EmailProviderService.DeleteEmailProvider:input_type -> panmail.v1.DeleteEmailProviderRequest
+	10, // 17: panmail.v1.EmailProviderService.TestEmailProvider:input_type -> panmail.v1.TestEmailProviderRequest
+	0,  // 18: panmail.v1.EmailProviderService.TestEmailProviderConfig:input_type -> panmail.v1.CreateEmailProviderRequest
+	1,  // 19: panmail.v1.EmailProviderService.CreateEmailProvider:output_type -> panmail.v1.CreateEmailProviderResponse
+	3,  // 20: panmail.v1.EmailProviderService.GetEmailProvider:output_type -> panmail.v1.GetEmailProviderResponse
+	5,  // 21: panmail.v1.EmailProviderService.ListEmailProviders:output_type -> panmail.v1.ListEmailProvidersResponse
+	7,  // 22: panmail.v1.EmailProviderService.UpdateEmailProvider:output_type -> panmail.v1.UpdateEmailProviderResponse
+	9,  // 23: panmail.v1.EmailProviderService.DeleteEmailProvider:output_type -> panmail.v1.DeleteEmailProviderResponse
+	11, // 24: panmail.v1.EmailProviderService.TestEmailProvider:output_type -> panmail.v1.TestEmailProviderResponse
+	11, // 25: panmail.v1.EmailProviderService.TestEmailProviderConfig:output_type -> panmail.v1.TestEmailProviderResponse
+	19, // [19:26] is the sub-list for method output_type
+	12, // [12:19] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_email_provider_service_proto_init() }

@@ -75,6 +75,50 @@ func (m *mockEventRepo) GetLatestMessageForRecipient(ctx context.Context, tenant
 	return latest, nil
 }
 
+func (m *mockEventRepo) List(ctx context.Context, tenantID string, filter stores.ListFilter) ([]*evententities.EmailEvent, string, error) {
+	return nil, "", nil
+}
+
+func (m *mockEventRepo) GetByID(ctx context.Context, tenantID string, id string) (*evententities.EmailEvent, error) {
+	return nil, nil
+}
+
+func (m *mockEventRepo) ListByMessageID(ctx context.Context, tenantID string, messageID string) ([]*evententities.EmailEvent, error) {
+	return nil, nil
+}
+
+func (m *mockEventRepo) GetMetrics(ctx context.Context, tenantID string, startTime, endTime time.Time) (map[string]int64, error) {
+	return nil, nil
+}
+
+func (m *mockEventRepo) GetTimeSeriesMetrics(ctx context.Context, tenantID string, startTime, endTime time.Time, granularity string) (map[string]map[string]int64, error) {
+	return nil, nil
+}
+
+func (m *mockEventRepo) TruncateBefore(ctx context.Context, before time.Time) error {
+	return nil
+}
+
+func (m *mockEventRepo) ListArchives(ctx context.Context, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
+	return nil, "", nil
+}
+
+func (m *mockEventRepo) GetArchive(ctx context.Context, id string) ([]byte, string, error) {
+	return nil, "", nil
+}
+
+func (m *mockEventRepo) WriteResourceMetric(ctx context.Context, cpuUsage float64, memUsage uint64, load15 float64) error {
+	return nil
+}
+
+func (m *mockEventRepo) GetResourceHistory(ctx context.Context, since time.Time) ([]evententities.ResourcePoint, error) {
+	return nil, nil
+}
+
+func (m *mockEventRepo) Close() error {
+	return nil
+}
+
 type mockInboundRepo struct {
 	inboundstores.InboundRepository
 }

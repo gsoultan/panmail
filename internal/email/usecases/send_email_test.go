@@ -14,6 +14,7 @@ import (
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
 	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	evententities "github.com/gsoultan/panmail/internal/event/repositories/entities"
+	eventstores "github.com/gsoultan/panmail/internal/event/repositories/stores"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
 	suppressionentities "github.com/gsoultan/panmail/internal/suppression/repositories/entities"
 	templateentities "github.com/gsoultan/panmail/internal/template/repositories/entities"
@@ -31,7 +32,7 @@ func (m *mockProviderRepo) Create(ctx context.Context, p *providerEntities.Email
 func (m *mockProviderRepo) GetByID(ctx context.Context, tenantID, id string) (*providerEntities.EmailProvider, error) {
 	return m.provider, nil
 }
-func (m *mockProviderRepo) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*providerEntities.EmailProvider, string, error) {
+func (m *mockProviderRepo) List(ctx context.Context, tenantID string, name string, providerType string, pageSize int, pageToken string) ([]*providerEntities.EmailProvider, string, error) {
 	if m.provider != nil {
 		return []*providerEntities.EmailProvider{m.provider}, "", nil
 	}
@@ -70,18 +71,51 @@ func (m *mockEventRepo) Write(ctx context.Context, e *evententities.EmailEvent) 
 	m.events = append(m.events, e)
 	return nil
 }
-func (m *mockEventRepo) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*evententities.EmailEvent, string, error) {
+func (m *mockEventRepo) List(ctx context.Context, tenantID string, filter eventstores.ListFilter) ([]*evententities.EmailEvent, string, error) {
 	return nil, "", nil
 }
 func (m *mockEventRepo) GetByID(ctx context.Context, tenantID, id string) (*evententities.EmailEvent, error) {
 	return nil, nil
 }
-func (m *mockEventRepo) GetMetrics(ctx context.Context, tenantID string) (map[string]int64, error) {
+func (m *mockEventRepo) GetMetrics(ctx context.Context, tenantID string, startTime, endTime time.Time) (map[string]int64, error) {
 	return nil, nil
 }
-func (m *mockEventRepo) GetTimeSeriesMetrics(ctx context.Context, tenantID string) (map[string]map[string]int64, error) {
+func (m *mockEventRepo) GetTimeSeriesMetrics(ctx context.Context, tenantID string, startTime, endTime time.Time, granularity string) (map[string]map[string]int64, error) {
 	return nil, nil
 }
+
+func (m *mockEventRepo) WriteMessage(ctx context.Context, message *evententities.EmailMessage) error {
+	return nil
+}
+
+func (m *mockEventRepo) GetMessage(ctx context.Context, tenantID string, messageID string) (*evententities.EmailMessage, error) {
+	return nil, nil
+}
+
+func (m *mockEventRepo) GetLatestMessageForRecipient(ctx context.Context, tenantID string, recipient string) (*evententities.EmailMessage, error) {
+	return nil, nil
+}
+
+func (m *mockEventRepo) TruncateBefore(ctx context.Context, before time.Time) error {
+	return nil
+}
+
+func (m *mockEventRepo) ListArchives(ctx context.Context, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
+	return nil, "", nil
+}
+
+func (m *mockEventRepo) GetArchive(ctx context.Context, id string) ([]byte, string, error) {
+	return nil, "", nil
+}
+
+func (m *mockEventRepo) WriteResourceMetric(ctx context.Context, cpuUsage float64, memUsage uint64, load15 float64) error {
+	return nil
+}
+
+func (m *mockEventRepo) GetResourceHistory(ctx context.Context, since time.Time) ([]evententities.ResourcePoint, error) {
+	return nil, nil
+}
+
 func (m *mockEventRepo) Close() error { return nil }
 
 type mockEventUsecase struct {
