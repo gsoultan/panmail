@@ -92,7 +92,7 @@ func (h *WebhookHandler) handleSendGrid(w http.ResponseWriter, r *http.Request, 
 			if errMsg == "" {
 				errMsg = e.Response
 			}
-			_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, e.MessageID, eventType, e.Email, errMsg, nil)
+			_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, e.MessageID, eventType, e.Email, "", errMsg, nil)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
@@ -141,7 +141,7 @@ func (h *WebhookHandler) handleMailgun(w http.ResponseWriter, r *http.Request, t
 		if errMsg == "" {
 			errMsg = payload.EventData.DeliveryStatus.Message
 		}
-		_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, payload.EventData.Message.Headers.MessageID, eventType, payload.EventData.Recipient, errMsg, nil)
+		_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, payload.EventData.Message.Headers.MessageID, eventType, payload.EventData.Recipient, "", errMsg, nil)
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -166,7 +166,7 @@ func (h *WebhookHandler) handleGeneric(w http.ResponseWriter, r *http.Request, t
 	}
 
 	if eventType != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED {
-		_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, e.MessageID, eventType, e.Recipient, e.Error, nil)
+		_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, e.MessageID, eventType, e.Recipient, "", e.Error, nil)
 	}
 	w.WriteHeader(http.StatusOK)
 }

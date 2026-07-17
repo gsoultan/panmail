@@ -104,3 +104,74 @@ func TestTimelineAccuracy(t *testing.T) {
 		t.Errorf("expected 2 latest events, got %d", len(resLatest))
 	}
 }
+
+func TestTimelineIdenticalTimestamp(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "pebble-test-identical-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	s, err := NewStore(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+	tenantID := "tenant-1"
+	messageID := "msg-identical"
+	recipient := "user@example.com"
+
+	// SENT and DELIVERED with the EXACT same timestamp
+	now := time.Now().Truncate(time.Second)
+
+	_ = s.Write(ctx, &entities.EmailEvent{
+		ID:        "event-sent",
+		TenantID:  tenantID,
+		MessageID: messageID,
+		Recipient: recipient,
+		Type:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT,
+		Timestamp: now,
+	})
+
+	_ = s.Write(ctx, &entities.EmailEvent{
+		ID:        "event-delivered",
+		TenantID:  tenantID,
+		MessageID: messageID,
+		Recipient: recipient,
+		Type:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED,
+		Timestamp: now,
+	})
+
+	// Wait for worker
+	time.Sleep(200 * time.Millisecond)
+
+	// Timeline check
+	res, _, err := s.List(ctx, tenantID, stores.ListFilter{
+		MessageID:      messageID,
+		Recipient:      recipient,
+		RecipientExact: true,
+	})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(res) != 2 {
+		t.Errorf("expected 2 events in timeline, got %d", len(res))
+	}
+
+	// Latest check: should be DELIVERED
+	resLatest, _, err := s.List(ctx, tenantID, stores.ListFilter{
+		LatestOnly:     true,
+		Recipient:      recipient,
+		RecipientExact: true,
+	})
+	if err != nil {
+		t.Fatalf("List latest failed: %v", err)
+	}
+	if len(resLatest) != 1 {
+		t.Errorf("expected 1 latest event, got %d", len(resLatest))
+	} else if resLatest[0].Type != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+		t.Errorf("expected latest event to be DELIVERED, got %s", resLatest[0].Type)
+	}
+}

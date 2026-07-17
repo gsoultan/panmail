@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -194,16 +195,52 @@ func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail)
 		slog.Info("email delivery deferred for retry", "id", e.ID, "retry_count", e.RetryCount, "next_retry_at", e.NextRetryAt)
 
 		// Record DEFERRED event
-		for _, recipient := range req.To {
-			_ = w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED, recipient, e.LastError, nil)
+		recipientSet := make(map[string]struct{})
+		var allRecipients []string
+		addRecipients := func(emails []string) {
+			for _, email := range emails {
+				email = strings.ToLower(strings.TrimSpace(email))
+				if email == "" {
+					continue
+				}
+				if _, ok := recipientSet[email]; !ok {
+					recipientSet[email] = struct{}{}
+					allRecipients = append(allRecipients, email)
+				}
+			}
+		}
+		addRecipients(req.To)
+		addRecipients(req.Cc)
+		addRecipients(req.Bcc)
+
+		for _, recipient := range allRecipients {
+			_ = w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED, recipient, req.Subject, e.LastError, nil)
 		}
 	} else {
 		e.Status = entities.OutboxStatusFailed
 		slog.Info("email delivery failed permanently", "id", e.ID, "bounce_type", bounceType.String(), "error", e.LastError)
 
 		// Record permanent failure event
-		for _, recipient := range req.To {
-			_ = w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, bounceType, recipient, e.LastError, nil)
+		recipientSet := make(map[string]struct{})
+		var allRecipients []string
+		addRecipients := func(emails []string) {
+			for _, email := range emails {
+				email = strings.ToLower(strings.TrimSpace(email))
+				if email == "" {
+					continue
+				}
+				if _, ok := recipientSet[email]; !ok {
+					recipientSet[email] = struct{}{}
+					allRecipients = append(allRecipients, email)
+				}
+			}
+		}
+		addRecipients(req.To)
+		addRecipients(req.Cc)
+		addRecipients(req.Bcc)
+
+		for _, recipient := range allRecipients {
+			_ = w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, bounceType, recipient, req.Subject, e.LastError, nil)
 		}
 
 		// Automatically suppress if hard bounce, spam report, etc.
@@ -212,7 +249,7 @@ func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail)
 			bounceType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSUBSCRIBED ||
 			bounceType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_REJECTED {
 
-			for _, recipient := range req.To {
+			for _, recipient := range allRecipients {
 				reason := fmt.Sprintf("Automatic suppression due to %s: %s", bounceType.String(), e.LastError)
 				_, _ = w.suppressionUsecase.Add(ctx, e.TenantID, &panmailv1.AddSuppressionRequest{
 					Email:  recipient,

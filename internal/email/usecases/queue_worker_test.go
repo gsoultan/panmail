@@ -73,7 +73,7 @@ func (m *mockEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	return &panmailv1.SendEmailResponse{MessageId: "123", Status: panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED}, nil
 }
 
-func (m *mockEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, errorMessage string, metadata map[string]any) error {
+func (m *mockEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient, subject, errorMessage string, metadata map[string]any) error {
 	return nil
 }
 

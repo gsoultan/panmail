@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -129,19 +130,38 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, fmt.Errorf("invalid from address: %s", req.From)
 	}
 
+	// Collect unique recipients to avoid duplication
+	recipientSet := make(map[string]struct{})
+	var allRecipients []string
+	addRecipients := func(emails []string) {
+		for _, email := range emails {
+			email = strings.ToLower(strings.TrimSpace(email))
+			if email == "" {
+				continue
+			}
+			if _, ok := recipientSet[email]; !ok {
+				recipientSet[email] = struct{}{}
+				allRecipients = append(allRecipients, email)
+			}
+		}
+	}
+	addRecipients(req.To)
+	addRecipients(req.Cc)
+	addRecipients(req.Bcc)
+
 	// Check suppressions for each recipient
-	for _, recipient := range req.To {
+	for _, recipient := range allRecipients {
 		isSuppressed, reason, err := u.isSuppressed(ctx, tenantID, recipient)
 		if err != nil {
 			slog.Error("failed to check suppression", "error", err, "recipient", recipient)
 			return nil, err
 		}
 		if isSuppressed {
-			_ = u.RecordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, reason, nil)
+			_ = u.RecordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, "", reason, nil)
 			return nil, fmt.Errorf("recipient %s is suppressed: %s", recipient, reason)
 		}
 		// Record initial PENDING event (queued in outbox)
-		if err := u.RecordEvent(ctx, tenantID, req.ProviderId, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING, recipient, "", nil); err != nil {
+		if err := u.RecordEvent(ctx, tenantID, req.ProviderId, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING, recipient, "", "", nil); err != nil {
 			slog.Error("failed to record pending event", "error", err, "id", messageID)
 		}
 	}
@@ -159,6 +179,8 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		ProviderId:  req.ProviderId,
 		From:        req.From,
 		To:          req.To,
+		Cc:          req.Cc,
+		Bcc:         req.Bcc,
 		Subject:     subject,
 		BodyHtml:    bodyHTML,
 		BodyText:    bodyText,
@@ -292,7 +314,6 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		return nil, err
 	}
 
-	var lastErr error
 	// Fetch existing events to ensure idempotency (prevent duplicate sends on retry)
 	existingEvents, err := u.eventUsecase.ListByMessageID(ctx, tenantID, messageID)
 	if err != nil {
@@ -310,6 +331,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	var uniqueRecipients []string
 	addRecipients := func(emails []string) {
 		for _, email := range emails {
+			email = strings.ToLower(strings.TrimSpace(email))
 			if email == "" {
 				continue
 			}
@@ -326,6 +348,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	slog.Info("starting actual delivery", "id", messageID, "recipient_count", len(uniqueRecipients), "provider_count", len(providers))
 
 	// We iterate through recipients to support individual tracking and status
+	var deliveryErrors []error
 	for _, recipient := range uniqueRecipients {
 		if deliveredMap[recipient] {
 			slog.Info("email already delivered to recipient, skipping", "id", messageID, "recipient", recipient)
@@ -335,6 +358,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		slog.Info("processing recipient", "id", messageID, "recipient", recipient)
 
 		sent := false
+		var recipientErr error
 		for _, p := range providers {
 			// Skip receivers
 			if p.Type == panmailv1.ProviderType_PROVIDER_TYPE_IMAP || p.Type == panmailv1.ProviderType_PROVIDER_TYPE_POP3 {
@@ -346,7 +370,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			senderObj, err := u.providerFactory.CreateSender(p)
 			if err != nil {
 				slog.Error("failed to create sender for provider", "error", err, "provider", p.Name)
-				lastErr = err
+				recipientErr = err
 				continue
 			}
 
@@ -378,26 +402,31 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			}
 
 			// Record SENT event (actually handing over to provider)
-			_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, recipient, "", nil)
+			_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, recipient, subject, "", nil)
 
 			err = sender.Send(ctx, msg)
 			if err == nil {
 				slog.Info("email delivered successfully", "id", messageID, "provider", p.Name, "recipient", recipient)
-				_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, "", nil)
+				_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, subject, "", nil)
 				sent = true
 				break
 			}
-			lastErr = err
+			recipientErr = err
 			slog.Error("provider delivery failed", "provider", p.Name, "error", err, "id", messageID, "recipient", recipient)
 			// Record DEFERRED event for this attempt
-			_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED, recipient, err.Error(), nil)
+			_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED, recipient, subject, err.Error(), nil)
 		}
 
-		if !sent && lastErr != nil {
+		if !sent && recipientErr != nil {
 			// Failed all providers for this recipient
-			slog.Error("failed to deliver email to recipient via all providers", "id", messageID, "recipient", recipient, "error", lastErr)
-			return nil, fmt.Errorf("failed to deliver to recipient %s: %w", recipient, lastErr)
+			slog.Error("failed to deliver email to recipient via all providers", "id", messageID, "recipient", recipient, "error", recipientErr)
+			deliveryErrors = append(deliveryErrors, fmt.Errorf("failed to deliver to %s: %w", recipient, recipientErr))
 		}
+	}
+
+	if len(deliveryErrors) > 0 && len(deliveryErrors) == len(uniqueRecipients) {
+		// All recipients failed
+		return nil, errors.Join(deliveryErrors...)
 	}
 
 	return &panmailv1.SendEmailResponse{
@@ -437,8 +466,8 @@ func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, html s
 	})
 }
 
-func (u *sendEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, errorMessage string, metadata map[string]any) error {
-	return u.eventUsecase.RecordEvent(ctx, tenantID, providerID, messageID, eventType, recipient, errorMessage, metadata)
+func (u *sendEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient, subject, errorMessage string, metadata map[string]any) error {
+	return u.eventUsecase.RecordEvent(ctx, tenantID, providerID, messageID, eventType, recipient, subject, errorMessage, metadata)
 }
 
 func (u *sendEmailUsecase) renderTemplate(ctx context.Context, tenantID string, req *panmailv1.SendEmailRequest) (string, string, string, error) {

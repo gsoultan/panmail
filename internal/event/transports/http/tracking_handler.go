@@ -35,7 +35,7 @@ func (h *TrackingHandler) HandleOpen(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, recipient, "", nil)
+	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, recipient, "", "", nil)
 
 	h.servePixel(w)
 }
@@ -64,7 +64,7 @@ func (h *TrackingHandler) HandleClick(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED, recipient, "", map[string]any{"url": targetURL})
+	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED, recipient, "", "", map[string]any{"url": targetURL})
 
 	http.Redirect(w, r, targetURL, http.StatusFound)
 }

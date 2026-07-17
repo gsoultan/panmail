@@ -47,10 +47,11 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
   const timelineEvents = [...(timelineData?.events || [])].sort((a, b) => {
     const secA = Number(a.timestamp?.seconds || 0);
     const secB = Number(b.timestamp?.seconds || 0);
-    if (secA !== secB) return secB - secA;
+    if (secA !== secB) return secA - secB;
     const nanoA = Number(a.timestamp?.nanos || 0);
     const nanoB = Number(b.timestamp?.nanos || 0);
-    return nanoB - nanoA;
+    if (nanoA !== nanoB) return nanoA - nanoB;
+    return (a.id || '').localeCompare(b.id || '');
   });
 
   return (

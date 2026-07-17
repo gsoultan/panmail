@@ -93,7 +93,7 @@ func (u *inboundUsecase) detectAndRecordBounce(ctx context.Context, email *panma
 		"inbound_id":     email.Id,
 	}
 
-	_ = u.eventUsecase.RecordEvent(ctx, email.TenantId, "", "", eventType, recipient, "", metadata)
+	_ = u.eventUsecase.RecordEvent(ctx, email.TenantId, "", "", eventType, recipient, "", "", metadata)
 }
 
 func (u *inboundUsecase) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*panmailv1.InboundEmail, string, error) {

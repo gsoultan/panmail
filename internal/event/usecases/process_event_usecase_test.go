@@ -124,7 +124,7 @@ func TestRecordEventRecovery(t *testing.T) {
 	}
 
 	// 2. Record DELIVERED event - should update message providerID and populate event subject/providerName
-	err := uc.RecordEvent(t.Context(), tenantID, providerID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, "", nil)
+	err := uc.RecordEvent(t.Context(), tenantID, providerID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, "", "", nil)
 	if err != nil {
 		t.Fatalf("RecordEvent failed: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestRecordEventRecovery(t *testing.T) {
 	}
 
 	// 3. Record OPENED event with missing providerID and recipient
-	err = uc.RecordEvent(t.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, "", "", nil)
+	err = uc.RecordEvent(t.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, "", "", "", nil)
 	if err != nil {
 		t.Fatalf("RecordEvent failed: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestRecordEventMultiRecipientAccuracy(t *testing.T) {
 	}
 
 	// 2. Record SENT for recipient B
-	err := uc.RecordEvent(t.Context(), tenantID, "prov-1", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, "b@example.com", "", nil)
+	err := uc.RecordEvent(t.Context(), tenantID, "prov-1", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, "b@example.com", "", "", nil)
 	if err != nil {
 		t.Fatalf("RecordEvent failed: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestRecordEventMultiRecipientAccuracy(t *testing.T) {
 
 	// 3. Record OPENED with MISSING recipient (e.g. malformed webhook or tracking)
 	// Currently it fallbacks to recipients[0]
-	err = uc.RecordEvent(t.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, "", "", nil)
+	err = uc.RecordEvent(t.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, "", "", "", nil)
 	if err != nil {
 		t.Fatalf("RecordEvent failed: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestRecordEventWebhookLinking(t *testing.T) {
 
 	// 2. Receive a webhook with a PROVIDER-SPECIFIC message ID
 	providerMsgID := "sg-long-random-id"
-	err := uc.RecordEvent(t.Context(), tenantID, providerID, providerMsgID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, "", nil)
+	err := uc.RecordEvent(t.Context(), tenantID, providerID, providerMsgID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, "", "", nil)
 	if err != nil {
 		t.Fatalf("RecordEvent failed: %v", err)
 	}

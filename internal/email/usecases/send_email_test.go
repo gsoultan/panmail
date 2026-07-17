@@ -89,15 +89,17 @@ type mockEventUsecase struct {
 	messages []*panmailv1.EmailMessage
 }
 
-func (m *mockEventUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, errorMessage string, metadata map[string]any) error {
+func (m *mockEventUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, subject string, errorMessage string, metadata map[string]any) error {
 	m.events = append(m.events, &evententities.EmailEvent{
 		TenantID:     tenantID,
 		ProviderID:   providerID,
 		MessageID:    messageID,
 		Type:         eventType,
 		Recipient:    recipient,
+		Subject:      subject,
 		Metadata:     metadata,
 		ErrorMessage: errorMessage,
+		Timestamp:    time.Now(),
 	})
 	return nil
 }
@@ -485,3 +487,76 @@ func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
 		t.Errorf("urlB missing recipient encoding: %s", urlB)
 	}
 }
+
+func TestSendEmailUsecase_MultiRecipient_PartialFailure(t *testing.T) {
+	provider := &providerEntities.EmailProvider{
+		ID: "p1", Name: "SMTP", Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+	}
+	repo := &mockProviderRepo{provider: provider}
+
+	// Sender that fails for a specific recipient
+	sender := &mockSenderFunc{
+		sendFn: func(email gsmail.Email) error {
+			if email.To[0] == "fail@example.com" {
+				return errors.New("delivery failed")
+			}
+			return nil
+		},
+	}
+
+	eventUsecase := &mockEventUsecase{}
+	factory := &mockFactory{sender: sender}
+	u := NewSendEmailUsecase(repo, nil, nil, nil, eventUsecase, factory, NewTemplateRenderer(), "http://localhost")
+
+	req := &panmailv1.SendEmailRequest{
+		ProviderId: "p1",
+		From:       "from@example.com",
+		To:         []string{"success@example.com", "fail@example.com", "another-success@example.com"},
+		Subject:    "Partial Failure Test",
+		Body:       "Hello",
+	}
+
+	ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
+	_, err := u.SendEmail(ctx, "test-tenant", req)
+
+	// Should NOT return error because some succeeded
+	if err != nil {
+		t.Fatalf("SendEmail failed but should have continued: %v", err)
+	}
+
+	// Verify events
+	delivered := make(map[string]bool)
+	deferred := make(map[string]bool)
+	for _, e := range eventUsecase.events {
+		if e.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+			delivered[e.Recipient] = true
+		}
+		if e.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED {
+			deferred[e.Recipient] = true
+		}
+	}
+
+	if !delivered["success@example.com"] {
+		t.Error("success@example.com should be delivered")
+	}
+	if !delivered["another-success@example.com"] {
+		t.Error("another-success@example.com should be delivered")
+	}
+	if delivered["fail@example.com"] {
+		t.Error("fail@example.com should NOT be delivered")
+	}
+	if !deferred["fail@example.com"] {
+		t.Error("fail@example.com should be deferred")
+	}
+}
+
+type mockSenderFunc struct {
+	sendFn func(email gsmail.Email) error
+}
+
+func (m *mockSenderFunc) Send(ctx context.Context, email gsmail.Email) error {
+	return m.sendFn(email)
+}
+func (m *mockSenderFunc) Validate(ctx context.Context, email string) error { return nil }
+func (m *mockSenderFunc) Ping(ctx context.Context) error                   { return nil }
+func (m *mockSenderFunc) SetRetryConfig(config gsmail.RetryConfig)         {}

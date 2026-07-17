@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -193,7 +194,8 @@ func (u *processEventUsecase) getProviderName(ctx context.Context, tenantID, pro
 	return ""
 }
 
-func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, errorMessage string, metadata map[string]any) error {
+func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, subject string, errorMessage string, metadata map[string]any) error {
+	recipient = strings.ToLower(strings.TrimSpace(recipient))
 	// If it's a generic bounce, try to classify it better using the error message
 	if eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED && errorMessage != "" {
 		eventType = emailutil.ClassifyError(errorMessage)
@@ -203,16 +205,24 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 		u.sentCounter.Add(1)
 	}
 
-	var subject string
 	// Attempt to recover missing fields from stored message
 	if messageID != "" {
 		msg, _ := u.repo.GetMessage(ctx, tenantID, messageID)
+
+		// Fallback lookup: if message not found by ID, and it's not a UUID, it might be a provider ID
 		if msg == nil && recipient != "" {
-			// Webhook might have sent a provider-specific message ID
-			// Try to find the internal ID by looking up recent messages for this recipient
-			msg, _ = u.repo.GetLatestMessageForRecipient(ctx, tenantID, recipient)
-			if msg != nil {
-				messageID = msg.ID
+			// We only try to recover the message ID from recipient if the provided messageID
+			// doesn't look like our internal UUID.
+			isUUID := true
+			if _, err := uuid.Parse(messageID); err != nil {
+				isUUID = false
+			}
+
+			if !isUUID {
+				msg, _ = u.repo.GetLatestMessageForRecipient(ctx, tenantID, recipient)
+				if msg != nil {
+					messageID = msg.ID
+				}
 			}
 		}
 
@@ -229,7 +239,9 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 					recipient = msg.Bcc[0]
 				}
 			}
-			subject = msg.Subject
+			if subject == "" {
+				subject = msg.Subject
+			}
 		}
 	}
 

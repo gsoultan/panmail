@@ -275,7 +275,7 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 			_ = closer.Close()
 		}
 
-		if oldTsStr == "" || tsDescStr < oldTsStr {
+		if oldTsStr == "" || tsDescStr <= oldTsStr {
 			if oldTsStr != "" {
 				// Delete old entry from the time-ordered index
 				_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s", e.TenantID, oldTsStr, e.MessageID, e.Recipient)), nil)
