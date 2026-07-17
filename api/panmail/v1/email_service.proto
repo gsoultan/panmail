@@ -16,6 +16,8 @@ message SendEmailRequest {
   string provider_id = 1;
   string from = 2;
   repeated string to = 3;
+  repeated string cc = 12;
+  repeated string bcc = 13;
   string subject = 4;
   string body = 5 [deprecated = true];
   bool is_html = 6 [deprecated = true];

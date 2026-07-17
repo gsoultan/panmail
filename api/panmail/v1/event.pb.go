@@ -239,6 +239,8 @@ type EmailMessage struct {
 	ProviderId    string                 `protobuf:"bytes,10,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
 	From          string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
 	To            []string               `protobuf:"bytes,4,rep,name=to,proto3" json:"to,omitempty"`
+	Cc            []string               `protobuf:"bytes,11,rep,name=cc,proto3" json:"cc,omitempty"`
+	Bcc           []string               `protobuf:"bytes,12,rep,name=bcc,proto3" json:"bcc,omitempty"`
 	Subject       string                 `protobuf:"bytes,5,opt,name=subject,proto3" json:"subject,omitempty"`
 	BodyHtml      string                 `protobuf:"bytes,6,opt,name=body_html,json=bodyHtml,proto3" json:"body_html,omitempty"`
 	BodyText      string                 `protobuf:"bytes,7,opt,name=body_text,json=bodyText,proto3" json:"body_text,omitempty"`
@@ -313,6 +315,20 @@ func (x *EmailMessage) GetTo() []string {
 	return nil
 }
 
+func (x *EmailMessage) GetCc() []string {
+	if x != nil {
+		return x.Cc
+	}
+	return nil
+}
+
+func (x *EmailMessage) GetBcc() []string {
+	if x != nil {
+		return x.Bcc
+	}
+	return nil
+}
+
 func (x *EmailMessage) GetSubject() string {
 	if x != nil {
 		return x.Subject
@@ -369,7 +385,7 @@ const file_panmail_v1_event_proto_rawDesc = "" +
 	"\asubject\x18\v \x01(\tR\asubject\x128\n" +
 	"\ttimestamp\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x123\n" +
 	"\bmetadata\x18\b \x01(\v2\x17.google.protobuf.StructR\bmetadata\x12#\n" +
-	"\rerror_message\x18\t \x01(\tR\ferrorMessage\"\xc9\x02\n" +
+	"\rerror_message\x18\t \x01(\tR\ferrorMessage\"\xeb\x02\n" +
 	"\fEmailMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x1f\n" +
@@ -377,7 +393,9 @@ const file_panmail_v1_event_proto_rawDesc = "" +
 	" \x01(\tR\n" +
 	"providerId\x12\x12\n" +
 	"\x04from\x18\x03 \x01(\tR\x04from\x12\x0e\n" +
-	"\x02to\x18\x04 \x03(\tR\x02to\x12\x18\n" +
+	"\x02to\x18\x04 \x03(\tR\x02to\x12\x0e\n" +
+	"\x02cc\x18\v \x03(\tR\x02cc\x12\x10\n" +
+	"\x03bcc\x18\f \x03(\tR\x03bcc\x12\x18\n" +
 	"\asubject\x18\x05 \x01(\tR\asubject\x12\x1b\n" +
 	"\tbody_html\x18\x06 \x01(\tR\bbodyHtml\x12\x1b\n" +
 	"\tbody_text\x18\a \x01(\tR\bbodyText\x128\n" +

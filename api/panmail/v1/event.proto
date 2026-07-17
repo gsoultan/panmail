@@ -46,6 +46,8 @@ message EmailMessage {
   string provider_id = 10;
   string from = 3;
   repeated string to = 4;
+  repeated string cc = 11;
+  repeated string bcc = 12;
   string subject = 5;
   string body_html = 6;
   string body_text = 7;

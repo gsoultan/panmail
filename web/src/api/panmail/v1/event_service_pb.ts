@@ -809,6 +809,11 @@ export class ListEventsRequest extends Message<ListEventsRequest> {
    */
   latestOnly = false;
 
+  /**
+   * @generated from field: bool recipient_exact = 9;
+   */
+  recipientExact = false;
+
   constructor(data?: PartialMessage<ListEventsRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -825,6 +830,7 @@ export class ListEventsRequest extends Message<ListEventsRequest> {
     { no: 6, name: "end_time", kind: "message", T: Timestamp },
     { no: 7, name: "message_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "latest_only", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 9, name: "recipient_exact", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListEventsRequest {

@@ -9,14 +9,15 @@ import (
 )
 
 type ListFilter struct {
-	PageSize   int
-	PageToken  string
-	Recipient  string
-	EventType  panmailv1.EmailEventType
-	StartTime  time.Time
-	EndTime    time.Time
-	MessageID  string
-	LatestOnly bool
+	PageSize       int
+	PageToken      string
+	Recipient      string
+	EventType      panmailv1.EmailEventType
+	StartTime      time.Time
+	EndTime        time.Time
+	MessageID      string
+	LatestOnly     bool
+	RecipientExact bool
 }
 
 type ResourcePoint struct {

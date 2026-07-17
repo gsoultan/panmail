@@ -83,6 +83,8 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
       providerId: initialProviderId || '',
       from: '',
       to: [] as string[],
+      cc: [] as string[],
+      bcc: [] as string[],
       subject: 'Test Email from Panmail',
       bodyHtml: '<h1>Test Email</h1><p>This is a test email sent from Panmail Email Gateway.</p>',
       bodyText: 'This is a test email sent from Panmail Email Gateway.',
@@ -235,6 +237,13 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
       to: values.to.length > 0 ? values.to : ['recipient@example.com'],
     };
 
+    if (values.cc && values.cc.length > 0) {
+      data.cc = values.cc;
+    }
+    if (values.bcc && values.bcc.length > 0) {
+      data.bcc = values.bcc;
+    }
+
     if (values.templateId) {
       data.templateId = values.templateId;
       try {
@@ -334,6 +343,21 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                     required
                     clearable
                   />
+
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                    <TagsInput
+                      label="Cc"
+                      placeholder="Type email and press Enter"
+                      {...form.getInputProps('cc')}
+                      clearable
+                    />
+                    <TagsInput
+                      label="Bcc"
+                      placeholder="Type email and press Enter"
+                      {...form.getInputProps('bcc')}
+                      clearable
+                    />
+                  </SimpleGrid>
                 </Stack>
               </Paper>
 

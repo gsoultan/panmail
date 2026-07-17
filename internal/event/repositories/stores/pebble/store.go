@@ -245,13 +245,15 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 
 	_ = batch.Set(idKey, idVal, nil)
 
-	// msg_events index: msg_events:{tenant_id}:{message_id}:{timestamp_desc}:{event_id}
+	// msg_events index: msg_events:{tenant_id}:{message_id}:{recipient}:{timestamp_desc}:{event_id}
 	if e.MessageID != "" {
 		buf = buf[:0]
 		buf = append(buf, "msg_events:"...)
 		buf = append(buf, e.TenantID...)
 		buf = append(buf, ':')
 		buf = append(buf, e.MessageID...)
+		buf = append(buf, ':')
+		buf = append(buf, e.Recipient...)
 		buf = append(buf, ':')
 		buf = append(buf, tsDescStr...)
 		buf = append(buf, ':')
@@ -273,27 +275,29 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 			_ = closer.Close()
 		}
 
-		if oldTsStr != "" {
-			// Delete old entry from the time-ordered index
-			_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s", e.TenantID, oldTsStr, e.MessageID, e.Recipient)), nil)
+		if oldTsStr == "" || tsDescStr < oldTsStr {
+			if oldTsStr != "" {
+				// Delete old entry from the time-ordered index
+				_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s", e.TenantID, oldTsStr, e.MessageID, e.Recipient)), nil)
+			}
+
+			// 2. Add new entry
+			batchLatestTs[cacheKey] = tsDescStr
+			_ = batch.Set(latestTsKey, []byte(tsDescStr), nil)
+
+			buf = buf[:0]
+			buf = append(buf, "latest_events:"...)
+			buf = append(buf, e.TenantID...)
+			buf = append(buf, ':')
+			buf = append(buf, tsDescStr...)
+			buf = append(buf, ':')
+			buf = append(buf, e.MessageID...)
+			buf = append(buf, ':')
+			buf = append(buf, e.Recipient...)
+			latestEventKey := make([]byte, len(buf))
+			copy(latestEventKey, buf)
+			_ = batch.Set(latestEventKey, val, nil)
 		}
-
-		// 2. Add new entry
-		batchLatestTs[cacheKey] = tsDescStr
-		_ = batch.Set(latestTsKey, []byte(tsDescStr), nil)
-
-		buf = buf[:0]
-		buf = append(buf, "latest_events:"...)
-		buf = append(buf, e.TenantID...)
-		buf = append(buf, ':')
-		buf = append(buf, tsDescStr...)
-		buf = append(buf, ':')
-		buf = append(buf, e.MessageID...)
-		buf = append(buf, ':')
-		buf = append(buf, e.Recipient...)
-		latestEventKey := make([]byte, len(buf))
-		copy(latestEventKey, buf)
-		_ = batch.Set(latestEventKey, val, nil)
 	}
 
 	return nil
@@ -315,7 +319,24 @@ func (s *store) performWriteMessage(batch *pebble.Batch, m *entities.EmailMessag
 		tsDescStr = strings.Repeat("0", 19-len(tsDescStr)) + tsDescStr
 	}
 
+	recipients := make(map[string]struct{})
 	for _, r := range m.To {
+		if r != "" {
+			recipients[r] = struct{}{}
+		}
+	}
+	for _, r := range m.Cc {
+		if r != "" {
+			recipients[r] = struct{}{}
+		}
+	}
+	for _, r := range m.Bcc {
+		if r != "" {
+			recipients[r] = struct{}{}
+		}
+	}
+
+	for r := range recipients {
 		idxKey := []byte(fmt.Sprintf("recipient_messages:%s:%s:%s:%s", m.TenantID, r, tsDescStr, m.ID))
 		_ = batch.Set(idxKey, []byte(m.ID), nil)
 	}
@@ -478,7 +499,7 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
 
 				// Cleanup msg_events index
 				if e.MessageID != "" {
-					_ = batch.Delete([]byte(fmt.Sprintf("msg_events:%s:%s:%s:%s", parts[1], e.MessageID, parts[2], parts[3])), nil)
+					_ = batch.Delete([]byte(fmt.Sprintf("msg_events:%s:%s:%s:%s:%s", parts[1], e.MessageID, e.Recipient, parts[2], parts[3])), nil)
 
 					// Cleanup latest_events if this is the latest one
 					latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s:%s", parts[1], e.MessageID, e.Recipient))
@@ -666,23 +687,26 @@ func (s *store) incrementCounter(batch *pebble.Batch, key []byte) error {
 }
 
 func (s *store) List(ctx context.Context, tenantID string, filter stores.ListFilter) ([]*entities.EmailEvent, string, error) {
+	if filter.PageSize <= 0 {
+		filter.PageSize = 50
+	}
 	var lowerBound []byte
 	var upperBound []byte
 
 	if filter.MessageID != "" {
-		// Use msg_events index: msg_events:{tenant_id}:{message_id}:{timestamp_desc}:{event_id}
-		prefix := []byte(fmt.Sprintf("msg_events:%s:%s:", tenantID, filter.MessageID))
+		var prefix []byte
+		if filter.Recipient != "" && filter.RecipientExact {
+			prefix = []byte(fmt.Sprintf("msg_events:%s:%s:%s:", tenantID, filter.MessageID, filter.Recipient))
+		} else {
+			prefix = []byte(fmt.Sprintf("msg_events:%s:%s:", tenantID, filter.MessageID))
+		}
 		lowerBound = prefix
-		upperBound = make([]byte, len(prefix))
-		copy(upperBound, prefix)
-		upperBound[len(upperBound)-1]++
+		upperBound = append(slices.Clone(prefix), 0xFF)
 	} else if filter.LatestOnly {
 		// Use latest_events index: latest_events:{tenant_id}:{timestamp_desc}:{message_id}:{recipient}
 		prefix := []byte(fmt.Sprintf("latest_events:%s:", tenantID))
 		lowerBound = prefix
-		upperBound = make([]byte, len(prefix))
-		copy(upperBound, prefix)
-		upperBound[len(upperBound)-1]++
+		upperBound = append(slices.Clone(prefix), 0xFF)
 
 		if !filter.EndTime.IsZero() {
 			timestampDesc := math.MaxInt64 - filter.EndTime.UnixNano()
@@ -696,9 +720,7 @@ func (s *store) List(ctx context.Context, tenantID string, filter stores.ListFil
 	} else {
 		prefix := []byte(fmt.Sprintf("events:%s:", tenantID))
 		lowerBound = prefix
-		upperBound = make([]byte, len(prefix))
-		copy(upperBound, prefix)
-		upperBound[len(upperBound)-1]++
+		upperBound = append(slices.Clone(prefix), 0xFF)
 
 		if !filter.EndTime.IsZero() {
 			// end_time is more recent -> smaller timestampDesc
@@ -737,8 +759,14 @@ func (s *store) List(ctx context.Context, tenantID string, filter stores.ListFil
 		}
 
 		// Filter by recipient
-		if filter.Recipient != "" && !strings.Contains(strings.ToLower(e.Recipient), strings.ToLower(filter.Recipient)) {
-			continue
+		if filter.Recipient != "" {
+			if filter.RecipientExact {
+				if e.Recipient != filter.Recipient {
+					continue
+				}
+			} else if !strings.Contains(strings.ToLower(e.Recipient), strings.ToLower(filter.Recipient)) {
+				continue
+			}
 		}
 
 		// Filter by event type
@@ -762,9 +790,7 @@ func (s *store) GetMetrics(ctx context.Context, tenantID string, startTime, endT
 	if startTime.IsZero() && endTime.IsZero() {
 		// Return all-time total metrics from aggregated keys
 		prefix := []byte(fmt.Sprintf("metrics:%s:", tenantID))
-		upper := make([]byte, len(prefix))
-		copy(upper, prefix)
-		upper[len(upper)-1]++
+		upper := append(slices.Clone(prefix), 0xFF)
 
 		iter, err := s.db.NewIter(&pebble.IterOptions{
 			LowerBound: prefix,
@@ -804,9 +830,7 @@ func (s *store) GetMetrics(ctx context.Context, tenantID string, startTime, endT
 	// FALLBACK: Calculate metrics by iterating over events in the time range
 	prefix := []byte(fmt.Sprintf("events:%s:", tenantID))
 	lower := prefix
-	upper := make([]byte, len(prefix))
-	copy(upper, prefix)
-	upper[len(upper)-1]++
+	upper := append(slices.Clone(prefix), 0xFF)
 
 	if !endTime.IsZero() {
 		tsDesc := math.MaxInt64 - endTime.UnixNano()
@@ -856,9 +880,7 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 		prefix := []byte(fmt.Sprintf("%s%s:", prefixStr, tenantID))
 
 		lowerBound := prefix
-		upperBound := make([]byte, len(prefix))
-		copy(upperBound, prefix)
-		upperBound[len(upperBound)-1]++
+		upperBound := append(slices.Clone(prefix), 0xFF)
 
 		if !startTime.IsZero() {
 			format := "2006-01-02"
@@ -928,9 +950,7 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 	// For minute granularity (fallback) or other cases, we must iterate events
 	prefix := []byte(fmt.Sprintf("events:%s:", tenantID))
 	lower := prefix
-	upper := make([]byte, len(prefix))
-	copy(upper, prefix)
-	upper[len(upper)-1]++
+	upper := append(slices.Clone(prefix), 0xFF)
 
 	if !endTime.IsZero() {
 		tsDesc := math.MaxInt64 - endTime.UnixNano()

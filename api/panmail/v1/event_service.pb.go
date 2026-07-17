@@ -943,17 +943,18 @@ func (x *GetTimeSeriesMetricsResponse) GetData() map[string]*TimeSeriesData {
 }
 
 type ListEventsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	Recipient     string                 `protobuf:"bytes,3,opt,name=recipient,proto3" json:"recipient,omitempty"`
-	EventType     EmailEventType         `protobuf:"varint,4,opt,name=event_type,json=eventType,proto3,enum=panmail.v1.EmailEventType" json:"event_type,omitempty"`
-	StartTime     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
-	EndTime       *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
-	MessageId     string                 `protobuf:"bytes,7,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
-	LatestOnly    bool                   `protobuf:"varint,8,opt,name=latest_only,json=latestOnly,proto3" json:"latest_only,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	PageSize       int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken      string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	Recipient      string                 `protobuf:"bytes,3,opt,name=recipient,proto3" json:"recipient,omitempty"`
+	EventType      EmailEventType         `protobuf:"varint,4,opt,name=event_type,json=eventType,proto3,enum=panmail.v1.EmailEventType" json:"event_type,omitempty"`
+	StartTime      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
+	EndTime        *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
+	MessageId      string                 `protobuf:"bytes,7,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
+	LatestOnly     bool                   `protobuf:"varint,8,opt,name=latest_only,json=latestOnly,proto3" json:"latest_only,omitempty"`
+	RecipientExact bool                   `protobuf:"varint,9,opt,name=recipient_exact,json=recipientExact,proto3" json:"recipient_exact,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListEventsRequest) Reset() {
@@ -1038,6 +1039,13 @@ func (x *ListEventsRequest) GetMessageId() string {
 func (x *ListEventsRequest) GetLatestOnly() bool {
 	if x != nil {
 		return x.LatestOnly
+	}
+	return false
+}
+
+func (x *ListEventsRequest) GetRecipientExact() bool {
+	if x != nil {
+		return x.RecipientExact
 	}
 	return false
 }
@@ -1177,7 +1185,7 @@ const file_panmail_v1_event_service_proto_rawDesc = "" +
 	"\x04data\x18\x01 \x03(\v22.panmail.v1.GetTimeSeriesMetricsResponse.DataEntryR\x04data\x1aS\n" +
 	"\tDataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
-	"\x05value\x18\x02 \x01(\v2\x1a.panmail.v1.TimeSeriesDataR\x05value:\x028\x01\"\xda\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x1a.panmail.v1.TimeSeriesDataR\x05value:\x028\x01\"\x83\x03\n" +
 	"\x11ListEventsRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -1191,7 +1199,8 @@ const file_panmail_v1_event_service_proto_rawDesc = "" +
 	"\n" +
 	"message_id\x18\a \x01(\tR\tmessageId\x12\x1f\n" +
 	"\vlatest_only\x18\b \x01(\bR\n" +
-	"latestOnly\"l\n" +
+	"latestOnly\x12'\n" +
+	"\x0frecipient_exact\x18\t \x01(\bR\x0erecipientExact\"l\n" +
 	"\x12ListEventsResponse\x12.\n" +
 	"\x06events\x18\x01 \x03(\v2\x16.panmail.v1.EmailEventR\x06events\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xf7\x04\n" +

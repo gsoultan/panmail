@@ -27,6 +27,8 @@ type SendEmailRequest struct {
 	ProviderId string                 `protobuf:"bytes,1,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
 	From       string                 `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
 	To         []string               `protobuf:"bytes,3,rep,name=to,proto3" json:"to,omitempty"`
+	Cc         []string               `protobuf:"bytes,12,rep,name=cc,proto3" json:"cc,omitempty"`
+	Bcc        []string               `protobuf:"bytes,13,rep,name=bcc,proto3" json:"bcc,omitempty"`
 	Subject    string                 `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"`
 	// Deprecated: Marked as deprecated in panmail/v1/email_service.proto.
 	Body string `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
@@ -88,6 +90,20 @@ func (x *SendEmailRequest) GetFrom() string {
 func (x *SendEmailRequest) GetTo() []string {
 	if x != nil {
 		return x.To
+	}
+	return nil
+}
+
+func (x *SendEmailRequest) GetCc() []string {
+	if x != nil {
+		return x.Cc
+	}
+	return nil
+}
+
+func (x *SendEmailRequest) GetBcc() []string {
+	if x != nil {
+		return x.Bcc
 	}
 	return nil
 }
@@ -215,12 +231,14 @@ var File_panmail_v1_email_service_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_service_proto_rawDesc = "" +
 	"\n" +
 	"\x1epanmail/v1/email_service.proto\x12\n" +
-	"panmail.v1\x1a\x16panmail/v1/event.proto\x1a\x17panmail/v1/common.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xf9\x02\n" +
+	"panmail.v1\x1a\x16panmail/v1/event.proto\x1a\x17panmail/v1/common.proto\x1a\x1cgoogle/protobuf/struct.proto\"\x9b\x03\n" +
 	"\x10SendEmailRequest\x12\x1f\n" +
 	"\vprovider_id\x18\x01 \x01(\tR\n" +
 	"providerId\x12\x12\n" +
 	"\x04from\x18\x02 \x01(\tR\x04from\x12\x0e\n" +
-	"\x02to\x18\x03 \x03(\tR\x02to\x12\x18\n" +
+	"\x02to\x18\x03 \x03(\tR\x02to\x12\x0e\n" +
+	"\x02cc\x18\f \x03(\tR\x02cc\x12\x10\n" +
+	"\x03bcc\x18\r \x03(\tR\x03bcc\x12\x18\n" +
 	"\asubject\x18\x04 \x01(\tR\asubject\x12\x16\n" +
 	"\x04body\x18\x05 \x01(\tB\x02\x18\x01R\x04body\x12\x1b\n" +
 	"\ais_html\x18\x06 \x01(\bB\x02\x18\x01R\x06isHtml\x12\x1b\n" +

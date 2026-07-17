@@ -220,8 +220,14 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 			if providerID == "" {
 				providerID = msg.ProviderID
 			}
-			if recipient == "" && len(msg.To) == 1 {
-				recipient = msg.To[0]
+			if recipient == "" && (len(msg.To)+len(msg.Cc)+len(msg.Bcc)) == 1 {
+				if len(msg.To) == 1 {
+					recipient = msg.To[0]
+				} else if len(msg.Cc) == 1 {
+					recipient = msg.Cc[0]
+				} else if len(msg.Bcc) == 1 {
+					recipient = msg.Bcc[0]
+				}
 			}
 			subject = msg.Subject
 		}
@@ -365,14 +371,15 @@ func (u *processEventUsecase) ListByMessageID(ctx context.Context, tenantID stri
 
 func (u *processEventUsecase) ListEvents(ctx context.Context, tenantID string, filter ListFilter) ([]*panmailv1.EmailEvent, string, error) {
 	repoFilter := eventstores.ListFilter{
-		PageSize:   filter.PageSize,
-		PageToken:  filter.PageToken,
-		Recipient:  filter.Recipient,
-		EventType:  filter.EventType,
-		StartTime:  filter.StartTime,
-		EndTime:    filter.EndTime,
-		MessageID:  filter.MessageID,
-		LatestOnly: filter.LatestOnly,
+		PageSize:       filter.PageSize,
+		PageToken:      filter.PageToken,
+		Recipient:      filter.Recipient,
+		EventType:      filter.EventType,
+		StartTime:      filter.StartTime,
+		EndTime:        filter.EndTime,
+		MessageID:      filter.MessageID,
+		LatestOnly:     filter.LatestOnly,
+		RecipientExact: filter.RecipientExact,
 	}
 	events, nextToken, err := u.repo.List(ctx, tenantID, repoFilter)
 	if err != nil {
@@ -437,6 +444,8 @@ func (u *processEventUsecase) GetEvent(ctx context.Context, tenantID string, id 
 		ProviderId:  m.ProviderID,
 		From:        m.From,
 		To:          m.To,
+		Cc:          m.Cc,
+		Bcc:         m.Bcc,
 		Subject:     m.Subject,
 		BodyHtml:    m.BodyHTML,
 		BodyText:    m.BodyText,
@@ -454,6 +463,8 @@ func (u *processEventUsecase) SaveMessage(ctx context.Context, m *panmailv1.Emai
 		ProviderID:  m.ProviderId,
 		From:        m.From,
 		To:          m.To,
+		Cc:          m.Cc,
+		Bcc:         m.Bcc,
 		Subject:     m.Subject,
 		BodyHTML:    m.BodyHtml,
 		BodyText:    m.BodyText,

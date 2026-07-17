@@ -232,6 +232,16 @@ export class EmailMessage extends Message<EmailMessage> {
   to: string[] = [];
 
   /**
+   * @generated from field: repeated string cc = 11;
+   */
+  cc: string[] = [];
+
+  /**
+   * @generated from field: repeated string bcc = 12;
+   */
+  bcc: string[] = [];
+
+  /**
    * @generated from field: string subject = 5;
    */
   subject = "";
@@ -269,6 +279,8 @@ export class EmailMessage extends Message<EmailMessage> {
     { no: 10, name: "provider_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "from", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "to", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 11, name: "cc", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 12, name: "bcc", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 5, name: "subject", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "body_html", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 7, name: "body_text", kind: "scalar", T: 9 /* ScalarType.STRING */ },

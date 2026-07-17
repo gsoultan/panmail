@@ -25,7 +25,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
 
   const { data: timelineData } = useQuery({
     queryKey: ['eventTimeline', event?.messageId, event?.recipient],
-    queryFn: () => event ? analyticsService.listEvents(100, '', event.recipient, 0, undefined, undefined, event.messageId) : null,
+    queryFn: () => event ? analyticsService.listEvents(100, '', event.recipient, 0, undefined, undefined, event.messageId, false, true) : null,
     enabled: !!event,
   });
 
@@ -125,6 +125,23 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
                     <Text size="xs" style={{ fontFamily: 'monospace' }} c="dimmed">{event.messageId}</Text>
                   </Stack>
                 </Grid.Col>
+                {message && (
+                  <>
+                    <Grid.Col span={12}>
+                      <Divider />
+                    </Grid.Col>
+                    <Grid.Col span={12}>
+                      <Stack gap={4}>
+                        <Text size="xs" c="dimmed" fw={700} tt="uppercase">All Recipients</Text>
+                        <Group gap={4} wrap="wrap">
+                          {message.to.map((r, i) => <Badge key={`to-${i}`} variant="outline" size="xs">To: {r}</Badge>)}
+                          {message.cc?.map((r, i) => <Badge key={`cc-${i}`} variant="outline" size="xs" color="gray">Cc: {r}</Badge>)}
+                          {message.bcc?.map((r, i) => <Badge key={`bcc-${i}`} variant="outline" size="xs" color="dark">Bcc: {r}</Badge>)}
+                        </Group>
+                      </Stack>
+                    </Grid.Col>
+                  </>
+                )}
               </Grid>
             </Paper>
 

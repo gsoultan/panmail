@@ -305,10 +305,28 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		}
 	}
 
-	slog.Info("starting actual delivery", "id", messageID, "recipient_count", len(req.To), "provider_count", len(providers))
+	// Collect unique recipients to avoid duplication
+	recipientSet := make(map[string]struct{})
+	var uniqueRecipients []string
+	addRecipients := func(emails []string) {
+		for _, email := range emails {
+			if email == "" {
+				continue
+			}
+			if _, ok := recipientSet[email]; !ok {
+				recipientSet[email] = struct{}{}
+				uniqueRecipients = append(uniqueRecipients, email)
+			}
+		}
+	}
+	addRecipients(req.To)
+	addRecipients(req.Cc)
+	addRecipients(req.Bcc)
+
+	slog.Info("starting actual delivery", "id", messageID, "recipient_count", len(uniqueRecipients), "provider_count", len(providers))
 
 	// We iterate through recipients to support individual tracking and status
-	for _, recipient := range req.To {
+	for _, recipient := range uniqueRecipients {
 		if deliveredMap[recipient] {
 			slog.Info("email already delivered to recipient, skipping", "id", messageID, "recipient", recipient)
 			continue

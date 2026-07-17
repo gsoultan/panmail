@@ -269,3 +269,32 @@ func TestRecordEventWebhookLinking(t *testing.T) {
 		t.Errorf("expected recovered subject %s, got %s", subject, linkedEvent.Subject)
 	}
 }
+
+func TestSaveMessageWithCcBcc(t *testing.T) {
+	repo := &mockEventRepo{
+		messages: make(map[string]*evententities.EmailMessage),
+	}
+	uc := NewProcessEventUsecase(repo, nil, nil, nil, nil)
+
+	msg := &panmailv1.EmailMessage{
+		Id:       "msg-1",
+		TenantId: "tenant-1",
+		To:       []string{"to@example.com"},
+		Cc:       []string{"cc@example.com"},
+		Bcc:      []string{"bcc@example.com"},
+		Subject:  "Test",
+	}
+
+	err := uc.SaveMessage(t.Context(), msg)
+	if err != nil {
+		t.Fatalf("SaveMessage failed: %v", err)
+	}
+
+	saved := repo.messages["msg-1"]
+	if len(saved.Cc) != 1 || saved.Cc[0] != "cc@example.com" {
+		t.Errorf("expected Cc cc@example.com, got %v", saved.Cc)
+	}
+	if len(saved.Bcc) != 1 || saved.Bcc[0] != "bcc@example.com" {
+		t.Errorf("expected Bcc bcc@example.com, got %v", saved.Bcc)
+	}
+}

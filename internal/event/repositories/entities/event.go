@@ -25,6 +25,8 @@ type EmailMessage struct {
 	ProviderID  string                  `json:"provider_id"`
 	From        string                  `json:"from"`
 	To          []string                `json:"to"`
+	Cc          []string                `json:"cc"`
+	Bcc         []string                `json:"bcc"`
 	Subject     string                  `json:"subject"`
 	BodyHTML    string                  `json:"body_html"`
 	BodyText    string                  `json:"body_text"`

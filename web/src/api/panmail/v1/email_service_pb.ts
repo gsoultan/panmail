@@ -28,6 +28,16 @@ export class SendEmailRequest extends Message<SendEmailRequest> {
   to: string[] = [];
 
   /**
+   * @generated from field: repeated string cc = 12;
+   */
+  cc: string[] = [];
+
+  /**
+   * @generated from field: repeated string bcc = 13;
+   */
+  bcc: string[] = [];
+
+  /**
    * @generated from field: string subject = 4;
    */
   subject = "";
@@ -80,6 +90,8 @@ export class SendEmailRequest extends Message<SendEmailRequest> {
     { no: 1, name: "provider_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "from", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "to", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 12, name: "cc", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 13, name: "bcc", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 4, name: "subject", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "body", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "is_html", kind: "scalar", T: 8 /* ScalarType.BOOL */ },

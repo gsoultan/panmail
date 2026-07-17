@@ -30,12 +30,13 @@ func (s *eventService) ListEvents(ctx context.Context, req *connect.Request[panm
 	}
 
 	filter := usecases.ListFilter{
-		PageSize:   pageSize,
-		PageToken:  req.Msg.PageToken,
-		Recipient:  req.Msg.Recipient,
-		EventType:  req.Msg.EventType,
-		MessageID:  req.Msg.MessageId,
-		LatestOnly: req.Msg.LatestOnly,
+		PageSize:       pageSize,
+		PageToken:      req.Msg.PageToken,
+		Recipient:      req.Msg.Recipient,
+		EventType:      req.Msg.EventType,
+		MessageID:      req.Msg.MessageId,
+		LatestOnly:     req.Msg.LatestOnly,
+		RecipientExact: req.Msg.RecipientExact,
 	}
 
 	if req.Msg.StartTime != nil {
