@@ -22,6 +22,13 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const (
+	testTenantID    = "00000000-0000-0000-0000-000000000001"
+	testProviderID  = "00000000-0000-0000-0000-000000000002"
+	testTemplateID  = "00000000-0000-0000-0000-000000000003"
+	testTemplate2ID = "00000000-0000-0000-0000-000000000004"
+)
+
 type mockProviderRepo struct {
 	provider *providerEntities.EmailProvider
 }
@@ -257,13 +264,13 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 		{
 			name: "Successful Send",
 			provider: &providerEntities.EmailProvider{
-				ID:   "p1",
+				ID:   testProviderID,
 				Name: "SMTP Provider",
 				Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 			},
 			sender: &mockSender{},
 			req: &panmailv1.SendEmailRequest{
-				ProviderId: "p1",
+				ProviderId: testProviderID,
 				From:       "from@example.com",
 				To:         []string{"to@example.com"},
 				Subject:    "Hello",
@@ -275,21 +282,21 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 		{
 			name: "Templated Send",
 			provider: &providerEntities.EmailProvider{
-				ID:   "p1",
+				ID:   testProviderID,
 				Name: "SMTP Provider",
 				Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 			},
 			sender: &mockSender{},
 			template: &templateentities.Template{
-				ID:       "t1",
+				ID:       testTemplateID,
 				Subject:  "Hello {{name}}",
 				BodyHTML: "<p>Welcome to {{product}}</p>",
 			},
 			req: &panmailv1.SendEmailRequest{
-				ProviderId: "p1",
+				ProviderId: testProviderID,
 				From:       "from@example.com",
 				To:         []string{"to@example.com"},
-				TemplateId: "t1",
+				TemplateId: testTemplateID,
 				TemplateData: func() *structpb.Struct {
 					s, _ := structpb.NewStruct(map[string]any{"name": "Junie", "product": "Panmail"})
 					return s
@@ -302,21 +309,21 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 		{
 			name: "Go-style Template Variables",
 			provider: &providerEntities.EmailProvider{
-				ID:   "p1",
+				ID:   testProviderID,
 				Name: "SMTP Provider",
 				Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 			},
 			sender: &mockSender{},
 			template: &templateentities.Template{
-				ID:       "t2",
+				ID:       testTemplate2ID,
 				Subject:  "Hello {{.name}}",
 				BodyHTML: "<p>Welcome to {{.product}}</p>",
 			},
 			req: &panmailv1.SendEmailRequest{
-				ProviderId: "p1",
+				ProviderId: testProviderID,
 				From:       "from@example.com",
 				To:         []string{"to@example.com"},
-				TemplateId: "t2",
+				TemplateId: testTemplate2ID,
 				TemplateData: func() *structpb.Struct {
 					s, _ := structpb.NewStruct(map[string]any{"name": "Junie", "product": "Panmail"})
 					return s
@@ -338,13 +345,13 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 		{
 			name: "Send Error",
 			provider: &providerEntities.EmailProvider{
-				ID:   "p1",
+				ID:   testProviderID,
 				Name: "SMTP Provider",
 				Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 			},
 			sender: &mockSender{err: errors.New("smtp error")},
 			req: &panmailv1.SendEmailRequest{
-				ProviderId: "p1",
+				ProviderId: testProviderID,
 				From:       "from@example.com",
 				To:         []string{"to@example.com"},
 			},
@@ -353,7 +360,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 		{
 			name: "Domain Mismatch",
 			provider: &providerEntities.EmailProvider{
-				ID:   "p1",
+				ID:   testProviderID,
 				Name: "SMTP Provider",
 				Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 				Config: func() []byte {
@@ -364,7 +371,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 			},
 			sender: &mockSender{},
 			req: &panmailv1.SendEmailRequest{
-				ProviderId: "p1",
+				ProviderId: testProviderID,
 				From:       "user@wrongdomain.com",
 				To:         []string{"to@example.com"},
 				Subject:    "Hello",
@@ -375,7 +382,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 		{
 			name: "Domain Match",
 			provider: &providerEntities.EmailProvider{
-				ID:   "p1",
+				ID:   testProviderID,
 				Name: "SMTP Provider",
 				Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 				Config: func() []byte {
@@ -386,7 +393,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 			},
 			sender: &mockSender{},
 			req: &panmailv1.SendEmailRequest{
-				ProviderId: "p1",
+				ProviderId: testProviderID,
 				From:       "user@example.com",
 				To:         []string{"to@example.com"},
 				Subject:    "Hello",
@@ -407,7 +414,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 			renderer := NewTemplateRenderer()
 			u := NewSendEmailUsecase(repo, templateRepo, suppressionRepo, outboxRepo, eventUsecase, factory, renderer, "http://localhost")
 
-			res, err := u.SendEmail(context.Background(), "test-tenant", tc.req)
+			res, err := u.SendEmail(context.Background(), testTenantID, tc.req)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("SendEmail() error = %v, wantErr %v", err, tc.wantErr)
 			}
@@ -443,7 +450,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 
 func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
 	provider := &providerEntities.EmailProvider{
-		ID: "p1", Name: "SMTP", Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+		ID: testProviderID, Name: "SMTP", Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 	}
 	repo := &mockProviderRepo{provider: provider}
 	sender := &mockSender{}
@@ -452,7 +459,7 @@ func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
 	u := NewSendEmailUsecase(repo, nil, nil, nil, eventUsecase, factory, NewTemplateRenderer(), "http://localhost")
 
 	req := &panmailv1.SendEmailRequest{
-		ProviderId: "p1",
+		ProviderId: testProviderID,
 		From:       "from@example.com",
 		To:         []string{"a@example.com", "b@example.com"},
 		Subject:    "Hello",
@@ -460,7 +467,7 @@ func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
 	}
 
 	ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
-	_, err := u.SendEmail(ctx, "test-tenant", req)
+	_, err := u.SendEmail(ctx, testTenantID, req)
 	if err != nil {
 		t.Fatalf("doSend failed: %v", err)
 	}
@@ -524,7 +531,7 @@ func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
 
 func TestSendEmailUsecase_MultiRecipient_PartialFailure(t *testing.T) {
 	provider := &providerEntities.EmailProvider{
-		ID: "p1", Name: "SMTP", Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+		ID: testProviderID, Name: "SMTP", Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 	}
 	repo := &mockProviderRepo{provider: provider}
 
@@ -543,7 +550,7 @@ func TestSendEmailUsecase_MultiRecipient_PartialFailure(t *testing.T) {
 	u := NewSendEmailUsecase(repo, nil, nil, nil, eventUsecase, factory, NewTemplateRenderer(), "http://localhost")
 
 	req := &panmailv1.SendEmailRequest{
-		ProviderId: "p1",
+		ProviderId: testProviderID,
 		From:       "from@example.com",
 		To:         []string{"success@example.com", "fail@example.com", "another-success@example.com"},
 		Subject:    "Partial Failure Test",
@@ -551,7 +558,7 @@ func TestSendEmailUsecase_MultiRecipient_PartialFailure(t *testing.T) {
 	}
 
 	ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
-	_, err := u.SendEmail(ctx, "test-tenant", req)
+	_, err := u.SendEmail(ctx, testTenantID, req)
 
 	// Should NOT return error because some succeeded
 	if err != nil {

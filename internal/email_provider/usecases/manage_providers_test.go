@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/google/uuid"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
+)
+
+var (
+	testTenantID = uuid.New().String()
 )
 
 type mockRepo struct {
@@ -92,7 +97,7 @@ func TestManageProvidersUsecase_Create(t *testing.T) {
 		},
 	}
 
-	tenantID := "test-tenant"
+	tenantID := testTenantID
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			p, err := u.Create(context.Background(), tenantID, tc.req)
@@ -140,7 +145,7 @@ func TestManageProvidersUsecase_Update(t *testing.T) {
 	repo := &mockRepo{providers: make(map[string]*entities.EmailProvider)}
 	factory := NewProviderFactory()
 	u := NewManageProvidersUsecase(repo, factory)
-	tenantID := "test-tenant"
+	tenantID := testTenantID
 
 	// Pre-create a provider
 	p, _ := u.Create(context.Background(), tenantID, &panmailv1.CreateEmailProviderRequest{

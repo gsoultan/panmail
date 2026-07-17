@@ -76,12 +76,31 @@ func (u *sendEmailUsecase) RegisterQueueWorker(w QueueWorker) {
 }
 
 func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *panmailv1.SendEmailRequest) (*panmailv1.SendEmailResponse, error) {
+	if tenantID == "" {
+		return nil, fmt.Errorf("tenant id is mandatory")
+	}
+	if _, err := uuid.Parse(tenantID); err != nil {
+		return nil, fmt.Errorf("invalid tenant id format: %s. tenant id must be a valid UUID", tenantID)
+	}
+	if tenantID == uuid.Nil.String() {
+		return nil, fmt.Errorf("tenant id cannot be nil uuid (00000000-0000-0000-0000-000000000000)")
+	}
+
 	if req.From == "" {
 		return nil, fmt.Errorf("from address is mandatory")
 	}
 	if req.ProviderId == "" {
 		return nil, fmt.Errorf("provider id is mandatory")
 	}
+
+	// Validate ProviderId is a valid non-nil UUID
+	if _, err := uuid.Parse(req.ProviderId); err != nil {
+		return nil, fmt.Errorf("invalid provider id format: %s. provider id must be a valid UUID", req.ProviderId)
+	}
+	if req.ProviderId == uuid.Nil.String() {
+		return nil, fmt.Errorf("provider id cannot be nil uuid (00000000-0000-0000-0000-000000000000)")
+	}
+
 	if len(req.To) == 0 {
 		return nil, fmt.Errorf("at least one recipient is required")
 	}

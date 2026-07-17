@@ -29,6 +29,10 @@ func NewManageProvidersUsecase(repo stores.Repository, factory entities.Provider
 }
 
 func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, req *panmailv1.CreateEmailProviderRequest) (*panmailv1.EmailProvider, error) {
+	if err := validateTenantID(tenantID); err != nil {
+		return nil, err
+	}
+
 	// Check if name is unique for this tenant
 	existing, _, _ := u.repo.List(ctx, tenantID, "", "", 1000, "")
 	for _, p := range existing {
@@ -71,6 +75,13 @@ func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, re
 }
 
 func (u *manageProvidersUsecase) Get(ctx context.Context, tenantID, id string) (*panmailv1.EmailProvider, error) {
+	if err := validateTenantID(tenantID); err != nil {
+		return nil, err
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, fmt.Errorf("invalid provider id format: %s. provider id must be a valid UUID", id)
+	}
+
 	p, err := u.repo.GetByID(ctx, tenantID, id)
 	if err != nil {
 		return nil, err
@@ -79,6 +90,9 @@ func (u *manageProvidersUsecase) Get(ctx context.Context, tenantID, id string) (
 }
 
 func (u *manageProvidersUsecase) List(ctx context.Context, tenantID string, name string, providerType panmailv1.ProviderType, pageSize int, pageToken string) ([]*panmailv1.EmailProvider, string, error) {
+	if err := validateTenantID(tenantID); err != nil {
+		return nil, "", err
+	}
 	typeStr := ""
 	if providerType != panmailv1.ProviderType_PROVIDER_TYPE_UNSPECIFIED {
 		typeStr = fmt.Sprintf("%d", int32(providerType))
@@ -100,6 +114,13 @@ func (u *manageProvidersUsecase) List(ctx context.Context, tenantID string, name
 }
 
 func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, req *panmailv1.UpdateEmailProviderRequest) (*panmailv1.EmailProvider, error) {
+	if err := validateTenantID(tenantID); err != nil {
+		return nil, err
+	}
+	if _, err := uuid.Parse(req.Id); err != nil {
+		return nil, fmt.Errorf("invalid provider id format: %s. provider id must be a valid UUID", req.Id)
+	}
+
 	// Check if name is unique for this tenant (if name changed)
 	existing, _, _ := u.repo.List(ctx, tenantID, "", "", 1000, "")
 	for _, p := range existing {
@@ -143,10 +164,22 @@ func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, re
 }
 
 func (u *manageProvidersUsecase) Delete(ctx context.Context, tenantID, id string) error {
+	if err := validateTenantID(tenantID); err != nil {
+		return err
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid provider id format: %s. provider id must be a valid UUID", id)
+	}
 	return u.repo.Delete(ctx, tenantID, id)
 }
 
 func (u *manageProvidersUsecase) Test(ctx context.Context, tenantID, id string) error {
+	if err := validateTenantID(tenantID); err != nil {
+		return err
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("invalid provider id format: %s. provider id must be a valid UUID", id)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -251,4 +284,17 @@ func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.
 	}
 
 	return proto, nil
+}
+
+func validateTenantID(tenantID string) error {
+	if tenantID == "" {
+		return fmt.Errorf("tenant id is mandatory")
+	}
+	if _, err := uuid.Parse(tenantID); err != nil {
+		return fmt.Errorf("invalid tenant id format: %s. tenant id must be a valid UUID", tenantID)
+	}
+	if tenantID == uuid.Nil.String() {
+		return fmt.Errorf("tenant id cannot be nil uuid (00000000-0000-0000-0000-000000000000)")
+	}
+	return nil
 }
