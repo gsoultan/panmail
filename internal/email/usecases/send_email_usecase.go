@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/url"
 	"regexp"
@@ -60,7 +61,7 @@ func NewSendEmailUsecase(
 		eventUsecase:    eventUsecase,
 		providerFactory: factory,
 		renderer:        renderer,
-		baseURL:         baseURL,
+		baseURL:         strings.TrimSuffix(baseURL, "/"),
 	}
 }
 
@@ -455,27 +456,34 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 }
 
 var (
-	hrefRegexp = regexp.MustCompile(`href="([^"]+)"`)
+	hrefRegexp = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']+)["']`)
 )
 
-func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, html string) string {
+func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, htmlContent string) string {
+	if u.baseURL == "" {
+		return htmlContent
+	}
 	recipientEncoded := base64.RawURLEncoding.EncodeToString([]byte(recipient))
 	// 1. Add tracking pixel before </body>
 	pixel := fmt.Sprintf(`<img src="%s/track/open/%s/%s/%s" width="1" height="1" style="display:none">`, u.baseURL, tenantID, messageID, recipientEncoded)
-	if idx := strings.LastIndex(html, "</body>"); idx != -1 {
-		html = html[:idx] + pixel + html[idx:]
+	if idx := strings.LastIndex(htmlContent, "</body>"); idx != -1 {
+		htmlContent = htmlContent[:idx] + pixel + htmlContent[idx:]
 	} else {
-		html = html + pixel
+		htmlContent = htmlContent + pixel
 	}
 
 	// 2. Wrap links
-	return hrefRegexp.ReplaceAllStringFunc(html, func(match string) string {
+	return hrefRegexp.ReplaceAllStringFunc(htmlContent, func(match string) string {
 		submatch := hrefRegexp.FindStringSubmatch(match)
 		if len(submatch) < 2 {
 			return match
 		}
-		originalURL := submatch[1]
-		if strings.HasPrefix(originalURL, "mailto:") || strings.HasPrefix(originalURL, "#") {
+		originalURL := html.UnescapeString(submatch[1])
+		lowerURL := strings.ToLower(originalURL)
+		if strings.HasPrefix(lowerURL, "mailto:") ||
+			strings.HasPrefix(lowerURL, "javascript:") ||
+			strings.HasPrefix(lowerURL, "tel:") ||
+			strings.HasPrefix(lowerURL, "#") {
 			return match
 		}
 
