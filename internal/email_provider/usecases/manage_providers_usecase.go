@@ -63,6 +63,7 @@ func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, re
 		Type:           req.Type,
 		Config:         configBytes,
 		AllowedDomains: req.AllowedDomains,
+		WebhookSecret:  req.WebhookSecret,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -149,12 +150,25 @@ func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, re
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal config: %w", err)
 		}
+		// Reads redact the password, so a client round-tripping a provider
+		// sends an empty one back. Treat that as "unchanged" rather than
+		// wiping the credential the provider needs to work.
+		configBytes, err = preserveStoredPassword(p.Type, p.Config, configBytes)
+		if err != nil {
+			return nil, err
+		}
 		p.Config = configBytes
 	}
 
 	p.Name = req.Name
 	p.AllowedDomains = req.AllowedDomains
 	p.UpdatedAt = time.Now()
+
+	// An empty secret means "leave it alone": the API never returns the stored
+	// value, so a client editing a provider has nothing to send back.
+	if req.WebhookSecret != "" {
+		p.WebhookSecret = req.WebhookSecret
+	}
 
 	if err := u.repo.Update(ctx, p); err != nil {
 		return nil, err
@@ -191,17 +205,9 @@ func (u *manageProvidersUsecase) Test(ctx context.Context, tenantID, id string) 
 		return fmt.Errorf("email provider not found")
 	}
 
-	provider, err := u.factory.CreateSender(p)
+	provider, err := u.dialProvider(p)
 	if err != nil {
-		// Try receiver if sender fails
-		provider, err = u.factory.CreateReceiver(p)
-		if err != nil {
-			return err
-		}
-	}
-
-	if provider == nil {
-		return fmt.Errorf("failed to initialize email provider client")
+		return err
 	}
 
 	return gsmail.Ping(ctx, provider)
@@ -235,22 +241,24 @@ func (u *manageProvidersUsecase) TestConfig(ctx context.Context, req *panmailv1.
 		Config: configBytes,
 	}
 
-	provider, err := u.factory.CreateSender(p)
+	provider, err := u.dialProvider(p)
 	if err != nil {
-		// Try receiver if sender fails
-		provider, err = u.factory.CreateReceiver(p)
-		if err != nil {
-			return err
-		}
-	}
-
-	if provider == nil {
-		return fmt.Errorf("failed to initialize email provider client")
+		return err
 	}
 
 	return gsmail.Ping(ctx, provider)
 }
 
+// redactedPassword is what callers see in place of a stored credential. It is
+// a fixed marker rather than the real length, which would leak information.
+const redactedPassword = ""
+
+// toProto maps a provider for the API.
+//
+// Credentials never leave the server: the password on every transport config
+// and the webhook secret are cleared. Reading a provider is a Viewer-level
+// action, so returning them made every SMTP password readable by the least
+// privileged role in the tenant.
 func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.EmailProvider, error) {
 	proto := &panmailv1.EmailProvider{
 		Id:             p.ID,
@@ -268,18 +276,21 @@ func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.
 		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
+		c.Password = redactedPassword
 		proto.Config = &panmailv1.EmailProvider_Smtp{Smtp: c}
 	case panmailv1.ProviderType_PROVIDER_TYPE_IMAP:
 		c := &panmailv1.ImapConfig{}
 		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
+		c.Password = redactedPassword
 		proto.Config = &panmailv1.EmailProvider_Imap{Imap: c}
 	case panmailv1.ProviderType_PROVIDER_TYPE_POP3:
 		c := &panmailv1.Pop3Config{}
 		if err := protojson.Unmarshal(p.Config, c); err != nil {
 			return nil, err
 		}
+		c.Password = redactedPassword
 		proto.Config = &panmailv1.EmailProvider_Pop3{Pop3: c}
 	}
 
@@ -297,4 +308,18 @@ func validateTenantID(tenantID string) error {
 		return fmt.Errorf("tenant id cannot be nil uuid (00000000-0000-0000-0000-000000000000)")
 	}
 	return nil
+}
+
+// dialProvider builds whichever client the provider type supports, so that a
+// connectivity test works for senders and receivers alike.
+func (u *manageProvidersUsecase) dialProvider(p *entities.EmailProvider) (any, error) {
+	if sender, err := u.factory.CreateSender(p); err == nil {
+		return sender, nil
+	}
+
+	receiver, err := u.factory.CreateReceiver(p)
+	if err != nil {
+		return nil, err
+	}
+	return receiver, nil
 }

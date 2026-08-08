@@ -198,3 +198,7 @@ func TestQueueWorker_ProcessEmail(t *testing.T) {
 		})
 	}
 }
+
+func (m *workerMockOutboxRepo) ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error) {
+	return m.ListPending(ctx, limit)
+}

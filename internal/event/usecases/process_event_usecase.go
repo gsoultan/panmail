@@ -198,7 +198,9 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 	recipient = strings.ToLower(strings.TrimSpace(recipient))
 	// If it's a generic bounce, try to classify it better using the error message
 	if eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED && errorMessage != "" {
-		eventType = emailutil.ClassifyError(errorMessage)
+		if classified := emailutil.ClassifyError(errorMessage); classified.Type != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED {
+			eventType = classified.Type
+		}
 	}
 
 	if eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT {
@@ -521,10 +523,10 @@ func (u *processEventUsecase) runCleanup(ctx context.Context, defaultRetentionDa
 	}
 }
 
-func (u *processEventUsecase) ListArchives(ctx context.Context, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
-	return u.repo.ListArchives(ctx, pageSize, pageToken)
+func (u *processEventUsecase) ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
+	return u.repo.ListArchives(ctx, tenantID, pageSize, pageToken)
 }
 
-func (u *processEventUsecase) GetArchive(ctx context.Context, id string) ([]byte, string, error) {
-	return u.repo.GetArchive(ctx, id)
+func (u *processEventUsecase) GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error) {
+	return u.repo.GetArchive(ctx, tenantID, id)
 }

@@ -1001,14 +1001,16 @@ func (*UpdateUserTwoFactorResponse) Descriptor() ([]byte, []int) {
 }
 
 type ApiKey struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Prefix        string                 `protobuf:"bytes,3,opt,name=prefix,proto3" json:"prefix,omitempty"`
-	CreatedAt     string                 `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	LastUsedAt    string                 `protobuf:"bytes,5,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"`
-	ExpiresAt     string                 `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	IsEnabled     bool                   `protobuf:"varint,7,opt,name=is_enabled,json=isEnabled,proto3" json:"is_enabled,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name       string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Prefix     string                 `protobuf:"bytes,3,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	CreatedAt  string                 `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	LastUsedAt string                 `protobuf:"bytes,5,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"`
+	ExpiresAt  string                 `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	IsEnabled  bool                   `protobuf:"varint,7,opt,name=is_enabled,json=isEnabled,proto3" json:"is_enabled,omitempty"`
+	// Capabilities this key carries, e.g. "email:send".
+	Scopes        []string `protobuf:"bytes,8,rep,name=scopes,proto3" json:"scopes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1092,10 +1094,20 @@ func (x *ApiKey) GetIsEnabled() bool {
 	return false
 }
 
+func (x *ApiKey) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
 type CreateApiKeyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	ExpiresAt     string                 `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Name      string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	ExpiresAt string                 `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// Capabilities to grant. Unknown values are dropped; an empty list yields
+	// the least-privilege default of "email:send".
+	Scopes        []string `protobuf:"bytes,3,rep,name=scopes,proto3" json:"scopes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1142,6 +1154,13 @@ func (x *CreateApiKeyRequest) GetExpiresAt() string {
 		return x.ExpiresAt
 	}
 	return ""
+}
+
+func (x *CreateApiKeyRequest) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
 }
 
 type CreateApiKeyResponse struct {
@@ -1600,8 +1619,12 @@ type SignInResponse struct {
 	TwoFactorSetupRequired bool                   `protobuf:"varint,4,opt,name=two_factor_setup_required,json=twoFactorSetupRequired,proto3" json:"two_factor_setup_required,omitempty"`
 	TwoFactorSecret        string                 `protobuf:"bytes,5,opt,name=two_factor_secret,json=twoFactorSecret,proto3" json:"two_factor_secret,omitempty"`
 	TwoFactorQrCodeUrl     string                 `protobuf:"bytes,6,opt,name=two_factor_qr_code_url,json=twoFactorQrCodeUrl,proto3" json:"two_factor_qr_code_url,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// Short-lived credential proving the password step passed. It is the only
+	// way to identify the account during VerifyTwoFactor and grants no API
+	// access on its own.
+	ChallengeToken string `protobuf:"bytes,7,opt,name=challenge_token,json=challengeToken,proto3" json:"challenge_token,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SignInResponse) Reset() {
@@ -1672,6 +1695,13 @@ func (x *SignInResponse) GetTwoFactorSecret() string {
 func (x *SignInResponse) GetTwoFactorQrCodeUrl() string {
 	if x != nil {
 		return x.TwoFactorQrCodeUrl
+	}
+	return ""
+}
+
+func (x *SignInResponse) GetChallengeToken() string {
+	if x != nil {
+		return x.ChallengeToken
 	}
 	return ""
 }
@@ -2001,12 +2031,11 @@ func (x *SetupTwoFactorResponse) GetQrCodeUrl() string {
 }
 
 type VerifyTwoFactorRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
-	Secret        string                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"` // Used during setup only
-	Email         string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`   // Used during SignIn only
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Code           string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	ChallengeToken string                 `protobuf:"bytes,4,opt,name=challenge_token,json=challengeToken,proto3" json:"challenge_token,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *VerifyTwoFactorRequest) Reset() {
@@ -2046,16 +2075,9 @@ func (x *VerifyTwoFactorRequest) GetCode() string {
 	return ""
 }
 
-func (x *VerifyTwoFactorRequest) GetSecret() string {
+func (x *VerifyTwoFactorRequest) GetChallengeToken() string {
 	if x != nil {
-		return x.Secret
-	}
-	return ""
-}
-
-func (x *VerifyTwoFactorRequest) GetEmail() string {
-	if x != nil {
-		return x.Email
+		return x.ChallengeToken
 	}
 	return ""
 }
@@ -2123,7 +2145,6 @@ func (x *VerifyTwoFactorResponse) GetUser() *User {
 type EnableTwoFactorRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
-	Secret        string                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2161,13 +2182,6 @@ func (*EnableTwoFactorRequest) Descriptor() ([]byte, []int) {
 func (x *EnableTwoFactorRequest) GetCode() string {
 	if x != nil {
 		return x.Code
-	}
-	return ""
-}
-
-func (x *EnableTwoFactorRequest) GetSecret() string {
-	if x != nil {
-		return x.Secret
 	}
 	return ""
 }
@@ -2361,7 +2375,7 @@ const file_panmail_v1_auth_proto_rawDesc = "" +
 	"\x1aUpdateUserTwoFactorRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\"\x1d\n" +
-	"\x1bUpdateUserTwoFactorResponse\"\xc3\x01\n" +
+	"\x1bUpdateUserTwoFactorResponse\"\xdb\x01\n" +
 	"\x06ApiKey\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -2373,11 +2387,13 @@ const file_panmail_v1_auth_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\x06 \x01(\tR\texpiresAt\x12\x1d\n" +
 	"\n" +
-	"is_enabled\x18\a \x01(\bR\tisEnabled\"H\n" +
+	"is_enabled\x18\a \x01(\bR\tisEnabled\x12\x16\n" +
+	"\x06scopes\x18\b \x03(\tR\x06scopes\"`\n" +
 	"\x13CreateApiKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x02 \x01(\tR\texpiresAt\"i\n" +
+	"expires_at\x18\x02 \x01(\tR\texpiresAt\x12\x16\n" +
+	"\x06scopes\x18\x03 \x03(\tR\x06scopes\"i\n" +
 	"\x14CreateApiKeyResponse\x12+\n" +
 	"\aapi_key\x18\x01 \x01(\v2\x12.panmail.v1.ApiKeyR\x06apiKey\x12$\n" +
 	"\x0eplain_text_key\x18\x02 \x01(\tR\fplainTextKey\"P\n" +
@@ -2399,14 +2415,15 @@ const file_panmail_v1_auth_proto_rawDesc = "" +
 	"\x14EnableApiKeyResponse\"A\n" +
 	"\rSignInRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x97\x02\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"\xc0\x02\n" +
 	"\x0eSignInResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12$\n" +
 	"\x04user\x18\x02 \x01(\v2\x10.panmail.v1.UserR\x04user\x12.\n" +
 	"\x13two_factor_required\x18\x03 \x01(\bR\x11twoFactorRequired\x129\n" +
 	"\x19two_factor_setup_required\x18\x04 \x01(\bR\x16twoFactorSetupRequired\x12*\n" +
 	"\x11two_factor_secret\x18\x05 \x01(\tR\x0ftwoFactorSecret\x122\n" +
-	"\x16two_factor_qr_code_url\x18\x06 \x01(\tR\x12twoFactorQrCodeUrl\"\x10\n" +
+	"\x16two_factor_qr_code_url\x18\x06 \x01(\tR\x12twoFactorQrCodeUrl\x12'\n" +
+	"\x0fchallenge_token\x18\a \x01(\tR\x0echallengeToken\"\x10\n" +
 	"\x0eSignOutRequest\"\x11\n" +
 	"\x0fSignOutResponse\"\x17\n" +
 	"\x15GetCurrentUserRequest\">\n" +
@@ -2422,18 +2439,16 @@ const file_panmail_v1_auth_proto_rawDesc = "" +
 	"\x15SetupTwoFactorRequest\"P\n" +
 	"\x16SetupTwoFactorResponse\x12\x16\n" +
 	"\x06secret\x18\x01 \x01(\tR\x06secret\x12\x1e\n" +
-	"\vqr_code_url\x18\x02 \x01(\tR\tqrCodeUrl\"Z\n" +
+	"\vqr_code_url\x18\x02 \x01(\tR\tqrCodeUrl\"p\n" +
 	"\x16VerifyTwoFactorRequest\x12\x12\n" +
-	"\x04code\x18\x01 \x01(\tR\x04code\x12\x16\n" +
-	"\x06secret\x18\x02 \x01(\tR\x06secret\x12\x14\n" +
-	"\x05email\x18\x03 \x01(\tR\x05email\"q\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12'\n" +
+	"\x0fchallenge_token\x18\x04 \x01(\tR\x0echallengeTokenJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\x06secretR\x05email\"q\n" +
 	"\x17VerifyTwoFactorResponse\x12\x1a\n" +
 	"\bverified\x18\x01 \x01(\bR\bverified\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12$\n" +
-	"\x04user\x18\x03 \x01(\v2\x10.panmail.v1.UserR\x04user\"D\n" +
+	"\x04user\x18\x03 \x01(\v2\x10.panmail.v1.UserR\x04user\":\n" +
 	"\x16EnableTwoFactorRequest\x12\x12\n" +
-	"\x04code\x18\x01 \x01(\tR\x04code\x12\x16\n" +
-	"\x06secret\x18\x02 \x01(\tR\x06secret\"3\n" +
+	"\x04code\x18\x01 \x01(\tR\x04codeJ\x04\b\x02\x10\x03R\x06secret\"3\n" +
 	"\x17EnableTwoFactorResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"2\n" +
 	"\x17DisableTwoFactorRequest\x12\x17\n" +

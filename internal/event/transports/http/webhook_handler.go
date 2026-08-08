@@ -1,8 +1,11 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -10,6 +13,10 @@ import (
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 	"github.com/gsoultan/panmail/internal/event/usecases"
 )
+
+// maxWebhookBody caps how much a provider may post. Reading an unbounded body
+// into memory is a denial of service anyone on the internet can trigger.
+const maxWebhookBody = 1 << 20 // 1 MiB
 
 type WebhookHandler struct {
 	processEventUsecase usecases.ProcessEventUsecase
@@ -30,20 +37,27 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Expected path: /webhooks/{tenant_id}/{provider_id}/{type}
-	path := strings.Trim(r.URL.Path, "/")
-	parts := strings.Split(path, "/")
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		http.Error(w, "Invalid webhook URL. Expected /webhooks/{tenant_id}/{provider_id}/{type}", http.StatusBadRequest)
 		return
 	}
 
-	tenantID := parts[1]
-	providerID := parts[2]
-	webhookType := strings.ToLower(parts[3])
+	tenantID, providerID, webhookType := parts[1], parts[2], strings.ToLower(parts[3])
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBody))
 	if err != nil {
-		http.Error(w, "Failed to read body", http.StatusInternalServerError)
+		http.Error(w, "Request body too large or unreadable", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	// Verify before parsing. Without this anyone who can guess a tenant and
+	// provider id can post fabricated bounces and complaints, which drive
+	// suppression and fire the tenant's own outbound webhooks.
+	if err := h.verify(r, tenantID, providerID, webhookType, body); err != nil {
+		slog.Warn("rejecting unverified provider webhook",
+			"tenant_id", tenantID, "provider_id", providerID, "type", webhookType, "error", err)
+		http.Error(w, "Webhook signature verification failed", http.StatusUnauthorized)
 		return
 	}
 
@@ -55,6 +69,57 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		h.handleGeneric(w, r, tenantID, providerID, body)
 	}
+}
+
+// verify checks the request against the secret configured for the provider.
+func (h *WebhookHandler) verify(r *http.Request, tenantID, providerID, webhookType string, body []byte) error {
+	secret, err := h.webhookSecret(r.Context(), tenantID, providerID)
+	if err != nil {
+		return err
+	}
+
+	switch webhookType {
+	case "sendgrid":
+		return verifySendGrid(secret,
+			r.Header.Get("X-Twilio-Email-Event-Webhook-Signature"),
+			r.Header.Get("X-Twilio-Email-Event-Webhook-Timestamp"),
+			body)
+	case "mailgun":
+		return h.verifyMailgunPayload(secret, body)
+	default:
+		return verifyGeneric(secret, r.Header.Get("X-Panmail-Signature"), body)
+	}
+}
+
+// verifyMailgunPayload pulls the signature block out of the posted JSON, which
+// is where Mailgun puts it for HTTP webhooks.
+func (h *WebhookHandler) verifyMailgunPayload(signingKey string, body []byte) error {
+	var payload struct {
+		Signature struct {
+			Timestamp string `json:"timestamp"`
+			Token     string `json:"token"`
+			Signature string `json:"signature"`
+		} `json:"signature"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ErrMalformedWebhook
+	}
+
+	return verifyMailgun(signingKey,
+		payload.Signature.Timestamp, payload.Signature.Token, payload.Signature.Signature)
+}
+
+func (h *WebhookHandler) webhookSecret(ctx context.Context, tenantID, providerID string) (string, error) {
+	provider, err := h.providerRepo.GetByID(ctx, tenantID, providerID)
+	if err != nil || provider == nil {
+		// Do not distinguish "unknown provider" from "no secret": both are a
+		// refusal, and telling them apart enumerates provider ids.
+		return "", ErrNoWebhookSecret
+	}
+	if provider.WebhookSecret == "" {
+		return "", ErrNoWebhookSecret
+	}
+	return provider.WebhookSecret, nil
 }
 
 func (h *WebhookHandler) handleSendGrid(w http.ResponseWriter, r *http.Request, tenantID, providerID string, body []byte) {
@@ -71,35 +136,41 @@ func (h *WebhookHandler) handleSendGrid(w http.ResponseWriter, r *http.Request, 
 	}
 
 	for _, e := range events {
-		eventType := panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED
-		switch e.Event {
-		case "delivered":
-			eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED
-		case "open":
-			eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED
-		case "click":
-			eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED
-		case "bounce":
-			eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED
-		case "spamreport":
-			eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SPAM_REPORT
-		case "unsubscribe":
-			eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSUBSCRIBED
+		eventType := sendGridEventType(e.Event)
+		if eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED {
+			continue
 		}
 
-		if eventType != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED {
-			errMsg := e.Reason
-			if errMsg == "" {
-				errMsg = e.Response
-			}
-			_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, e.MessageID, eventType, e.Email, "", errMsg, nil)
+		errMsg := e.Reason
+		if errMsg == "" {
+			errMsg = e.Response
 		}
+		h.record(r.Context(), tenantID, providerID, e.MessageID, eventType, e.Email, errMsg, nil)
 	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
+func sendGridEventType(event string) panmailv1.EmailEventType {
+	switch event {
+	case "delivered":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED
+	case "open":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED
+	case "click":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED
+	case "bounce":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED
+	case "spamreport":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SPAM_REPORT
+	case "unsubscribe":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSUBSCRIBED
+	default:
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED
+	}
+}
+
 func (h *WebhookHandler) handleMailgun(w http.ResponseWriter, r *http.Request, tenantID, providerID string, body []byte) {
-	// Simple Mailgun parser (partial)
 	var payload struct {
 		EventData struct {
 			Event     string `json:"event"`
@@ -120,30 +191,37 @@ func (h *WebhookHandler) handleMailgun(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	eventType := panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED
-	switch payload.EventData.Event {
-	case "delivered":
-		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED
-	case "opened":
-		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED
-	case "clicked":
-		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED
-	case "failed":
-		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED
-	case "complained":
-		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SPAM_REPORT
-	case "unsubscribed":
-		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSUBSCRIBED
-	}
-
+	eventType := mailgunEventType(payload.EventData.Event)
 	if eventType != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED {
 		errMsg := payload.EventData.DeliveryStatus.Description
 		if errMsg == "" {
 			errMsg = payload.EventData.DeliveryStatus.Message
 		}
-		_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, payload.EventData.Message.Headers.MessageID, eventType, payload.EventData.Recipient, "", errMsg, nil)
+		h.record(r.Context(), tenantID, providerID,
+			payload.EventData.Message.Headers.MessageID, eventType,
+			payload.EventData.Recipient, errMsg, nil)
 	}
+
 	w.WriteHeader(http.StatusOK)
+}
+
+func mailgunEventType(event string) panmailv1.EmailEventType {
+	switch event {
+	case "delivered":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED
+	case "opened":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED
+	case "clicked":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED
+	case "failed":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED
+	case "complained":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SPAM_REPORT
+	case "unsubscribed":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSUBSCRIBED
+	default:
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED
+	}
 }
 
 func (h *WebhookHandler) handleGeneric(w http.ResponseWriter, r *http.Request, tenantID, providerID string, body []byte) {
@@ -158,15 +236,33 @@ func (h *WebhookHandler) handleGeneric(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	eventType := panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED
-	// Try to map string to enum
-	val, ok := panmailv1.EmailEventType_value["EMAIL_EVENT_TYPE_"+strings.ToUpper(e.Event)]
-	if ok {
-		eventType = panmailv1.EmailEventType(val)
+	if val, ok := panmailv1.EmailEventType_value["EMAIL_EVENT_TYPE_"+strings.ToUpper(e.Event)]; ok {
+		eventType := panmailv1.EmailEventType(val)
+		if eventType != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED {
+			h.record(r.Context(), tenantID, providerID, e.MessageID, eventType, e.Recipient, e.Error, nil)
+		}
 	}
 
-	if eventType != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED {
-		_ = h.processEventUsecase.RecordEvent(r.Context(), tenantID, providerID, e.MessageID, eventType, e.Recipient, "", e.Error, nil)
-	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func (h *WebhookHandler) record(
+	ctx context.Context,
+	tenantID, providerID, messageID string,
+	eventType panmailv1.EmailEventType,
+	recipient, errMsg string,
+	metadata map[string]any,
+) {
+	if err := h.processEventUsecase.RecordEvent(ctx, tenantID, providerID, messageID, eventType, recipient, "", errMsg, metadata); err != nil {
+		slog.Error("failed to record provider webhook event",
+			"error", err, "tenant_id", tenantID, "message_id", messageID, "type", eventType.String())
+	}
+}
+
+// IsVerificationError reports whether err came from signature checking.
+func IsVerificationError(err error) bool {
+	return errors.Is(err, ErrNoWebhookSecret) ||
+		errors.Is(err, ErrBadWebhookSig) ||
+		errors.Is(err, ErrStaleWebhook) ||
+		errors.Is(err, ErrMalformedWebhook)
 }

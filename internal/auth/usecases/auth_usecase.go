@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,104 +16,200 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	sessionTokenTTL   = 24 * time.Hour
+	challengeTokenTTL = 5 * time.Minute
+
+	maxLoginAttempts = 5
+	loginBlockPeriod = 15 * time.Minute
+
+	// A TOTP code is only six digits, so the challenge step needs its own,
+	// tighter budget than the password step.
+	maxTwoFactorAttempts = 5
+	twoFactorBlockPeriod = 15 * time.Minute
+
+	defaultAdminRole = "USER_ROLE_SUPER_ADMIN"
+	defaultTenant    = "Default Tenant"
+)
+
+// enumerationGuardHash is a valid bcrypt digest compared against when no user
+// matches, so that an unknown address costs the same as a known one and cannot
+// be distinguished by response time.
+var enumerationGuardHash = []byte("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+
+// Credentials carries a sign-in attempt.
+type Credentials struct {
+	Email    string
+	Password string
+}
+
+// NewAdmin carries the details of the first administrator.
+type NewAdmin struct {
+	Email    string
+	Password string
+	Name     string
+}
+
+// TwoFactorSetup is the enrolment material handed to a user who must configure
+// an authenticator app.
+type TwoFactorSetup struct {
+	Secret    string
+	QRCodeURL string
+}
+
+// SignInResult is the outcome of a sign-in or second-factor verification.
+//
+// Exactly one of Token or ChallengeToken is ever populated: Token grants API
+// access, ChallengeToken only permits a second-factor attempt.
+type SignInResult struct {
+	User  *entities.User
+	Token string
+
+	TwoFactorRequired      bool
+	TwoFactorSetupRequired bool
+	ChallengeToken         string
+	TwoFactorSetup         *TwoFactorSetup
+}
+
 type AuthUsecase interface {
-	SignIn(ctx context.Context, email, password string) (*entities.User, string, bool, bool, string, string, error)
+	SignIn(ctx context.Context, creds Credentials) (*SignInResult, error)
 	GetCurrentUser(ctx context.Context, userID string) (*entities.User, error)
-	CreateAdmin(ctx context.Context, email, password, name string) error
+	CreateAdmin(ctx context.Context, admin NewAdmin) error
 	IsFirstRun(ctx context.Context) (bool, error)
 
 	// 2FA methods
-	SetupTwoFactor(ctx context.Context, userID string) (string, string, error)
-	VerifyTwoFactor(ctx context.Context, userID, email, code, secret string) (string, *entities.User, bool, error)
-	EnableTwoFactor(ctx context.Context, userID, code, secret string) error
+	SetupTwoFactor(ctx context.Context, userID string) (*TwoFactorSetup, error)
+	VerifyTwoFactorLogin(ctx context.Context, challengeToken, code string) (*SignInResult, error)
+	EnableTwoFactor(ctx context.Context, userID, code string) error
 	DisableTwoFactor(ctx context.Context, userID string) error
 }
 
-type loginAttempt struct {
-	count     int
-	lastTrial time.Time
-}
-
 type authUsecase struct {
-	repo          repositories.UserRepository
-	tenantRepo    tenantrepositories.TenantRepository
-	tokenMaker    auth.TokenMaker
-	loginAttempts sync.Map // email -> *loginAttempt
+	repo       repositories.UserRepository
+	tenantRepo tenantrepositories.TenantRepository
+	tokenMaker auth.TokenMaker
+
+	loginLimiter     *attemptLimiter
+	twoFactorLimiter *attemptLimiter
+	pendingTwoFactor *pendingTwoFactorStore
 }
 
-func NewAuthUsecase(repo repositories.UserRepository, tenantRepo tenantrepositories.TenantRepository, tokenMaker auth.TokenMaker) AuthUsecase {
+func NewAuthUsecase(
+	repo repositories.UserRepository,
+	tenantRepo tenantrepositories.TenantRepository,
+	tokenMaker auth.TokenMaker,
+) AuthUsecase {
 	return &authUsecase{
-		repo:          repo,
-		tenantRepo:    tenantRepo,
-		tokenMaker:    tokenMaker,
-		loginAttempts: sync.Map{},
+		repo:             repo,
+		tenantRepo:       tenantRepo,
+		tokenMaker:       tokenMaker,
+		loginLimiter:     newAttemptLimiter(maxLoginAttempts, loginBlockPeriod),
+		twoFactorLimiter: newAttemptLimiter(maxTwoFactorAttempts, twoFactorBlockPeriod),
+		pendingTwoFactor: newPendingTwoFactorStore(),
 	}
 }
 
-func (u *authUsecase) SignIn(ctx context.Context, email, password string) (*entities.User, string, bool, bool, string, string, error) {
-	// Rate limiting: trial login to 5
-	val, _ := u.loginAttempts.Load(email)
-	attempt, ok := val.(*loginAttempt)
-	if !ok {
-		attempt = &loginAttempt{count: 0}
-		u.loginAttempts.Store(email, attempt)
+func (u *authUsecase) SignIn(ctx context.Context, creds Credentials) (*SignInResult, error) {
+	if blocked, retryIn := u.loginLimiter.Blocked(creds.Email); blocked {
+		return nil, fmt.Errorf("too many login attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
 	}
 
-	if attempt.count >= 5 && time.Since(attempt.lastTrial) < 15*time.Minute {
-		return nil, "", false, false, "", "", fmt.Errorf("too many login attempts. please try again in 15 minutes")
-	}
-
-	user, err := u.repo.GetByEmail(ctx, email)
+	user, err := u.authenticatePassword(ctx, creds)
 	if err != nil {
-		attempt.count++
-		attempt.lastTrial = time.Now()
-		return nil, "", false, false, "", "", errors.New("invalid email or password")
+		u.loginLimiter.Fail(creds.Email)
+		return nil, err
 	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		attempt.count++
-		attempt.lastTrial = time.Now()
-		return nil, "", false, false, "", "", errors.New("invalid email or password")
-	}
-
-	// Reset attempts on success
-	u.loginAttempts.Delete(email)
+	u.loginLimiter.Reset(creds.Email)
 
 	if user.TwoFactorEnabled {
-		if user.TwoFactorSecret == "" {
-			secret, qrCodeURL, err := u.SetupTwoFactor(ctx, user.ID)
-			if err != nil {
-				return user, "", false, true, "", "", err
-			}
-			return user, "", false, true, secret, qrCodeURL, nil
-		}
-		return user, "", true, false, "", "", nil
+		return u.startTwoFactorChallenge(user)
 	}
 
-	// Generate Paseto token. Duration could be configurable, but 24h is a sane default for production.
-	token, err := u.tokenMaker.CreateToken(user.ID, user.TenantID, user.Role, 24*time.Hour)
+	token, err := u.issueSessionToken(user)
 	if err != nil {
-		return nil, "", false, false, "", "", err
+		return nil, err
+	}
+	return &SignInResult{User: user, Token: token}, nil
+}
+
+// authenticatePassword verifies the password, spending the same work on an
+// unknown address as on a known one.
+func (u *authUsecase) authenticatePassword(ctx context.Context, creds Credentials) (*entities.User, error) {
+	invalid := errors.New("invalid email or password")
+
+	user, err := u.repo.GetByEmail(ctx, creds.Email)
+	if err != nil || user == nil {
+		_ = bcrypt.CompareHashAndPassword(enumerationGuardHash, []byte(creds.Password))
+		return nil, invalid
 	}
 
-	return user, token, false, false, "", "", nil
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(creds.Password)); err != nil {
+		return nil, invalid
+	}
+	return user, nil
+}
+
+// startTwoFactorChallenge issues a short-lived challenge token. The token is
+// the only thing that identifies the user during the second step, so a caller
+// cannot target an arbitrary account by naming it.
+func (u *authUsecase) startTwoFactorChallenge(user *entities.User) (*SignInResult, error) {
+	challenge, err := u.tokenMaker.CreateToken(auth.TokenRequest{
+		UserID:   user.ID,
+		TenantID: user.TenantID,
+		Role:     user.Role,
+		Purpose:  auth.PurposeTwoFactorChallenge,
+		Duration: challengeTokenTTL,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := &SignInResult{User: user, ChallengeToken: challenge}
+
+	// 2FA is required but the user has never enrolled: hand out fresh
+	// enrolment material, held server-side until they confirm it.
+	if user.TwoFactorSecret == "" {
+		setup, err := u.SetupTwoFactor(context.Background(), user.ID)
+		if err != nil {
+			return nil, err
+		}
+		result.TwoFactorSetupRequired = true
+		result.TwoFactorSetup = setup
+		return result, nil
+	}
+
+	result.TwoFactorRequired = true
+	return result, nil
+}
+
+func (u *authUsecase) issueSessionToken(user *entities.User) (string, error) {
+	return u.tokenMaker.CreateToken(auth.TokenRequest{
+		UserID:   user.ID,
+		TenantID: user.TenantID,
+		Role:     user.Role,
+		Purpose:  auth.PurposeSession,
+		Duration: sessionTokenTTL,
+	})
 }
 
 func (u *authUsecase) GetCurrentUser(ctx context.Context, userID string) (*entities.User, error) {
 	return u.repo.GetByID(ctx, userID)
 }
 
-func (u *authUsecase) CreateAdmin(ctx context.Context, email, password, name string) error {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+func (u *authUsecase) CreateAdmin(ctx context.Context, admin NewAdmin) error {
+	if err := validatePassword(admin.Password); err != nil {
+		return err
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(admin.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
-	// Create default tenant
 	tenantID := uuid.New().String()
 	tenant := &tenantentities.Tenant{
 		ID:        tenantID,
-		Name:      "Default Tenant",
+		Name:      defaultTenant,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -126,15 +221,23 @@ func (u *authUsecase) CreateAdmin(ctx context.Context, email, password, name str
 	user := &entities.User{
 		ID:        uuid.New().String(),
 		TenantID:  tenantID,
-		Email:     email,
+		Email:     admin.Email,
 		Password:  string(hashedPassword),
-		Name:      name,
-		Role:      "USER_ROLE_SUPER_ADMIN",
+		Name:      admin.Name,
+		Role:      defaultAdminRole,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
 	return u.repo.Create(ctx, user)
+}
+
+func validatePassword(password string) error {
+	const minPasswordLength = 12
+	if len(password) < minPasswordLength {
+		return fmt.Errorf("password must be at least %d characters", minPasswordLength)
+	}
+	return nil
 }
 
 func (u *authUsecase) IsFirstRun(ctx context.Context) (bool, error) {
@@ -145,10 +248,15 @@ func (u *authUsecase) IsFirstRun(ctx context.Context) (bool, error) {
 	return count == 0, nil
 }
 
-func (u *authUsecase) SetupTwoFactor(ctx context.Context, userID string) (string, string, error) {
+// SetupTwoFactor generates enrolment material and holds the secret server-side
+// until the user proves possession by confirming a code.
+func (u *authUsecase) SetupTwoFactor(ctx context.Context, userID string) (*TwoFactorSetup, error) {
 	user, err := u.repo.GetByID(ctx, userID)
 	if err != nil {
-		return "", "", err
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
@@ -156,67 +264,100 @@ func (u *authUsecase) SetupTwoFactor(ctx context.Context, userID string) (string
 		AccountName: user.Email,
 	})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	return key.Secret(), key.URL(), nil
+	u.pendingTwoFactor.Put(user.ID, key.Secret())
+
+	return &TwoFactorSetup{Secret: key.Secret(), QRCodeURL: key.URL()}, nil
 }
 
-func (u *authUsecase) VerifyTwoFactor(ctx context.Context, userID, email, code, secret string) (string, *entities.User, bool, error) {
-	var user *entities.User
-	var err error
-
-	if userID != "" {
-		user, err = u.repo.GetByID(ctx, userID)
-	} else if email != "" {
-		user, err = u.repo.GetByEmail(ctx, email)
-	} else {
-		return "", nil, false, errors.New("user identification required")
-	}
-
+// VerifyTwoFactorLogin completes a sign-in that stopped at the second factor.
+// The user is identified solely by the challenge token, and the secret is read
+// from the user's own record (or from their pending enrolment) — never from
+// the caller.
+func (u *authUsecase) VerifyTwoFactorLogin(ctx context.Context, challengeToken, code string) (*SignInResult, error) {
+	payload, err := u.tokenMaker.VerifyToken(challengeToken, auth.PurposeTwoFactorChallenge)
 	if err != nil {
-		return "", nil, false, err
+		return nil, errors.New("invalid or expired two-factor challenge")
 	}
 
-	// If secret is provided, we are in setup mode
-	verifySecret := user.TwoFactorSecret
-	if secret != "" {
-		verifySecret = secret
+	if blocked, retryIn := u.twoFactorLimiter.Blocked(payload.UserID); blocked {
+		return nil, fmt.Errorf("too many verification attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
 	}
 
-	if verifySecret == "" {
-		return "", nil, false, errors.New("two factor not set up")
+	user, err := u.repo.GetByID(ctx, payload.UserID)
+	if err != nil || user == nil {
+		return nil, errors.New("invalid or expired two-factor challenge")
 	}
 
-	valid := totp.Validate(code, verifySecret)
-	if !valid {
-		return "", nil, false, nil
+	secret, enrolling := u.resolveTwoFactorSecret(user)
+	if secret == "" {
+		return nil, errors.New("two factor is not set up for this account")
 	}
 
-	// If secret was provided and valid, enable 2FA for this user
-	if secret != "" && user != nil {
+	if !totp.Validate(code, secret) {
+		u.twoFactorLimiter.Fail(user.ID)
+		return nil, errors.New("invalid verification code")
+	}
+	u.twoFactorLimiter.Reset(user.ID)
+
+	if enrolling {
 		if err := u.repo.UpdateTwoFactor(ctx, user.ID, true, secret); err != nil {
-			return "", user, true, err
+			return nil, err
 		}
+		u.pendingTwoFactor.Delete(user.ID)
+		user.TwoFactorSecret = secret
+		user.TwoFactorEnabled = true
 	}
 
-	token, err := u.tokenMaker.CreateToken(user.ID, user.TenantID, user.Role, 24*time.Hour)
+	token, err := u.issueSessionToken(user)
 	if err != nil {
-		return "", user, true, err
+		return nil, err
 	}
 
-	return token, user, true, nil
+	return &SignInResult{User: user, Token: token}, nil
 }
 
-func (u *authUsecase) EnableTwoFactor(ctx context.Context, userID, code, secret string) error {
-	valid := totp.Validate(code, secret)
-	if !valid {
+// resolveTwoFactorSecret returns the secret to validate against and whether it
+// comes from an outstanding enrolment rather than the stored record.
+func (u *authUsecase) resolveTwoFactorSecret(user *entities.User) (string, bool) {
+	if user.TwoFactorSecret != "" {
+		return user.TwoFactorSecret, false
+	}
+	if pending, ok := u.pendingTwoFactor.Get(user.ID); ok {
+		return pending, true
+	}
+	return "", false
+}
+
+// EnableTwoFactor confirms an enrolment started by SetupTwoFactor. The secret
+// is taken from the server-side pending store, so the caller can only confirm
+// material this server issued to them.
+func (u *authUsecase) EnableTwoFactor(ctx context.Context, userID, code string) error {
+	if blocked, retryIn := u.twoFactorLimiter.Blocked(userID); blocked {
+		return fmt.Errorf("too many verification attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
+	}
+
+	secret, ok := u.pendingTwoFactor.Get(userID)
+	if !ok {
+		return errors.New("no pending two-factor setup: start enrolment again")
+	}
+
+	if !totp.Validate(code, secret) {
+		u.twoFactorLimiter.Fail(userID)
 		return errors.New("invalid verification code")
 	}
+	u.twoFactorLimiter.Reset(userID)
 
-	return u.repo.UpdateTwoFactor(ctx, userID, true, secret)
+	if err := u.repo.UpdateTwoFactor(ctx, userID, true, secret); err != nil {
+		return err
+	}
+	u.pendingTwoFactor.Delete(userID)
+	return nil
 }
 
 func (u *authUsecase) DisableTwoFactor(ctx context.Context, userID string) error {
+	u.pendingTwoFactor.Delete(userID)
 	return u.repo.UpdateTwoFactor(ctx, userID, false, "")
 }

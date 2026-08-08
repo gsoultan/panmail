@@ -156,7 +156,8 @@ func (s *eventService) ListArchives(ctx context.Context, req *connect.Request[pa
 		pageSize = 50
 	}
 
-	archives, nextToken, err := s.processEventUsecase.ListArchives(ctx, pageSize, req.Msg.PageToken)
+	tenantID := middlewares.GetTenantID(ctx)
+	archives, nextToken, err := s.processEventUsecase.ListArchives(ctx, tenantID, pageSize, req.Msg.PageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +179,8 @@ func (s *eventService) ListArchives(ctx context.Context, req *connect.Request[pa
 }
 
 func (s *eventService) DownloadArchive(ctx context.Context, req *connect.Request[panmailv1.DownloadArchiveRequest]) (*connect.Response[panmailv1.DownloadArchiveResponse], error) {
-	content, filename, err := s.processEventUsecase.GetArchive(ctx, req.Msg.Id)
+	tenantID := middlewares.GetTenantID(ctx)
+	content, filename, err := s.processEventUsecase.GetArchive(ctx, tenantID, req.Msg.Id)
 	if err != nil {
 		return nil, err
 	}

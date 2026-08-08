@@ -37,8 +37,12 @@ type EmailProvider struct {
 	UpdateTime     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	TenantId       string                 `protobuf:"bytes,13,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	AllowedDomains []string               `protobuf:"bytes,14,rep,name=allowed_domains,json=allowedDomains,proto3" json:"allowed_domains,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Verification material for this provider's delivery webhooks: SendGrid's
+	// base64 ECDSA public key, Mailgun's HTTP webhook signing key, or a shared
+	// secret for the generic HMAC format. Write-only; never returned.
+	WebhookSecret string `protobuf:"bytes,15,opt,name=webhook_secret,json=webhookSecret,proto3" json:"webhook_secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EmailProvider) Reset() {
@@ -152,6 +156,13 @@ func (x *EmailProvider) GetAllowedDomains() []string {
 		return x.AllowedDomains
 	}
 	return nil
+}
+
+func (x *EmailProvider) GetWebhookSecret() string {
+	if x != nil {
+		return x.WebhookSecret
+	}
+	return ""
 }
 
 type isEmailProvider_Config interface {
@@ -433,7 +444,7 @@ var File_panmail_v1_email_provider_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\n" +
 	"\x1fpanmail/v1/email_provider.proto\x12\n" +
-	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1epanmail/v1/provider_type.proto\"\xb5\x03\n" +
+	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1epanmail/v1/provider_type.proto\"\xdc\x03\n" +
 	"\rEmailProvider\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -447,7 +458,8 @@ const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\vupdate_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\x12\x1b\n" +
 	"\ttenant_id\x18\r \x01(\tR\btenantId\x12'\n" +
-	"\x0fallowed_domains\x18\x0e \x03(\tR\x0eallowedDomainsB\b\n" +
+	"\x0fallowed_domains\x18\x0e \x03(\tR\x0eallowedDomains\x12%\n" +
+	"\x0ewebhook_secret\x18\x0f \x01(\tR\rwebhookSecretB\b\n" +
 	"\x06config\"\xa6\x01\n" +
 	"\n" +
 	"SmtpConfig\x12\x12\n" +

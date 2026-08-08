@@ -2,7 +2,6 @@ package auth
 
 import (
 	"sync"
-	"time"
 )
 
 type SwappableTokenMaker struct {
@@ -20,20 +19,20 @@ func (s *SwappableTokenMaker) SetMaker(maker TokenMaker) {
 	s.maker = maker
 }
 
-func (s *SwappableTokenMaker) CreateToken(userID string, tenantID string, role string, duration time.Duration) (string, error) {
+func (s *SwappableTokenMaker) CreateToken(req TokenRequest) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.maker == nil {
 		return "", ErrInvalidToken
 	}
-	return s.maker.CreateToken(userID, tenantID, role, duration)
+	return s.maker.CreateToken(req)
 }
 
-func (s *SwappableTokenMaker) VerifyToken(token string) (*TokenPayload, error) {
+func (s *SwappableTokenMaker) VerifyToken(token string, purpose TokenPurpose) (*TokenPayload, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.maker == nil {
 		return nil, ErrInvalidToken
 	}
-	return s.maker.VerifyToken(token)
+	return s.maker.VerifyToken(token, purpose)
 }

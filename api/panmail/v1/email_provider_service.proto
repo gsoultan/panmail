@@ -26,6 +26,8 @@ message CreateEmailProviderRequest {
     Pop3Config pop3 = 9;
   }
   repeated string allowed_domains = 10;
+  // Secret used to verify this provider's delivery webhooks. Write-only.
+  string webhook_secret = 11;
 }
 
 message CreateEmailProviderResponse {
@@ -61,6 +63,9 @@ message UpdateEmailProviderRequest {
     Pop3Config pop3 = 9;
   }
   repeated string allowed_domains = 10;
+  // Secret used to verify this provider's delivery webhooks. Write-only.
+  // Leave empty to keep the currently stored value.
+  string webhook_secret = 11;
 }
 
 message UpdateEmailProviderResponse {

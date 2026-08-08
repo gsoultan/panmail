@@ -20,6 +20,10 @@ message EmailProvider {
   google.protobuf.Timestamp update_time = 12;
   string tenant_id = 13;
   repeated string allowed_domains = 14;
+  // Verification material for this provider's delivery webhooks: SendGrid's
+  // base64 ECDSA public key, Mailgun's HTTP webhook signing key, or a shared
+  // secret for the generic HMAC format. Write-only; never returned.
+  string webhook_secret = 15;
 }
 
 message SmtpConfig {

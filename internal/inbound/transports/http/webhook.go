@@ -12,6 +12,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// maxInboundBody caps an inbound message payload. Generous enough for a mail
+// body with inline content, small enough that a flood cannot exhaust memory.
+const maxInboundBody = 25 << 20 // 25 MiB
+
 type WebhookHandler struct {
 	usecase usecases.InboundUsecase
 }
@@ -26,13 +30,15 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the inbound payload
-	body, err := io.ReadAll(r.Body)
+	// Parse the inbound payload. The body is capped: reading an unbounded
+	// request into memory on a public endpoint is a denial of service anyone
+	// can trigger.
+	defer r.Body.Close()
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxInboundBody))
 	if err != nil {
-		http.Error(w, "Failed to read body", http.StatusInternalServerError)
+		http.Error(w, "Request body too large or unreadable", http.StatusRequestEntityTooLarge)
 		return
 	}
-	defer r.Body.Close()
 
 	// Generic inbound payload
 	var payload struct {

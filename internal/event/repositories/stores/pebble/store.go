@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -463,19 +464,11 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
 	}
 	defer iter.Close()
 
-	// Prepare archive file
-	archiveDir := "archives"
-	if err := os.MkdirAll(archiveDir, 0755); err != nil {
-		return fmt.Errorf("failed to create archives directory: %w", err)
-	}
-
+	// Archives are written per tenant. A single shared file would let anyone
+	// who can download an archive read every other tenant's mail history.
 	filename := fmt.Sprintf("archive_%s.jsonl", time.Now().Format("20060102_150405"))
-	archivePath := filepath.Join(archiveDir, filename)
-	archiveFile, err := os.Create(archivePath)
-	if err != nil {
-		return fmt.Errorf("failed to create archive file: %w", err)
-	}
-	defer archiveFile.Close()
+	archives := newTenantArchiveSet(filename)
+	defer archives.closeAll()
 
 	batch := s.db.NewBatch()
 	count := 0
@@ -492,9 +485,11 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
 		if ts > timestampDesc {
 			var e entities.EmailEvent
 			if err := json.Unmarshal(iter.Value(), &e); err == nil {
-				// Write to archive
+				// Write to this tenant's archive
 				data, _ := json.Marshal(e)
-				_, _ = archiveFile.Write(append(data, '\n'))
+				if err := archives.write(parts[1], data); err != nil {
+					return err
+				}
 				archivedCount++
 
 				// Cleanup msg_events index
@@ -538,11 +533,7 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
 		batch.Close()
 	}
 
-	// If nothing was archived, delete the empty file
-	if archivedCount == 0 {
-		archiveFile.Close()
-		_ = os.Remove(archivePath)
-	}
+	_ = archivedCount
 
 	return nil
 }
@@ -605,9 +596,12 @@ func (s *store) GetResourceHistory(ctx context.Context, since time.Time) ([]enti
 	return res, nil
 }
 
-func (s *store) ListArchives(ctx context.Context, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error) {
-	archiveDir := "archives"
-	entries, err := os.ReadDir(archiveDir)
+func (s *store) ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error) {
+	if tenantID == "" {
+		return nil, "", errors.New("tenant id is mandatory")
+	}
+
+	entries, err := os.ReadDir(tenantArchiveDir(tenantID))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, "", nil
@@ -667,10 +661,15 @@ func (s *store) ListArchives(ctx context.Context, pageSize int, pageToken string
 	return res, nextPageToken, nil
 }
 
-func (s *store) GetArchive(ctx context.Context, id string) ([]byte, string, error) {
-	// Simple validation to prevent path traversal
+func (s *store) GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error) {
+	if tenantID == "" {
+		return nil, "", errors.New("tenant id is mandatory")
+	}
+
+	// Base strips any directory the caller supplied, so an archive can only be
+	// read from the requesting tenant's own directory.
 	id = filepath.Base(id)
-	archivePath := filepath.Join("archives", id)
+	archivePath := filepath.Join(tenantArchiveDir(tenantID), id)
 
 	content, err := os.ReadFile(archivePath)
 	if err != nil {

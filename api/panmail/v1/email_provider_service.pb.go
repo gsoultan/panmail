@@ -32,8 +32,10 @@ type CreateEmailProviderRequest struct {
 	//	*CreateEmailProviderRequest_Pop3
 	Config         isCreateEmailProviderRequest_Config `protobuf_oneof:"config"`
 	AllowedDomains []string                            `protobuf:"bytes,10,rep,name=allowed_domains,json=allowedDomains,proto3" json:"allowed_domains,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Secret used to verify this provider's delivery webhooks. Write-only.
+	WebhookSecret string `protobuf:"bytes,11,opt,name=webhook_secret,json=webhookSecret,proto3" json:"webhook_secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateEmailProviderRequest) Reset() {
@@ -119,6 +121,13 @@ func (x *CreateEmailProviderRequest) GetAllowedDomains() []string {
 		return x.AllowedDomains
 	}
 	return nil
+}
+
+func (x *CreateEmailProviderRequest) GetWebhookSecret() string {
+	if x != nil {
+		return x.WebhookSecret
+	}
+	return ""
 }
 
 type isCreateEmailProviderRequest_Config interface {
@@ -406,8 +415,11 @@ type UpdateEmailProviderRequest struct {
 	//	*UpdateEmailProviderRequest_Pop3
 	Config         isUpdateEmailProviderRequest_Config `protobuf_oneof:"config"`
 	AllowedDomains []string                            `protobuf:"bytes,10,rep,name=allowed_domains,json=allowedDomains,proto3" json:"allowed_domains,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Secret used to verify this provider's delivery webhooks. Write-only.
+	// Leave empty to keep the currently stored value.
+	WebhookSecret string `protobuf:"bytes,11,opt,name=webhook_secret,json=webhookSecret,proto3" json:"webhook_secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateEmailProviderRequest) Reset() {
@@ -493,6 +505,13 @@ func (x *UpdateEmailProviderRequest) GetAllowedDomains() []string {
 		return x.AllowedDomains
 	}
 	return nil
+}
+
+func (x *UpdateEmailProviderRequest) GetWebhookSecret() string {
+	if x != nil {
+		return x.WebhookSecret
+	}
+	return ""
 }
 
 type isUpdateEmailProviderRequest_Config interface {
@@ -742,7 +761,7 @@ var File_panmail_v1_email_provider_service_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\n" +
 	"'panmail/v1/email_provider_service.proto\x12\n" +
-	"panmail.v1\x1a\x1epanmail/v1/provider_type.proto\x1a\x1fpanmail/v1/email_provider.proto\"\x9b\x02\n" +
+	"panmail.v1\x1a\x1epanmail/v1/provider_type.proto\x1a\x1fpanmail/v1/email_provider.proto\"\xc2\x02\n" +
 	"\x1aCreateEmailProviderRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12,\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x18.panmail.v1.ProviderTypeR\x04type\x12,\n" +
@@ -750,7 +769,8 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\x04imap\x18\b \x01(\v2\x16.panmail.v1.ImapConfigH\x00R\x04imap\x12,\n" +
 	"\x04pop3\x18\t \x01(\v2\x16.panmail.v1.Pop3ConfigH\x00R\x04pop3\x12'\n" +
 	"\x0fallowed_domains\x18\n" +
-	" \x03(\tR\x0eallowedDomainsB\b\n" +
+	" \x03(\tR\x0eallowedDomains\x12%\n" +
+	"\x0ewebhook_secret\x18\v \x01(\tR\rwebhookSecretB\b\n" +
 	"\x06config\"T\n" +
 	"\x1bCreateEmailProviderResponse\x125\n" +
 	"\bprovider\x18\x01 \x01(\v2\x19.panmail.v1.EmailProviderR\bprovider\")\n" +
@@ -766,7 +786,7 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\x04type\x18\x04 \x01(\x0e2\x18.panmail.v1.ProviderTypeR\x04type\"}\n" +
 	"\x1aListEmailProvidersResponse\x127\n" +
 	"\tproviders\x18\x01 \x03(\v2\x19.panmail.v1.EmailProviderR\tproviders\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xfd\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa4\x02\n" +
 	"\x1aUpdateEmailProviderRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -774,7 +794,8 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\x04imap\x18\b \x01(\v2\x16.panmail.v1.ImapConfigH\x00R\x04imap\x12,\n" +
 	"\x04pop3\x18\t \x01(\v2\x16.panmail.v1.Pop3ConfigH\x00R\x04pop3\x12'\n" +
 	"\x0fallowed_domains\x18\n" +
-	" \x03(\tR\x0eallowedDomainsB\b\n" +
+	" \x03(\tR\x0eallowedDomains\x12%\n" +
+	"\x0ewebhook_secret\x18\v \x01(\tR\rwebhookSecretB\b\n" +
 	"\x06config\"T\n" +
 	"\x1bUpdateEmailProviderResponse\x125\n" +
 	"\bprovider\x18\x01 \x01(\v2\x19.panmail.v1.EmailProviderR\bprovider\",\n" +

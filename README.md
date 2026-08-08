@@ -35,21 +35,23 @@ Panmail is designed with a "Security First" mindset:
 
 - **Two-Factor Authentication (2FA)**: Users can enable TOTP-based 2FA (e.g., Google Authenticator) in their profile settings. Administrators can enforce 2FA for their team members.
 - **Login Rate Limiting**: The system automatically blocks an account after 5 failed login attempts for 15 minutes to prevent brute-force attacks.
-- **API Key Scoping**: API keys are tied to specific tenants and can be expired or revoked at any time.
-- **Secure Storage**: All secrets (SMTP passwords, API keys) are stored securely, and logs are protected using the high-performance Pebble KV store.
+- **API Key Scoping**: API keys are tied to a single tenant and carry an explicit set of scopes (e.g. `email:send`, `providers:read`). A key only grants what it was issued for, and can be expired or revoked at any time.
+- **Secret Storage**: API keys are stored only as SHA-256 hashes and are never recoverable. Provider credentials (SMTP/IMAP/POP3 passwords, webhook signing secrets) must be readable to be used, so they are encrypted at rest with AES-256-GCM and redacted from every API response. Set `PANMAIL_SECRET_KEY` to a 64-character hex key to keep the encryption key out of the config file; otherwise a key is generated at setup and stored in `~/.panmail/db_config.yaml`, which protects against a stolen database but not a stolen disk.
+- **Signed Tracking Links**: Open and click URLs are HMAC-signed, so delivery events cannot be forged and the click endpoint cannot be used as an open redirect.
+- **Verified Provider Webhooks**: Inbound delivery webhooks are verified (SendGrid ECDSA, Mailgun HMAC, or a shared HMAC secret) before any event is recorded.
 
 ## 🚀 Features
 
 - **Multi-Tenant Support**: Support for multiple tenants, each with their own set of providers, templates, and custom retry patterns.
 - **Visual Email Builder**: Professional drag-and-drop editor with multi-column support, mobile/desktop frames, Outlook compatibility, and dynamic merge tags.
 - **Advanced Templating**: Dual-engine support for **Handlebars** and standard **Go `html/template`** syntax.
-- **High Performance**: Optimized for heavy traffic (1000+ messages/second) with asynchronous batching and thread-safe caching.
+- **Built for Throughput**: Asynchronous outbox batching, pooled SMTP connections, and thread-safe caching. Actual throughput depends on your provider's rate limits and connection concurrency — benchmark against your own setup rather than relying on a headline figure.
 - **Intelligent Delivery**: Automatic classification of **Soft vs. Hard bounces**, with custom retry patterns (e.g., `5m, 1h, 1d`) and reputation-protecting suppressions.
 - **Unified Analytics**: Real-time visualization of delivery trends (Sent, Delivered, Opened, Clicked, Bounced) with historical archiving.
 - **Security First**: Integrated **Two-Factor Authentication (TOTP)**, login rate limiting, and role-based access control (RBAC).
 - **Outbound Webhooks**: Standardized HTTP hooks for delivery events and inbound emails.
 - **Automated Maintenance**: Configurable log retention (default 14 days) with automatic JSONL archiving for long-term auditability.
-- **Multi-DB Support**: Support for SQLite, PostgreSQL, MySQL, and MariaDB with automatic migrations.
+- **Database Support**: PostgreSQL and SQLite, with automatic migrations. MySQL/MariaDB are not currently supported: the query layer uses PostgreSQL-style positional parameters, so those drivers connect but every query fails.
 - **Production Ready**: Structured logging, gRPC health checking (`/healthz`), and graceful shutdown.
 
 ## 🏗️ Architecture
@@ -60,7 +62,7 @@ Panmail follows a clean, layered architecture:
 - **Backend**: Go 1.26+
 - **Frontend**: React 19, TypeScript, Mantine v9, Vite, TanStack Query/Router
 - **API**: ConnectRPC / gRPC
-- **Database**: SQLite, PostgreSQL, MySQL, or MariaDB
+- **Database**: PostgreSQL or SQLite
 - **Logs**: Pebble KV store for high-performance logging
 
 ## 🛠️ Getting Started
@@ -70,7 +72,7 @@ Panmail follows a clean, layered architecture:
 - Go 1.26.3
 - Bun (for frontend builds)
 - Buf (for gRPC generation)
-- SQLite, PostgreSQL, MySQL, or MariaDB
+- PostgreSQL or SQLite
 
 ### Installation
 
@@ -94,6 +96,20 @@ Panmail follows a clean, layered architecture:
    ./panmail
    ```
 3. Access the dashboard at `http://localhost:8080`.
+
+### Development
+
+```bash
+./scripts/dev.sh
+```
+
+Compiles the gateway, creates a SQLite database, performs first-run setup,
+prints the generated admin password, and runs the API alongside the Vite dev
+server with hot reload on both. Everything it creates stays in `.dev/`, so an
+installed instance in `~/.panmail` is untouched.
+
+See [docs/development.md](docs/development.md) for the database options,
+`--single-port` mode, and regenerating protobuf artefacts.
 
 ### Health Checks
 

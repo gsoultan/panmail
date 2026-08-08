@@ -10,6 +10,7 @@ type ApiKey struct {
 	Name       string
 	KeyHash    string
 	Prefix     string
+	Scopes     []Scope
 	LastUsedAt *time.Time
 	ExpiresAt  *time.Time
 	IsEnabled  bool

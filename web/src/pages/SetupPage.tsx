@@ -286,11 +286,13 @@ export const SetupPage: React.FC = () => {
                         label="Database Engine"
                         description="Where should we store your data?"
                         size="sm"
+                        // MySQL and MariaDB are intentionally absent: the DDL
+                        // adapts to them but the queries do not, so choosing one
+                        // produced an install that set up cleanly and then failed
+                        // on every request. The server rejects them too.
                         data={[
                           { value: 'sqlite', label: 'SQLite (Single file, no setup)' },
                           { value: 'postgres', label: 'PostgreSQL' },
-                          { value: 'mysql', label: 'MySQL' },
-                          { value: 'mariadb', label: 'MariaDB' },
                         ]}
                         {...dbForm.getInputProps('type')}
                       />

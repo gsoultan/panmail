@@ -1,8 +1,13 @@
 package usecases
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"sync"
+	"time"
 
+	"github.com/gsoultan/gsmail"
 	"github.com/gsoultan/gsmail/imap"
 	"github.com/gsoultan/gsmail/pop3"
 	"github.com/gsoultan/gsmail/smtp"
@@ -11,28 +16,64 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-type providerFactory struct{}
+// Pool sizing. A fresh sender per recipient means a TCP connect, a TLS
+// handshake and an AUTH round trip for every single address, which is what
+// held throughput down; reusing connections removes all three from the common
+// path.
+var senderPoolConfig = smtp.PoolConfig{
+	MaxIdle:     4,
+	MaxOpen:     16,
+	IdleTimeout: 30 * time.Second,
+	MaxLifetime: 5 * time.Minute,
+	Wait:        true,
+}
+
+type providerFactory struct {
+	mu      sync.Mutex
+	senders map[string]*smtp.Sender
+}
 
 func NewProviderFactory() entities.ProviderFactory {
-	return &providerFactory{}
+	return &providerFactory{senders: make(map[string]*smtp.Sender)}
 }
 
-func (f *providerFactory) CreateSender(p *entities.EmailProvider) (any, error) {
-	switch p.Type {
-	case panmailv1.ProviderType_PROVIDER_TYPE_SMTP:
-		c := &panmailv1.SmtpConfig{}
-		if err := protojson.Unmarshal(p.Config, c); err != nil {
-			return nil, err
-		}
-		s := smtp.NewSender(c.Host, int(c.Port), c.Username, c.Password, c.UseSsl)
-		s.InsecureSkipVerify = c.SkipVerify
-		return s, nil
-	default:
+// CreateSender returns a pooled sender for the provider.
+//
+// Senders are cached per provider and per configuration: editing a provider
+// produces a different fingerprint, so the old sender is replaced rather than
+// silently kept with stale credentials.
+func (f *providerFactory) CreateSender(p *entities.EmailProvider) (gsmail.Sender, error) {
+	if p.Type != panmailv1.ProviderType_PROVIDER_TYPE_SMTP {
 		return nil, fmt.Errorf("provider type %v does not support sending", p.Type)
 	}
+
+	c := &panmailv1.SmtpConfig{}
+	if err := protojson.Unmarshal(p.Config, c); err != nil {
+		return nil, err
+	}
+
+	key := senderCacheKey(p.ID, p.Config)
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if sender, ok := f.senders[key]; ok {
+		return sender, nil
+	}
+
+	// The configuration changed: retire every sender for this provider so the
+	// old connections, and the credentials on them, are not reused.
+	f.closeProviderLocked(p.ID)
+
+	sender := smtp.NewSender(c.Host, int(c.Port), c.Username, c.Password, c.UseSsl)
+	sender.InsecureSkipVerify = c.SkipVerify
+	sender.EnablePool(senderPoolConfig)
+
+	f.senders[key] = sender
+	return sender, nil
 }
 
-func (f *providerFactory) CreateReceiver(p *entities.EmailProvider) (any, error) {
+func (f *providerFactory) CreateReceiver(p *entities.EmailProvider) (gsmail.Receiver, error) {
 	switch p.Type {
 	case panmailv1.ProviderType_PROVIDER_TYPE_IMAP:
 		c := &panmailv1.ImapConfig{}
@@ -53,4 +94,36 @@ func (f *providerFactory) CreateReceiver(p *entities.EmailProvider) (any, error)
 	default:
 		return nil, fmt.Errorf("provider type %v does not support receiving", p.Type)
 	}
+}
+
+// Close shuts every pooled connection down. Called during shutdown so that
+// sockets are not left open behind the process.
+func (f *providerFactory) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for key, sender := range f.senders {
+		_ = sender.Close()
+		delete(f.senders, key)
+	}
+	return nil
+}
+
+// closeProviderLocked retires cached senders for one provider. The caller must
+// hold the lock.
+func (f *providerFactory) closeProviderLocked(providerID string) {
+	prefix := providerID + ":"
+	for key, sender := range f.senders {
+		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			_ = sender.Close()
+			delete(f.senders, key)
+		}
+	}
+}
+
+// senderCacheKey fingerprints a provider's configuration so a credential
+// change invalidates the cached sender.
+func senderCacheKey(providerID string, config []byte) string {
+	sum := sha256.Sum256(config)
+	return providerID + ":" + hex.EncodeToString(sum[:8])
 }
