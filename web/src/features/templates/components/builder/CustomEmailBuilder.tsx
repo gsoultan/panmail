@@ -32,6 +32,7 @@ import {
   IconSpace,
   IconTrash,
   IconCopy,
+  IconGripVertical,
   IconPlus,
   IconDeviceMobile,
   IconDeviceDesktop,
@@ -52,11 +53,29 @@ import {
   IconAdjustments,
   IconLayoutGrid
 } from '@tabler/icons-react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Block, BlockType, EmailDesign } from './types';
 import { generateHTML, VIEWPORT_WIDTHS, type Viewport } from './htmlGenerator';
 import { PropertyEditor } from './PropertyEditor';
 import { sanitizeHtml } from './sanitize';
 import { useDesignHistory } from './useDesignHistory';
+import { reorderTopLevel, reorderWithinColumn, findContainer, sameContainer } from './reorder';
 
 export interface CustomEmailBuilderHandle {
   exportHtml: () => { design: EmailDesign; html: string };
@@ -250,6 +269,54 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
       if (id && !wideEnoughForProps) openProps();
     },
     [wideEnoughForProps, openProps],
+  );
+
+  // Touch and keyboard alongside pointer, because the builder is used on a
+  // tablet and because a reorder that only works with a mouse is not usable by
+  // anyone navigating with a keyboard.
+  //
+  // The pointer sensor needs a small activation distance or a click that moves
+  // a pixel is read as a drag, and selecting a block stops working.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // One handler for both levels. Which list a drag belongs to is derived from
+  // the design rather than from where the handler was registered, so nested
+  // DndContexts — which would compete for the same pointer events — are not
+  // needed.
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      setDesign((prev) => {
+        const from = findContainer(prev.blocks, String(active.id));
+        const to = findContainer(prev.blocks, String(over.id));
+
+        // Dragging between two different lists is refused rather than guessed
+        // at: the indices are measured against different arrays, so acting on
+        // them would reorder the wrong one.
+        if (!sameContainer(from, to) || !from) return prev;
+
+        if (from.kind === 'root') {
+          return { ...prev, blocks: reorderTopLevel(prev.blocks, String(active.id), String(over.id)) };
+        }
+        return {
+          ...prev,
+          blocks: reorderWithinColumn(
+            prev.blocks,
+            from.columnsBlockId,
+            from.columnId,
+            String(active.id),
+            String(over.id),
+          ),
+        };
+      });
+    },
+    [setDesign],
   );
 
   const addBlock = (type: BlockType, index?: number) => {
@@ -752,6 +819,12 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
                     position: 'relative',
                     transition: 'width 0.3s ease'
                   }}>
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                    <SortableContext items={design.blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
                     <Stack gap={0}>
                       {design.blocks.map((block, index) => (
                     <React.Fragment key={block.id}>
@@ -781,6 +854,8 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
                     </Center>
                   )}
                 </Stack>
+                    </SortableContext>
+                    </DndContext>
               </Box>
 
               {previewMode === 'mobile' && (
@@ -843,15 +918,25 @@ const RenderBlockWrapper = ({
   nested = false,
   previewMode
 }: RenderBlockWrapperProps) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: block.id,
+  });
+
   return (
     <Box
+      ref={setNodeRef}
       style={{
+        transform: CSS.Translate.toString(transform),
+        // Lifted above its neighbours while dragging, and faded so the gap it
+        // will land in stays readable.
+        zIndex: isDragging ? 20 : undefined,
+        opacity: isDragging ? 0.4 : 1,
         position: 'relative',
         padding: rem(8),
         border: selectedBlockId === block.id ? '2px solid var(--mantine-color-brand-6)' : (nested ? '1px dashed light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))' : '1px dashed transparent'),
         borderRadius: rem(4),
         cursor: 'pointer',
-        transition: 'all 0.2s',
+        transition: transition || 'all 0.2s',
         marginBottom: rem(selectedBlockId === block.id ? 8 : 4)
       }}
       onClick={(e) => {
@@ -859,6 +944,32 @@ const RenderBlockWrapper = ({
         setSelectedBlockId(block.id);
       }}
     >
+      {/*
+        A dedicated handle rather than making the whole block draggable: the
+        block body has to stay clickable to select it, and on a touch screen a
+        drag started anywhere would fight with scrolling the canvas.
+      */}
+      <ActionIcon
+        {...attributes}
+        {...listeners}
+        size="sm"
+        variant="subtle"
+        color="gray"
+        aria-label={`Reorder ${block.type} block`}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: -6,
+          zIndex: 11,
+          cursor: isDragging ? 'grabbing' : 'grab',
+          touchAction: 'none',
+          opacity: selectedBlockId === block.id ? 1 : 0.35,
+        }}
+      >
+        <IconGripVertical size={14} />
+      </ActionIcon>
+
       {/* Block Controls */}
       {selectedBlockId === block.id && (
         <Group
@@ -1056,7 +1167,11 @@ const renderBlock = (block: Block, props: Omit<RenderBlockWrapperProps, 'block'>
           {(block.content.columns || []).map((col: any) => (
             <Box key={col.id} style={{ flex: 1, ...col.style, width: props.previewMode === 'mobile' && block.content.stackOnMobile !== false ? '100%' : (col.width || '50%') }}>
               <Stack gap={0} style={{ minHeight: rem(60), border: '1px dashed light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))', borderRadius: rem(4), padding: rem(4) }}>
-                {col.blocks.map((b: Block, i: number) => {
+                <SortableContext
+                  items={(col.blocks || []).map((x: Block) => x.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                {(col.blocks || []).map((b: Block, i: number) => {
                   const { index: _, totalBlocks: __, ...rest } = props;
                   return (
                     <RenderBlockWrapper
@@ -1069,6 +1184,7 @@ const renderBlock = (block: Block, props: Omit<RenderBlockWrapperProps, 'block'>
                     />
                   );
                 })}
+                </SortableContext>
                 <Center mt="auto">
                   <Menu shadow="md" width={200} position="bottom">
                     <Menu.Target>

@@ -25,19 +25,45 @@ interface PropertyEditorProps {
   onChange: (updates: Partial<Block>) => void;
 }
 
+const BUILTIN_VARS = [
+  '{{name}}',
+  '{{email}}',
+  '{{company}}',
+  '{{unsubscribe_url}}',
+  '{{current_date}}',
+  '{{current_year}}',
+  '{{logo_url}}',
+  '{{verification_link}}',
+];
+
+// Variables the author added themselves are kept across reloads. They were
+// component state, so every one had to be retyped after a refresh — which for a
+// list whose whole purpose is saving typing made the feature close to useless.
+//
+// localStorage rather than the server: this is a per-person convenience list,
+// not part of the template, and it must not become another thing that can fail
+// to save.
+const CUSTOM_VARS_KEY = 'panmail.builder.customVariables';
+
+const loadCustomVars = (): string[] => {
+  try {
+    const raw = localStorage.getItem(CUSTOM_VARS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+  } catch {
+    // Private browsing, a disabled store or corrupt JSON: the built-ins still
+    // work, and losing a convenience list is not worth breaking the editor.
+    return [];
+  }
+};
+
 export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange }) => {
   const [varAssistantOpened, setVarAssistantOpened] = useState(false);
-  const [customVars, setCustomVars] = useState<string[]>([
-    '{{name}}', 
-    '{{email}}', 
-    '{{company}}', 
-    '{{unsubscribe_url}}',
-    '{{current_date}}',
-    '{{current_year}}',
-    '{{logo_url}}',
-    '{{verification_link}}'
-  ]);
+  const [userVars, setUserVars] = useState<string[]>(loadCustomVars);
   const [newVar, setNewVar] = useState('');
+
+  const customVars = [...BUILTIN_VARS, ...userVars.filter((v) => !BUILTIN_VARS.includes(v))];
 
   const updateContent = (key: string, value: any) => {
     onChange({ content: { ...block.content, [key]: value } });
@@ -48,9 +74,33 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
   };
 
   const addVariable = () => {
-    if (newVar && !customVars.includes(`{{${newVar}}}`)) {
-      setCustomVars([...customVars, `{{${newVar}}}`]);
+    // Accept either `foo` or `{{foo}}`, since both are natural to type.
+    const name = newVar.trim().replace(/^\{+|\}+$/g, '').trim();
+    if (!name) return;
+
+    const token = `{{${name}}}`;
+    if (customVars.includes(token)) {
       setNewVar('');
+      return;
+    }
+
+    const next = [...userVars, token];
+    setUserVars(next);
+    setNewVar('');
+    try {
+      localStorage.setItem(CUSTOM_VARS_KEY, JSON.stringify(next));
+    } catch {
+      // Kept in memory for this session even if it cannot be persisted.
+    }
+  };
+
+  const removeVariable = (token: string) => {
+    const next = userVars.filter((v) => v !== token);
+    setUserVars(next);
+    try {
+      localStorage.setItem(CUSTOM_VARS_KEY, JSON.stringify(next));
+    } catch {
+      /* nothing to do */
     }
   };
 
@@ -109,18 +159,26 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                     <Stack gap="xs">
                         <Text size="xs" c="dimmed">Click to insert a variable:</Text>
                         <Group gap={4} wrap="wrap">
-                        {customVars.map(v => (
+                        {customVars.map(v => {
+                            const isCustom = !BUILTIN_VARS.includes(v);
+                            return (
                             <Button
                             key={v}
                             variant="light"
                             size="compact-xs"
                             onClick={() => insertVariable(v)}
-                            color="indigo"
+                            // Right-click removes a variable the author added.
+                            // Built-ins have no remove path, so they cannot be
+                            // lost by accident.
+                            onContextMenu={isCustom ? (e) => { e.preventDefault(); removeVariable(v); } : undefined}
+                            title={isCustom ? `${v} — right-click to remove` : v}
+                            color={isCustom ? 'grape' : 'indigo'}
                             radius="xs"
                             >
                             {v}
                             </Button>
-                        ))}
+                            );
+                        })}
                         </Group>
 
                         <Divider />
