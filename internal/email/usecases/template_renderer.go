@@ -26,6 +26,56 @@ func NewTemplateRenderer() TemplateRenderer {
 	return &templateRenderer{}
 }
 
+// markSafeForPlainText wraps every string in the data so Handlebars does not
+// HTML-escape it.
+//
+// Handlebars escapes `{{x}}` unconditionally, and raymond offers no way to turn
+// that off for a render — only `SafeString`, which it checks on the evaluated
+// value. Without this, a plain-text body or a subject line rendered from
+// `{{company}}` where company is "Tom & Jerry" reaches the recipient as
+// "Tom &amp; Jerry". Subjects are the worst case: they are always rendered as
+// plain text, and there is no client that will decode entities in one.
+//
+// The alternative, unescaping the rendered output, would also decode entities
+// the template author typed literally. This escapes nothing in the first place.
+//
+// Template data arrives from structpb.AsMap, so the value shapes are exactly
+// string, float64, bool, nil, []any and map[string]any; the string-keyed and
+// string-element cases are handled too for callers that build data by hand.
+func markSafeForPlainText(value any) any {
+	switch v := value.(type) {
+	case string:
+		return raymond.SafeString(v)
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for k, item := range v {
+			out[k] = markSafeForPlainText(item)
+		}
+		return out
+	case map[string]string:
+		out := make(map[string]any, len(v))
+		for k, item := range v {
+			out[k] = raymond.SafeString(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = markSafeForPlainText(item)
+		}
+		return out
+	case []string:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = raymond.SafeString(item)
+		}
+		return out
+	default:
+		// Numbers, booleans and nil have no characters worth escaping.
+		return value
+	}
+}
+
 // Render attempts to render a template using Handlebars (raymond) first,
 // and falls back to standard Go templates if Handlebars fails.
 // This allows supporting both {{variable}} and {{.variable}} syntax.
@@ -43,7 +93,14 @@ func (r *templateRenderer) Render(tpl string, data any, isHTML bool) (string, er
 	}
 
 	if rayTpl != nil {
-		res, err := rayTpl.Exec(data)
+		// isHTML has to be honoured here, not only in the Go-template fallback
+		// below. raymond succeeds for almost every template, so the fallback is
+		// rarely reached and the flag was in practice never consulted.
+		payload := data
+		if !isHTML {
+			payload = markSafeForPlainText(data)
+		}
+		res, err := rayTpl.Exec(payload)
 		if err == nil {
 			return res, nil
 		}
