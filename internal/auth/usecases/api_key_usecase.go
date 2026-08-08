@@ -106,6 +106,14 @@ func (u *apiKeyUsecase) VerifyApiKey(ctx context.Context, key string) (*entities
 	if err != nil {
 		return nil, err
 	}
+	// The store reports an unknown hash as an error, so this is unreachable
+	// today. It is here because the dereference below is on the path every
+	// unauthenticated request takes: were the store ever changed to match the
+	// other repositories, which return (nil, nil) for a missing row, an
+	// unrecognised key would panic instead of being rejected.
+	if apiKey == nil {
+		return nil, fmt.Errorf("api key not found")
+	}
 
 	if !apiKey.IsEnabled {
 		return nil, fmt.Errorf("api key is disabled")
