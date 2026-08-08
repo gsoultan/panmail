@@ -248,6 +248,13 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	}
 	fromDomain := strings.ToLower(fromParts[1])
 
+	// The address headers every copy carries, as opposed to the single address
+	// each copy is delivered to. Bcc is absent by design: it is the one list
+	// that must not appear in a header, and its members still receive their own
+	// copy because the send loop iterates over To, Cc and Bcc alike.
+	visibleTo := append([]string(nil), req.To...)
+	visibleCc := append([]string(nil), req.Cc...)
+
 	var providers []*providerEntities.EmailProvider
 	if req.ProviderId != "" {
 		// Try to find in cached list first
@@ -376,9 +383,25 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 				currentBodyHTML = u.injectTracking(tenantID, messageID, recipient, currentBodyHTML)
 			}
 
+			// One copy per recipient, because the tracking pixel and the signed
+			// links above are personal to this address. The headers still name
+			// the whole visible audience, so a Cc recipient can see who else
+			// was copied, while Envelope keeps this copy going to one address.
+			//
+			// Without Envelope these two requirements are mutually exclusive:
+			// populating Cc would add every Cc address to RCPT TO on every
+			// iteration, so each of them would receive one copy per recipient.
+			// Leaving Cc empty was the previous behaviour, and it silently
+			// turned every Cc into a Bcc.
+			//
+			// Bcc is never set as a header — a blind address must not be
+			// disclosed — and reaches its own copy through Envelope when the
+			// loop gets to it.
 			msg := gsmail.Email{
 				From:     req.From,
-				To:       []string{recipient},
+				To:       visibleTo,
+				Cc:       visibleCc,
+				Envelope: []string{recipient},
 				Subject:  subject,
 				Body:     []byte(bodyText),
 				HTMLBody: []byte(currentBodyHTML),

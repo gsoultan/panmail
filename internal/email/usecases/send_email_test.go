@@ -531,9 +531,12 @@ func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
 	urlB := ""
 	for _, email := range sender.sentEmails {
 		body := string(email.HTMLBody)
-		if strings.Contains(string(email.To[0]), "a@example.com") {
+		// Envelope, not To: every copy now carries the full visible To and Cc
+		// in its headers, and the envelope is what names the one address this
+		// copy is delivered to.
+		if strings.Contains(envelopeOf(email), "a@example.com") {
 			urlA = body
-		} else if strings.Contains(string(email.To[0]), "b@example.com") {
+		} else if strings.Contains(envelopeOf(email), "b@example.com") {
 			urlB = body
 		}
 	}
@@ -562,7 +565,7 @@ func TestSendEmailUsecase_MultiRecipient_PartialFailure(t *testing.T) {
 	// Sender that fails for a specific recipient
 	sender := &mockSenderFunc{
 		sendFn: func(email gsmail.Email) error {
-			if email.To[0] == "fail@example.com" {
+			if envelopeOf(email) == "fail@example.com" {
 				return errors.New("delivery failed")
 			}
 			return nil
@@ -635,4 +638,19 @@ func (m *mockSenderFunc) SetRetryConfig(config gsmail.RetryConfig)         {}
 
 func (m *mockOutboxRepo) ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error) {
 	return m.ListPending(ctx, limit)
+}
+
+// envelopeOf returns the single address a copy is delivered to.
+//
+// Each recipient gets its own copy so tracking stays personal, while the To and
+// Cc headers describe the whole visible audience — so the headers no longer
+// identify who a given copy is for. See gsmail.Email.Envelope.
+func envelopeOf(email gsmail.Email) string {
+	if len(email.Envelope) > 0 {
+		return email.Envelope[0]
+	}
+	if len(email.To) > 0 {
+		return email.To[0]
+	}
+	return ""
 }

@@ -312,14 +312,27 @@ func validateTenantID(tenantID string) error {
 
 // dialProvider builds whichever client the provider type supports, so that a
 // connectivity test works for senders and receivers alike.
-func (u *manageProvidersUsecase) dialProvider(p *entities.EmailProvider) (any, error) {
+// dialProvider returns something that can be health-checked.
+//
+// The return type is gsmail.Pinger rather than any: the only caller passes the
+// result straight to gsmail.Ping, and every sender and receiver the factory
+// builds implements it. Returning any meant a provider that could not be pinged
+// would have failed at the call site instead of here.
+func (u *manageProvidersUsecase) dialProvider(p *entities.EmailProvider) (gsmail.Pinger, error) {
 	if sender, err := u.factory.CreateSender(p); err == nil {
-		return sender, nil
+		if pinger, ok := sender.(gsmail.Pinger); ok {
+			return pinger, nil
+		}
+		return nil, fmt.Errorf("this provider type cannot be health-checked")
 	}
 
 	receiver, err := u.factory.CreateReceiver(p)
 	if err != nil {
 		return nil, err
 	}
-	return receiver, nil
+	pinger, ok := receiver.(gsmail.Pinger)
+	if !ok {
+		return nil, fmt.Errorf("this provider type cannot be health-checked")
+	}
+	return pinger, nil
 }
