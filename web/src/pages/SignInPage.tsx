@@ -30,6 +30,9 @@ export const SignInPage: React.FC = () => {
   const [showTwoFactorSetup, setShowTwoFactorSetup] = useState(false);
   const [setupData, setSetupData] = useState<{ secret: string; qrCodeUrl: string } | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  // Issued by sign-in once the password is accepted. It is the only thing that
+  // identifies the account during verification, and grants no access on its own.
+  const [challengeToken, setChallengeToken] = useState('');
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
 
@@ -48,9 +51,8 @@ export const SignInPage: React.FC = () => {
     setLoading(true);
     try {
       const response = await authClient.verifyTwoFactor({
-        email: form.values.email,
+        challengeToken,
         code: twoFactorCode,
-        secret: showTwoFactorSetup ? setupData?.secret : undefined,
       });
 
       if (response.verified && response.token && response.user) {
@@ -100,6 +102,7 @@ export const SignInPage: React.FC = () => {
 
       if (response.twoFactorSetupRequired) {
         setSetupData({ secret: response.twoFactorSecret, qrCodeUrl: response.twoFactorQrCodeUrl });
+        setChallengeToken(response.challengeToken);
         setShowTwoFactorSetup(true);
         notifications.show({
           title: '2FA Setup Required',
@@ -110,6 +113,7 @@ export const SignInPage: React.FC = () => {
       }
 
       if (response.twoFactorRequired) {
+        setChallengeToken(response.challengeToken);
         setShowTwoFactor(true);
         notifications.show({
           title: 'Two-Factor Authentication',
@@ -301,7 +305,7 @@ export const SignInPage: React.FC = () => {
                     {(showTwoFactor || showTwoFactorSetup) ? 'Verify & Sign In' : 'Sign In'}
                   </Button>
                   {(showTwoFactor || showTwoFactorSetup) && (
-                    <Button variant="subtle" size="xs" onClick={() => { setShowTwoFactor(false); setShowTwoFactorSetup(false); }}>
+                    <Button variant="subtle" size="xs" onClick={() => { setShowTwoFactor(false); setShowTwoFactorSetup(false); setChallengeToken(''); }}>
                       Back to Sign In
                     </Button>
                   )}

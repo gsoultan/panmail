@@ -50,6 +50,13 @@ export class CreateEmailProviderRequest extends Message<CreateEmailProviderReque
    */
   allowedDomains: string[] = [];
 
+  /**
+   * Secret used to verify this provider's delivery webhooks. Write-only.
+   *
+   * @generated from field: string webhook_secret = 11;
+   */
+  webhookSecret = "";
+
   constructor(data?: PartialMessage<CreateEmailProviderRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -64,6 +71,7 @@ export class CreateEmailProviderRequest extends Message<CreateEmailProviderReque
     { no: 8, name: "imap", kind: "message", T: ImapConfig, oneof: "config" },
     { no: 9, name: "pop3", kind: "message", T: Pop3Config, oneof: "config" },
     { no: 10, name: "allowed_domains", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 11, name: "webhook_secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CreateEmailProviderRequest {
@@ -334,6 +342,14 @@ export class UpdateEmailProviderRequest extends Message<UpdateEmailProviderReque
    */
   allowedDomains: string[] = [];
 
+  /**
+   * Secret used to verify this provider's delivery webhooks. Write-only.
+   * Leave empty to keep the currently stored value.
+   *
+   * @generated from field: string webhook_secret = 11;
+   */
+  webhookSecret = "";
+
   constructor(data?: PartialMessage<UpdateEmailProviderRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -348,6 +364,7 @@ export class UpdateEmailProviderRequest extends Message<UpdateEmailProviderReque
     { no: 8, name: "imap", kind: "message", T: ImapConfig, oneof: "config" },
     { no: 9, name: "pop3", kind: "message", T: Pop3Config, oneof: "config" },
     { no: 10, name: "allowed_domains", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 11, name: "webhook_secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateEmailProviderRequest {

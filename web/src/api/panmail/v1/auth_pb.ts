@@ -852,6 +852,13 @@ export class ApiKey extends Message<ApiKey> {
    */
   isEnabled = false;
 
+  /**
+   * Capabilities this key carries, e.g. "email:send".
+   *
+   * @generated from field: repeated string scopes = 8;
+   */
+  scopes: string[] = [];
+
   constructor(data?: PartialMessage<ApiKey>) {
     super();
     proto3.util.initPartial(data, this);
@@ -867,6 +874,7 @@ export class ApiKey extends Message<ApiKey> {
     { no: 5, name: "last_used_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "expires_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 7, name: "is_enabled", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 8, name: "scopes", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ApiKey {
@@ -900,6 +908,14 @@ export class CreateApiKeyRequest extends Message<CreateApiKeyRequest> {
    */
   expiresAt = "";
 
+  /**
+   * Capabilities to grant. Unknown values are dropped; an empty list yields
+   * the least-privilege default of "email:send".
+   *
+   * @generated from field: repeated string scopes = 3;
+   */
+  scopes: string[] = [];
+
   constructor(data?: PartialMessage<CreateApiKeyRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -910,6 +926,7 @@ export class CreateApiKeyRequest extends Message<CreateApiKeyRequest> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "expires_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "scopes", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CreateApiKeyRequest {
@@ -1339,6 +1356,15 @@ export class SignInResponse extends Message<SignInResponse> {
    */
   twoFactorQrCodeUrl = "";
 
+  /**
+   * Short-lived credential proving the password step passed. It is the only
+   * way to identify the account during VerifyTwoFactor and grants no API
+   * access on its own.
+   *
+   * @generated from field: string challenge_token = 7;
+   */
+  challengeToken = "";
+
   constructor(data?: PartialMessage<SignInResponse>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1353,6 +1379,7 @@ export class SignInResponse extends Message<SignInResponse> {
     { no: 4, name: "two_factor_setup_required", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 5, name: "two_factor_secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "two_factor_qr_code_url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "challenge_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SignInResponse {
@@ -1653,18 +1680,9 @@ export class VerifyTwoFactorRequest extends Message<VerifyTwoFactorRequest> {
   code = "";
 
   /**
-   * Used during setup only
-   *
-   * @generated from field: string secret = 2;
+   * @generated from field: string challenge_token = 4;
    */
-  secret = "";
-
-  /**
-   * Used during SignIn only
-   *
-   * @generated from field: string email = 3;
-   */
-  email = "";
+  challengeToken = "";
 
   constructor(data?: PartialMessage<VerifyTwoFactorRequest>) {
     super();
@@ -1675,8 +1693,7 @@ export class VerifyTwoFactorRequest extends Message<VerifyTwoFactorRequest> {
   static readonly typeName = "panmail.v1.VerifyTwoFactorRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "code", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "email", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "challenge_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): VerifyTwoFactorRequest {
@@ -1758,11 +1775,6 @@ export class EnableTwoFactorRequest extends Message<EnableTwoFactorRequest> {
    */
   code = "";
 
-  /**
-   * @generated from field: string secret = 2;
-   */
-  secret = "";
-
   constructor(data?: PartialMessage<EnableTwoFactorRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1772,7 +1784,6 @@ export class EnableTwoFactorRequest extends Message<EnableTwoFactorRequest> {
   static readonly typeName = "panmail.v1.EnableTwoFactorRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "code", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): EnableTwoFactorRequest {

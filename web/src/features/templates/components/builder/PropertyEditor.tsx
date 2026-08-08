@@ -13,7 +13,6 @@ import {
   Button,
   Paper,
   ActionIcon,
-  Badge,
   SimpleGrid,
   Checkbox,
   Tabs
@@ -62,11 +61,18 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
       updateContent('text', (block.content.text || '') + v);
     } else if (block.type === 'button') {
       updateContent('label', (block.content.label || '') + v);
+    } else if (block.type === 'list') {
+      // The button is offered for lists (see the block-type filter below) but
+      // used to do nothing at all, because this chain had no branch for them.
+      const items = block.content.items || [];
+      const next = items.length ? [...items] : [''];
+      next[next.length - 1] = (next[next.length - 1] || '') + v;
+      updateContent('items', next);
     } else if (block.type === 'table') {
         if (block.content.rows && block.content.rows[0]) {
-            const newRows = [...block.content.rows];
-            newRows[0] = [...newRows[0]];
-            newRows[0][0] = (newRows[0][0] || '') + v;
+            const newRows = block.content.rows.map((row: string[], i: number) =>
+              i === 0 ? row.map((cell, j) => (j === 0 ? (cell || '') + v : cell)) : row,
+            );
             updateContent('rows', newRows);
         }
     }
@@ -249,7 +255,6 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                                   data={['Facebook', 'Twitter', 'LinkedIn', 'Instagram', 'YouTube', 'GitHub', 'Custom']}
                                   value={['Facebook', 'Twitter', 'LinkedIn', 'Instagram', 'YouTube', 'GitHub'].includes(link.platform) ? link.platform : 'Custom'}
                                   onChange={(val) => {
-                                    const newLinks = [...block.content.links];
                                     const icons: any = {
                                       'Facebook': 'https://cdn-icons-png.flaticon.com/512/124/124010.png',
                                       'Twitter': 'https://cdn-icons-png.flaticon.com/512/124/124021.png',
@@ -259,8 +264,14 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                                       'GitHub': 'https://cdn-icons-png.flaticon.com/512/733/733553.png',
                                       'Custom': link.icon
                                     };
-                                    newLinks[index].platform = val || 'Custom';
-                                    newLinks[index].icon = icons[val || 'Custom'];
+                                    const platform = val || 'Custom';
+                                    // Replaced, not assigned into: spreading the
+                                    // array still shares the link objects with
+                                    // the current state, so writing a field here
+                                    // edited the design React was rendering from.
+                                    const newLinks = block.content.links.map((l: any, i: number) =>
+                                      i === index ? { ...l, platform, icon: icons[platform] } : l,
+                                    );
                                     updateContent('links', newLinks);
                                   }}
                                   style={{ flex: 1 }}
@@ -278,8 +289,10 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                                   size="xs"
                                   value={link.icon}
                                   onChange={(e) => {
-                                    const newLinks = [...block.content.links];
-                                    newLinks[index].icon = e.currentTarget.value;
+                                    const icon = e.currentTarget.value;
+                                    const newLinks = block.content.links.map((l: any, i: number) =>
+                                      i === index ? { ...l, icon } : l,
+                                    );
                                     updateContent('links', newLinks);
                                   }}
                                 />
@@ -289,8 +302,10 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                                   size="xs"
                                   value={link.url}
                                   onChange={(e) => {
-                                      const newLinks = [...block.content.links];
-                                      newLinks[index].url = e.currentTarget.value;
+                                      const url = e.currentTarget.value;
+                                      const newLinks = block.content.links.map((l: any, i: number) =>
+                                        i === index ? { ...l, url } : l,
+                                      );
                                       updateContent('links', newLinks);
                                   }}
                               />
@@ -402,8 +417,13 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                             size="xs"
                             value={cell}
                             onChange={(e) => {
-                              const newRows = [...block.content.rows];
-                              newRows[i][j] = e.currentTarget.value;
+                              // The outer array was copied but the row was not,
+                              // so `newRows[i][j] = ...` wrote through into the
+                              // row object still held by the current state.
+                              const value = e.currentTarget.value;
+                              const newRows = block.content.rows.map((row: string[], ri: number) =>
+                                ri === i ? row.map((cell, ci) => (ci === j ? value : cell)) : row,
+                              );
                               updateContent('rows', newRows);
                             }}
                             placeholder={block.content.headers[j]}

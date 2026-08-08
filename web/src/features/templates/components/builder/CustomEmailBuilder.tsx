@@ -1,6 +1,6 @@
-import React, { useState, useImperativeHandle, forwardRef } from 'react';
-import { 
-  Box, 
+import React, { useState, useImperativeHandle, forwardRef, useEffect, useRef, useMemo, useCallback } from 'react';
+import {
+  Box,
   Paper,
   Stack,
   Text,
@@ -19,9 +19,11 @@ import {
   Modal,
   Code,
   Menu,
-  TextInput
+  TextInput,
+  Drawer,
+  SegmentedControl
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery, useHotkeys } from '@mantine/hooks';
 import {
   IconTypography,
   IconHandClick,
@@ -30,7 +32,6 @@ import {
   IconSpace,
   IconTrash,
   IconCopy,
-  IconGripVertical,
   IconPlus,
   IconDeviceMobile,
   IconDeviceDesktop,
@@ -43,11 +44,19 @@ import {
   IconEye,
   IconChevronUp,
   IconChevronDown,
-  IconCode
+  IconCode,
+  IconDeviceTablet,
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconPencil,
+  IconAdjustments,
+  IconLayoutGrid
 } from '@tabler/icons-react';
 import { Block, BlockType, EmailDesign } from './types';
-import { generateHTML } from './htmlGenerator';
+import { generateHTML, VIEWPORT_WIDTHS, type Viewport } from './htmlGenerator';
 import { PropertyEditor } from './PropertyEditor';
+import { sanitizeHtml } from './sanitize';
+import { useDesignHistory } from './useDesignHistory';
 
 export interface CustomEmailBuilderHandle {
   exportHtml: () => { design: EmailDesign; html: string };
@@ -55,7 +64,26 @@ export interface CustomEmailBuilderHandle {
 
 interface CustomEmailBuilderProps {
   initialDesign?: string;
+  /**
+   * Fired whenever the design changes, so the parent can autosave or track a
+   * dirty state. Previously the only way out was the imperative `exportHtml`
+   * ref, which meant a closed tab lost everything.
+   */
+  onChange?: (design: EmailDesign) => void;
 }
+
+const parseDesign = (raw: string | undefined): EmailDesign | null => {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    // A design missing its block list would crash the canvas on first render.
+    if (!parsed || !Array.isArray(parsed.blocks)) return null;
+    return { bodyStyle: {}, ...parsed } as EmailDesign;
+  } catch (e) {
+    console.error('Failed to parse initial design', e);
+    return null;
+  }
+};
 
 const DEFAULT_DESIGN: EmailDesign = {
   blocks: [
@@ -86,6 +114,15 @@ const BLOCK_TYPES: { type: BlockType; label: string; icon: any }[] = [
   { type: 'table', label: 'Table', icon: IconTable },
   { type: 'columns', label: 'Columns', icon: IconColumns },
 ];
+
+// Block ids key React lists and address blocks for edit and delete, so a
+// collision silently edits the wrong block. crypto.randomUUID is available in
+// every browser this app targets; the fallback keeps a non-secure context
+// (plain http on a LAN, which is how the dev gateway is often reached) working.
+const newBlockId = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
 
 const BlockItem = ({ bt, onClick }: { bt: any; onClick: () => void }) => (
   <Paper
@@ -144,21 +181,52 @@ const AddBlockMenu = ({ onAdd, label = "Add Block" }: { onAdd: (type: BlockType)
   </Menu>
 );
 
-export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEmailBuilderProps>(({ initialDesign }, ref) => {
-  const [design, setDesign] = useState<EmailDesign>(() => {
-    if (initialDesign) {
-      try {
-        return JSON.parse(initialDesign);
-      } catch (e) {
-        console.error('Failed to parse initial design', e);
-      }
-    }
-    return DEFAULT_DESIGN;
-  });
+export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEmailBuilderProps>(({ initialDesign, onChange }, ref) => {
+  const { design, setDesign, reset, undo, redo, canUndo, canRedo } = useDesignHistory(
+    parseDesign(initialDesign) ?? DEFAULT_DESIGN,
+  );
 
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [previewMode, setPreviewMode] = useState<Viewport>('desktop');
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [codeOpened, { open: openCode, close: closeCode }] = useDisclosure(false);
+
+  // Below these widths the three-pane layout does not fit, so the side panels
+  // become drawers rather than being squeezed into unusable slivers.
+  const wideEnoughForBlocks = useMediaQuery('(min-width: 62em)');   // ~992px
+  const wideEnoughForProps = useMediaQuery('(min-width: 75em)');    // ~1200px
+  const [blocksDrawer, { open: openBlocks, close: closeBlocks }] = useDisclosure(false);
+  const [propsDrawer, { open: openProps, close: closeProps }] = useDisclosure(false);
+
+  // The design arrives from a form that may still be loading when the builder
+  // mounts. Reading it once in a state initialiser silently ignored anything
+  // that landed later, so opening a template could show an empty canvas.
+  const appliedDesign = useRef(initialDesign);
+  useEffect(() => {
+    if (initialDesign === appliedDesign.current) return;
+    appliedDesign.current = initialDesign;
+    const parsed = parseDesign(initialDesign);
+    if (parsed) {
+      reset(parsed);
+      setSelectedBlockId(null);
+    }
+  }, [initialDesign, reset]);
+
+  // Skipped on mount so simply opening a template does not mark the form dirty.
+  const notifiedOnce = useRef(false);
+  useEffect(() => {
+    if (!notifiedOnce.current) {
+      notifiedOnce.current = true;
+      return;
+    }
+    onChange?.(design);
+  }, [design, onChange]);
+
+  useHotkeys([
+    ['mod+Z', () => undo()],
+    ['mod+shift+Z', () => redo()],
+    ['mod+Y', () => redo()],
+  ]);
 
   useImperativeHandle(ref, () => ({
     exportHtml: () => {
@@ -167,9 +235,26 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
     }
   }));
 
+  // Regenerating on every keystroke would re-parse a whole document into the
+  // preview iframe; only do it when the preview is actually on screen.
+  const previewHtml = useMemo(
+    () => (mode === 'preview' || codeOpened ? generateHTML(design) : ''),
+    [design, mode, codeOpened],
+  );
+
+  const selectBlock = useCallback(
+    (id: string | null) => {
+      setSelectedBlockId(id);
+      // On a narrow screen the property panel is a drawer, so selecting a block
+      // has to open it or the selection appears to do nothing.
+      if (id && !wideEnoughForProps) openProps();
+    },
+    [wideEnoughForProps, openProps],
+  );
+
   const addBlock = (type: BlockType, index?: number) => {
     const newBlock: Block = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: newBlockId(),
       type,
       content: getDefaults(type).content,
       style: getDefaults(type).style,
@@ -189,25 +274,36 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
   };
 
   const deleteBlock = (id: string) => {
-    const deleteRecursive = (blocks: Block[]): Block[] => {
-      return blocks.filter(b => {
-        if (b.id === id) return false;
-        if (b.type === 'columns' && b.content.columns) {
-          b.content.columns = b.content.columns.map((col: any) => ({
-            ...col,
-            blocks: deleteRecursive(col.blocks)
-          }));
-        }
-        return true;
-      });
-    };
+    // Rebuilt rather than edited in place. The previous version assigned to
+    // `b.content.columns` on a block belonging to the current state, so the
+    // delete was applied to the old design object as well as the new one —
+    // enough to make a re-render show a block that had already gone, and
+    // enough to defeat any future undo stack.
+    const deleteRecursive = (blocks: Block[]): Block[] =>
+      blocks
+        .filter((b) => b.id !== id)
+        .map((b) =>
+          b.type === 'columns' && b.content.columns
+            ? {
+                ...b,
+                content: {
+                  ...b.content,
+                  columns: b.content.columns.map((col: any) => ({
+                    ...col,
+                    blocks: deleteRecursive(col.blocks || []),
+                  })),
+                },
+              }
+            : b,
+        );
+
     setDesign(prev => ({ ...prev, blocks: deleteRecursive(prev.blocks) }));
     if (selectedBlockId === id) setSelectedBlockId(null);
   };
 
   const duplicateBlock = (block: Block) => {
     const reIDBlock = (b: Block): Block => {
-      const newId = Math.random().toString(36).substr(2, 9);
+      const newId = newBlockId();
       if (b.type === 'columns' && b.content.columns) {
         return {
           ...b,
@@ -216,7 +312,7 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
             ...b.content,
             columns: b.content.columns.map((col: any) => ({
               ...col,
-              id: Math.random().toString(36).substr(2, 9),
+              id: newBlockId(),
               blocks: col.blocks.map(reIDBlock)
             }))
           }
@@ -283,7 +379,9 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
         return b;
       });
     };
-    setDesign(prev => ({ ...prev, blocks: updateRecursive(prev.blocks) }));
+    // Coalesced: a property edit is usually a keystroke, and one undo step per
+    // character makes Ctrl-Z useless.
+    setDesign(prev => ({ ...prev, blocks: updateRecursive(prev.blocks) }), { coalesce: true });
   };
 
   const findBlockRecursive = (blocks: Block[], id: string | null): Block | undefined => {
@@ -302,51 +400,185 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
 
   const selectedBlock = findBlockRecursive(design.blocks, selectedBlockId);
 
+  // Both panels are defined once and mounted either inline or inside a drawer,
+  // so the narrow layout cannot drift away from the wide one.
+  const PALETTE_GROUPS: { title: string; types: BlockType[] }[] = [
+    { title: 'Basic', types: ['heading', 'text', 'button', 'divider', 'spacer'] },
+    { title: 'Media', types: ['image', 'video'] },
+    { title: 'Layout', types: ['columns', 'table'] },
+    { title: 'Social', types: ['social', 'list'] },
+  ];
+
+  const renderBlockPalette = (onAdd: (type: BlockType) => void) => (
+    <Stack gap="lg">
+      {PALETTE_GROUPS.map((group) => (
+        <Box key={group.title}>
+          <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">{group.title}</Text>
+          <SimpleGrid cols={2} spacing="xs">
+            {BLOCK_TYPES.filter((bt) => group.types.includes(bt.type)).map((bt) => (
+              <BlockItem key={bt.type} bt={bt} onClick={() => onAdd(bt.type)} />
+            ))}
+          </SimpleGrid>
+        </Box>
+      ))}
+    </Stack>
+  );
+
+  const renderPropertiesPanel = () =>
+    selectedBlock ? (
+      <PropertyEditor
+        block={selectedBlock}
+        onChange={(updates) => updateBlock(selectedBlock.id, updates)}
+      />
+    ) : (
+      <Stack gap="md">
+        <Text fw={700} size="sm">BODY SETTINGS</Text>
+        <Divider />
+        <TextInput
+          label="Email Pre-header"
+          description="Hidden text that appears after the subject line in many email clients"
+          placeholder="e.g. Check out our latest updates!"
+          value={design.preheader || ''}
+          onChange={(e) => {
+            const preheader = e.currentTarget.value;
+            setDesign(prev => ({ ...prev, preheader }), { coalesce: true });
+          }}
+          mb="xs"
+        />
+        <ColorInput
+          label="Background Color"
+          value={design.bodyStyle.backgroundColor}
+          onChange={(val) => setDesign(prev => ({ ...prev, bodyStyle: { ...prev.bodyStyle, backgroundColor: val } }), { coalesce: true })}
+        />
+        <ColorInput
+          label="Default Text Color"
+          value={design.bodyStyle.color || '#333333'}
+          onChange={(val) => setDesign(prev => ({ ...prev, bodyStyle: { ...prev.bodyStyle, color: val } }), { coalesce: true })}
+        />
+        <Select
+          label="Font Family"
+          data={[
+            { label: 'Sans Serif (Inter)', value: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
+            { label: 'Serif (Georgia)', value: 'Georgia, Times, "Times New Roman", serif' },
+            { label: 'Monospace (Monaco)', value: 'Monaco, Consolas, "Courier New", monospace' },
+            { label: 'Open Sans', value: '"Open Sans", sans-serif' },
+            { label: 'Lato', value: '"Lato", sans-serif' },
+            { label: 'Roboto', value: '"Roboto", sans-serif' },
+            { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
+            { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+          ]}
+          value={design.bodyStyle.fontFamily}
+          onChange={(val) => setDesign(prev => ({ ...prev, bodyStyle: { ...prev.bodyStyle, fontFamily: val || 'Inter, sans-serif' } }))}
+        />
+        <Select
+          label="Content Width"
+          description="Maximum width on desktop. Narrower screens always use the full width."
+          data={[
+            { label: '500px', value: '500px' },
+            { label: '600px (Recommended)', value: '600px' },
+            { label: '700px', value: '700px' },
+            { label: '800px', value: '800px' },
+          ]}
+          value={design.bodyStyle.contentWidth || '600px'}
+          onChange={(val) => setDesign(prev => ({ ...prev, bodyStyle: { ...prev.bodyStyle, contentWidth: val || '600px' } }))}
+        />
+      </Stack>
+    );
+
   return (
     <Box h="100%" style={{ display: 'flex', flexDirection: 'column' }}>
-      <Group justify="space-between" p="xs" style={{
+      <Group justify="space-between" p="xs" wrap="wrap" gap="xs" style={{
         backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
         borderBottom: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))'
       }}>
-        <Group gap="xs">
-          <Tooltip label="Desktop View">
-            <ActionIcon
-              variant={previewMode === 'desktop' ? 'filled' : 'light'}
-              onClick={() => setPreviewMode('desktop')}
-              color="brand"
-            >
-              <IconDeviceDesktop size={18} />
+        <Group gap="xs" wrap="nowrap">
+          {!wideEnoughForBlocks && (
+            <Tooltip label="Blocks">
+              <ActionIcon variant="light" color="brand" onClick={openBlocks} aria-label="Open blocks panel">
+                <IconLayoutGrid size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+          <Tooltip label="Undo (Ctrl+Z)">
+            <ActionIcon variant="light" color="brand" onClick={undo} disabled={!canUndo} aria-label="Undo">
+              <IconArrowBackUp size={18} />
             </ActionIcon>
           </Tooltip>
-          <Tooltip label="Mobile View">
+          <Tooltip label="Redo (Ctrl+Shift+Z)">
+            <ActionIcon variant="light" color="brand" onClick={redo} disabled={!canRedo} aria-label="Redo">
+              <IconArrowForwardUp size={18} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
+
+        <Group gap="xs" wrap="nowrap">
+          {/* Widths match the media queries the generated email carries, so
+              what these show is what the breakpoints actually do. */}
+          <Tooltip label={`Mobile (${VIEWPORT_WIDTHS.mobile}px)`}>
             <ActionIcon
               variant={previewMode === 'mobile' ? 'filled' : 'light'}
               onClick={() => setPreviewMode('mobile')}
               color="brand"
+              aria-label="Mobile viewport"
             >
               <IconDeviceMobile size={18} />
             </ActionIcon>
           </Tooltip>
-          <Divider orientation="vertical" />
-          <Tooltip label="Preview HTML Code">
+          <Tooltip label={`Tablet (${VIEWPORT_WIDTHS.tablet}px)`}>
             <ActionIcon
-              variant="light"
-              onClick={openCode}
+              variant={previewMode === 'tablet' ? 'filled' : 'light'}
+              onClick={() => setPreviewMode('tablet')}
               color="brand"
+              aria-label="Tablet viewport"
             >
-              <IconCode size={18} />
+              <IconDeviceTablet size={18} />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Desktop">
+            <ActionIcon
+              variant={previewMode === 'desktop' ? 'filled' : 'light'}
+              onClick={() => setPreviewMode('desktop')}
+              color="brand"
+              aria-label="Desktop viewport"
+            >
+              <IconDeviceDesktop size={18} />
             </ActionIcon>
           </Tooltip>
         </Group>
-        <Text size="sm" fw={600} c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))">Visual Email Builder</Text>
-        <Box w={100} />
+
+        <Group gap="xs" wrap="nowrap">
+          {/* Edit renders React components that only approximate the output.
+              Preview renders the real generated HTML, which is the only view
+              that can be trusted to match what a recipient sees. */}
+          <SegmentedControl
+            size="xs"
+            value={mode}
+            onChange={(v) => setMode(v as 'edit' | 'preview')}
+            data={[
+              { value: 'edit', label: (<Center style={{ gap: 6 }}><IconPencil size={14} /><Box visibleFrom="sm">Edit</Box></Center>) as any },
+              { value: 'preview', label: (<Center style={{ gap: 6 }}><IconEye size={14} /><Box visibleFrom="sm">Preview</Box></Center>) as any },
+            ]}
+          />
+          <Tooltip label="View HTML source">
+            <ActionIcon variant="light" onClick={openCode} color="brand" aria-label="View HTML source">
+              <IconCode size={18} />
+            </ActionIcon>
+          </Tooltip>
+          {!wideEnoughForProps && (
+            <Tooltip label="Properties">
+              <ActionIcon variant="light" color="brand" onClick={openProps} aria-label="Open properties panel">
+                <IconAdjustments size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
       </Group>
 
       <Modal opened={codeOpened} onClose={closeCode} title="HTML Preview" size="xl">
         <Stack>
           <Text size="sm">This is the generated HTML that will be sent to recipients.</Text>
           <ScrollArea h={500} offsetScrollbars>
-            <Code block style={{ whiteSpace: 'pre-wrap' }}>{generateHTML(design)}</Code>
+            <Code block style={{ whiteSpace: 'pre-wrap' }}>{previewHtml}</Code>
           </ScrollArea>
           <Group justify="flex-end">
             <Button onClick={closeCode}>Close</Button>
@@ -354,58 +586,78 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
         </Stack>
       </Modal>
 
+      {/* Panels become drawers rather than shrinking, because a 250px palette
+          and a 350px property sheet plus a canvas cannot coexist below ~1200px
+          — the builder was simply unusable on a tablet or a phone. */}
+      <Drawer opened={blocksDrawer && !wideEnoughForBlocks} onClose={closeBlocks} title="Blocks" size="xs" position="left">
+        {renderBlockPalette((type) => { addBlock(type); closeBlocks(); })}
+      </Drawer>
+      <Drawer opened={propsDrawer && !wideEnoughForProps} onClose={closeProps} title={selectedBlock ? 'Block properties' : 'Body settings'} size="sm" position="right">
+        {renderPropertiesPanel()}
+      </Drawer>
+
       <Box style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Sidebar: Blocks */}
-        <Box style={{ width: 250, borderRight: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))' }}>
-          <ScrollArea h="100%">
-            <Paper p="md" h="100%" radius={0} bg="light-dark(var(--mantine-color-white), var(--mantine-color-dark-7))">
-              <Stack gap="lg">
-                <Box>
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">Basic</Text>
-                  <SimpleGrid cols={2} spacing="xs">
-                    {BLOCK_TYPES.filter(bt => ['heading', 'text', 'button', 'divider', 'spacer'].includes(bt.type)).map(bt => (
-                      <BlockItem key={bt.type} bt={bt} onClick={() => addBlock(bt.type)} />
-                    ))}
-                  </SimpleGrid>
-                </Box>
-
-                <Box>
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">Media</Text>
-                  <SimpleGrid cols={2} spacing="xs">
-                    {BLOCK_TYPES.filter(bt => ['image', 'video'].includes(bt.type)).map(bt => (
-                      <BlockItem key={bt.type} bt={bt} onClick={() => addBlock(bt.type)} />
-                    ))}
-                  </SimpleGrid>
-                </Box>
-
-                <Box>
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">Layout</Text>
-                  <SimpleGrid cols={2} spacing="xs">
-                    {BLOCK_TYPES.filter(bt => ['columns', 'table'].includes(bt.type)).map(bt => (
-                      <BlockItem key={bt.type} bt={bt} onClick={() => addBlock(bt.type)} />
-                    ))}
-                  </SimpleGrid>
-                </Box>
-
-                <Box>
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">Social</Text>
-                  <SimpleGrid cols={2} spacing="xs">
-                    {BLOCK_TYPES.filter(bt => ['social'].includes(bt.type)).map(bt => (
-                      <BlockItem key={bt.type} bt={bt} onClick={() => addBlock(bt.type)} />
-                    ))}
-                  </SimpleGrid>
-                </Box>
-              </Stack>
-            </Paper>
-          </ScrollArea>
-        </Box>
+        {/* Inline only when there is room; otherwise it lives in the drawer. */}
+        {wideEnoughForBlocks && (
+          <Box style={{ width: 250, flexShrink: 0, borderRight: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))' }}>
+            <ScrollArea h="100%">
+              <Paper p="md" h="100%" radius={0} bg="light-dark(var(--mantine-color-white), var(--mantine-color-dark-7))">
+                {renderBlockPalette((type) => addBlock(type))}
+              </Paper>
+            </ScrollArea>
+          </Box>
+        )}
 
         {/* Main Canvas */}
-        <Box style={{ flex: 1, backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))', overflow: 'hidden' }}>
+        <Box style={{ flex: 1, minWidth: 0, backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))', overflow: 'hidden' }}>
+          {mode === 'preview' ? (
+            /*
+             * The real generated HTML, in a fully sandboxed iframe.
+             *
+             * This is the only view that can be trusted: the edit canvas below
+             * renders Mantine components that merely resemble the output, so a
+             * table-layout or media-query problem is invisible there.
+             *
+             * `sandbox=""` grants nothing — no scripts, no forms, no same-origin
+             * access — so authored template HTML cannot reach this session even
+             * though it is being rendered as markup. The width is set on the
+             * frame itself, which is what makes the email's own media queries
+             * fire exactly as they will in a client of that size.
+             */
+            <Box h="100%" style={{ overflow: 'auto', padding: rem(24) }}>
+              <Center>
+                <Box
+                  style={{
+                    width: previewMode === 'desktop' ? '100%' : VIEWPORT_WIDTHS[previewMode],
+                    maxWidth: '100%',
+                    height: '80vh',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
+                    borderRadius: rem(12),
+                    overflow: 'hidden',
+                    border: '1px solid var(--mantine-color-gray-3)',
+                    backgroundColor: '#ffffff',
+                    transition: 'width 0.25s ease',
+                  }}
+                >
+                  <iframe
+                    title="Email preview"
+                    sandbox=""
+                    srcDoc={previewHtml}
+                    style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+                  />
+                </Box>
+              </Center>
+            </Box>
+          ) : (
           <ScrollArea h="100%" p="xl">
             <Center>
               <Box
-                w={previewMode === 'desktop' ? (parseInt(design.bodyStyle.contentWidth || '600') + 80) : 375}
+                w={
+                  previewMode === 'desktop'
+                    ? parseInt(design.bodyStyle.contentWidth || '600', 10) + 80
+                    : VIEWPORT_WIDTHS[previewMode]
+                }
+                maw="100%"
                 style={{
                   transition: 'all 0.3s ease',
                   backgroundColor: design.bodyStyle.backgroundColor || '#f8f9fa',
@@ -500,7 +752,7 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
                     position: 'relative',
                     transition: 'width 0.3s ease'
                   }}>
-`,oldText:                    <Stack gap={0}>
+                    <Stack gap={0}>
                       {design.blocks.map((block, index) => (
                     <React.Fragment key={block.id}>
                       {index === 0 && <AddBlockMenu onAdd={(type) => addBlock(type, 0)} label="Insert Block" />}
@@ -509,7 +761,7 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
                         index={index}
                         totalBlocks={design.blocks.length}
                         selectedBlockId={selectedBlockId}
-                        setSelectedBlockId={setSelectedBlockId}
+                        setSelectedBlockId={selectBlock}
                         duplicateBlock={duplicateBlock}
                         deleteBlock={deleteBlock}
                         updateBlock={updateBlock}
@@ -546,70 +798,19 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
           </Box>
         </Center>
           </ScrollArea>
+          )}
         </Box>
 
-        {/* Sidebar: Properties */}
-        <Box style={{ width: 350, borderLeft: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))' }}>
-          <ScrollArea h="100%">
-            <Paper p="md" h="100%" radius={0} bg="light-dark(var(--mantine-color-white), var(--mantine-color-dark-7))">
-              {selectedBlock ? (
-                <PropertyEditor
-                  block={selectedBlock}
-                  onChange={(updates) => updateBlock(selectedBlock.id, updates)}
-                />
-              ) : (
-                <Stack gap="md">
-                  <Text fw={700} size="sm">BODY SETTINGS</Text>
-                  <Divider />
-                  <TextInput
-                    label="Email Pre-header"
-                    description="Hidden text that appears after the subject line in many email clients"
-                    placeholder="e.g. Check out our latest updates!"
-                    value={design.preheader || ''}
-                    onChange={(e) => setDesign(prev => ({ ...prev, preheader: e.currentTarget.value }))}
-                    mb="xs"
-                  />
-                  <ColorInput
-                    label="Background Color"
-                    value={design.bodyStyle.backgroundColor}
-                    onChange={(val) => setDesign(prev => ({ ...prev, bodyStyle: { ...prev.bodyStyle, backgroundColor: val } }))}
-                  />
-                  <ColorInput
-                    label="Default Text Color"
-                    value={design.bodyStyle.color || '#333333'}
-                    onChange={(val) => setDesign(prev => ({ ...prev, bodyStyle: { ...prev.bodyStyle, color: val } }))}
-                  />
-                  <Select
-                    label="Font Family"
-                    data={[
-                      { label: 'Sans Serif (Inter)', value: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
-                      { label: 'Serif (Georgia)', value: 'Georgia, Times, "Times New Roman", serif' },
-                      { label: 'Monospace (Monaco)', value: 'Monaco, Consolas, "Courier New", monospace' },
-                      { label: 'Open Sans', value: '"Open Sans", sans-serif' },
-                      { label: 'Lato', value: '"Lato", sans-serif' },
-                      { label: 'Roboto', value: '"Roboto", sans-serif' },
-                      { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
-                      { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
-                    ]}
-                    value={design.bodyStyle.fontFamily}
-                    onChange={(val) => setDesign(prev => ({ ...prev, bodyStyle: { ...prev.bodyStyle, fontFamily: val || 'Inter, sans-serif' } }))}
-                  />
-                  <Select
-                    label="Content Width"
-                    data={[
-                        { label: '500px', value: '500px' },
-                        { label: '600px (Recommended)', value: '600px' },
-                        { label: '700px', value: '700px' },
-                        { label: '800px', value: '800px' },
-                    ]}
-                    value={design.bodyStyle.contentWidth || '600px'}
-                    onChange={(val) => setDesign(prev => ({ ...prev, bodyStyle: { ...prev.bodyStyle, contentWidth: val || '600px' } }))}
-                  />
-                </Stack>
-              )}
-            </Paper>
-          </ScrollArea>
-        </Box>
+        {/* Inline only when there is room; otherwise it lives in the drawer. */}
+        {wideEnoughForProps && (
+          <Box style={{ width: 350, flexShrink: 0, borderLeft: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))' }}>
+            <ScrollArea h="100%">
+              <Paper p="md" h="100%" radius={0} bg="light-dark(var(--mantine-color-white), var(--mantine-color-dark-7))">
+                {renderPropertiesPanel()}
+              </Paper>
+            </ScrollArea>
+          </Box>
+        )}
       </Box>
     </Box>
   );
@@ -626,7 +827,7 @@ interface RenderBlockWrapperProps {
   updateBlock: (id: string, updates: Partial<Block>) => void;
   moveBlock: (index: number, direction: 'up' | 'down') => void;
   nested?: boolean;
-  previewMode: 'desktop' | 'mobile';
+  previewMode: Viewport;
 }
 
 const RenderBlockWrapper = ({
@@ -736,7 +937,11 @@ const renderBlock = (block: Block, props: Omit<RenderBlockWrapperProps, 'block'>
       const HeadingTag = (block.content.level || 'h1') as any;
       return <HeadingTag style={styles}>{block.content.text}</HeadingTag>;
     case 'text':
-      return <div style={styles} dangerouslySetInnerHTML={{ __html: block.content.text }} />;
+      // Sanitised, not trusted. Templates are tenant-scoped and an Editor can
+      // author them, so raw markup here would run in the session of whichever
+      // Administrator opens the template next. Merge tags are plain text and
+      // pass through untouched.
+      return <div style={styles} dangerouslySetInnerHTML={{ __html: sanitizeHtml(block.content.text) }} />;
     case 'button':
       const alignment = styles.textAlign || 'center';
       const justify = alignment === 'left' ? 'flex-start' : (alignment === 'right' ? 'flex-end' : 'center');
@@ -887,7 +1092,7 @@ const renderBlock = (block: Block, props: Omit<RenderBlockWrapperProps, 'block'>
                           onClick={(e) => {
                             e.stopPropagation();
                             const newBlock: Block = {
-                              id: Math.random().toString(36).substr(2, 9),
+                              id: newBlockId(),
                               type: bt.type,
                               content: getDefaults(bt.type).content,
                               style: getDefaults(bt.type).style,

@@ -69,6 +69,15 @@ export class EmailProvider extends Message<EmailProvider> {
    */
   allowedDomains: string[] = [];
 
+  /**
+   * Verification material for this provider's delivery webhooks: SendGrid's
+   * base64 ECDSA public key, Mailgun's HTTP webhook signing key, or a shared
+   * secret for the generic HMAC format. Write-only; never returned.
+   *
+   * @generated from field: string webhook_secret = 15;
+   */
+  webhookSecret = "";
+
   constructor(data?: PartialMessage<EmailProvider>) {
     super();
     proto3.util.initPartial(data, this);
@@ -87,6 +96,7 @@ export class EmailProvider extends Message<EmailProvider> {
     { no: 12, name: "update_time", kind: "message", T: Timestamp },
     { no: 13, name: "tenant_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 14, name: "allowed_domains", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 15, name: "webhook_secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): EmailProvider {
