@@ -5,7 +5,6 @@ import {
   Button, 
   Stack, 
   Group, 
-  Tabs, 
   Text, 
   rem, 
   Box, 
@@ -15,10 +14,12 @@ import {
   SimpleGrid,
   Grid,
   FileButton,
-  Divider,
   SegmentedControl
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { buildPreviewDocument } from '../preview/buildPreviewDocument';
+import { renderTemplatePreview } from '../preview/renderPreview';
+import { SampleDataPanel, parseSampleData } from '../preview/SampleDataPanel';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { 
@@ -27,14 +28,12 @@ import {
   IconEye, 
   IconEdit, 
   IconUpload, 
-  IconFileCode,
   IconCheck,
   IconInfoCircle,
   IconCode,
   IconDeviceDesktop,
   IconDeviceMobile,
   IconTrash,
-  IconX,
   IconSend
 } from '@tabler/icons-react';
 import { TemplateEditor, TemplateEditorHandle } from './TemplateEditor';
@@ -51,122 +50,14 @@ interface TemplateFormProps {
 export const TemplateForm: React.FC<TemplateFormProps> = ({ initialValues, onSubmit, loading }) => {
   const [opened, { open, close }] = useDisclosure(false);
 
-  const processTemplateForPreview = (html: string) => {
-    if (!html) return '';
-
-    let processed = html;
-
-    // 1. Handle Loops (repeat content 2 times for visualization)
-    // Run multiple passes to handle nesting
-    for (let i = 0; i < 3; i++) {
-      // Handlebars: {{#each var}}...{{/each}}
-      processed = processed.replace(/{{\s*#each\s+([a-zA-Z0-9_.-]+)\s*}}([\s\S]*?){{\s*\/each\s*}}/g, '$2$2');
-      // Go: {{range .var}}...{{end}}
-      processed = processed.replace(/{{\s*range\s+\.?([a-zA-Z0-9_.-]+)\s*}}([\s\S]*?){{\s*end\s*}}/g, '$2$2');
-    }
-
-    // 2. Handle Conditionals
-    for (let i = 0; i < 3; i++) {
-      // Handlebars: {{#if var}}...{{/if}}
-      processed = processed.replace(/{{\s*#if\s+([a-zA-Z0-9_.-]+)\s*}}([\s\S]*?){{\s*\/if\s*}}/g, '$2');
-      // Go: {{if .var}}...{{end}}
-      processed = processed.replace(/{{\s*if\s+\.?([a-zA-Z0-9_.-]+)\s*}}([\s\S]*?){{\s*end\s*}}/g, '$2');
-    }
-
-    // 3. Handle else in conditionals
-    processed = processed.replace(/{{\s*else\s*}}/g, '');
-
-    // 4. Handle Variables: {{.var}}, {{var}}, {{this}}
-    const keywords = ['if', 'else', 'each', 'range', 'end', 'with', 'unless', 'item', 'this'];
-    processed = processed.replace(/{{\s*([#/^]?)?\s*\.?([a-zA-Z0-9_.-]+)\s*}}/g, (match, prefix, name) => {
-      if (keywords.includes(name) || prefix) return '';
-      return `[${name}]`;
-    });
-
-    return processed;
-  };
-
-  const ensureAccuratePreview = (html: string) => {
-    if (!html) return '';
-    
-    // First, replace variables for a valid DOM structure
-    let processedHtml = processTemplateForPreview(html);
-    
-    // Comprehensive CSS Reset for accurate email rendering in preview
-    const cssReset = `
-      <style type="text/css">
-        /* Basic Resets */
-        body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
-        img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; display: block; max-width: 100%; }
-        table { border-collapse: collapse !important; }
-        
-        /* Precision Layout */
-        body { 
-          height: 100% !important; 
-          margin: 0 !important; 
-          padding: 0 !important; 
-          width: 100% !important; 
-          -webkit-font-smoothing: antialiased; 
-          -moz-osx-font-smoothing: grayscale; 
-        }
-        
-        /* Fix for Gmail margin on divs */
-        div[style*="margin: 16px 0;"] { margin: 0 !important; }
-        
-        /* Ensure responsive behavior */
-        * { box-sizing: border-box; }
-        
-        /* Mobile Precision: Prevent auto-scaling of text and ensure fluid layout */
-        @media only screen and (max-width: 480px) {
-          body, table, td, p, a, li, blockquote {
-            -webkit-text-size-adjust: none !important;
-          }
-          .full-width { width: 100% !important; height: auto !important; }
-          .mobile-center { text-align: center !important; }
-        }
-        
-        /* Outlook specific fixes for high DPI */
-        @media screen and (min-width: 0\\0) {
-          td { mso-line-height-rule: exactly; }
-        }
-
-        /* Custom scrollbar for a cleaner look */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
-      </style>
-    `;
-
-    const metaTags = `
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <meta name="x-apple-disable-message-reformatting">
-      <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
-    `;
-
-    // Inject Viewport and CSS Reset
-    if (processedHtml.includes('<head>')) {
-      // Inject inside head
-      if (!processedHtml.includes('name="viewport"') && !processedHtml.includes("name='viewport'")) {
-        processedHtml = processedHtml.replace('<head>', `<head>${metaTags}`);
-      }
-      processedHtml = processedHtml.replace('</head>', `${cssReset}</head>`);
-    } else if (processedHtml.includes('<html')) {
-      // Create head if missing
-      processedHtml = processedHtml.replace(/<html[^>]*>/, `$&<head>${metaTags}${cssReset}</head>`);
-    } else {
-      // Fragment: wrap or prepend
-      processedHtml = `${metaTags}${cssReset}${processedHtml}`;
-    }
-    
-    return processedHtml;
-  };
-
   const [isSendModalOpen, setIsSendModalOpen] = useState(false);
   const editorRef = useRef<TemplateEditorHandle>(null);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [previewType, setPreviewType] = useState<'html' | 'text'>('html');
+  // Sample data for the preview. Held as text rather than parsed state so a
+  // half-typed JSON object does not blank the preview while it is being edited.
+  const [sampleDataJson, setSampleDataJson] = useState('');
+  const sampleData = parseSampleData(sampleDataJson);
 
   const sendMutation = useMutation({
     mutationFn: (values: any) => emailProviderService.sendEmail(values),
@@ -469,6 +360,11 @@ export const TemplateForm: React.FC<TemplateFormProps> = ({ initialValues, onSub
                   <Group justify="space-between">
                     <Text fw={700} size="sm">Live Preview</Text>
                     <Group gap="xs">
+                      <SampleDataPanel
+                        html={form.values.bodyHtml}
+                        value={sampleDataJson}
+                        onChange={setSampleDataJson}
+                      />
                       <SegmentedControl
                         size="xs"
                         value={previewType}
@@ -600,12 +496,14 @@ export const TemplateForm: React.FC<TemplateFormProps> = ({ initialValues, onSub
                             fontSize: rem(14),
                             color: '#333'
                           }}>
-                            {form.values.bodyText || 'No plain text version provided.'}
+                            {form.values.bodyText
+                              ? renderTemplatePreview(form.values.bodyText, sampleData)
+                              : 'No plain text version provided.'}
                           </pre>
                         ) : hasContent ? (
                           <iframe
                             title="Preview"
-                            srcDoc={ensureAccuratePreview(form.values.bodyHtml)}
+                            srcDoc={buildPreviewDocument(form.values.bodyHtml, sampleData)}
                             style={{
                               width: '100%',
                               height: '100%',
