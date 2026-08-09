@@ -124,9 +124,13 @@ g.IS_REACT_ACT_ENVIRONMENT = true;
  * symptom is a suite that passes file by file and fails when run together,
  * which is the worst way for this to show up.
  *
- * Imported inside the hook so the DOM globals above are in place first.
+ * Required here at the end of the module rather than imported at the top,
+ * because Testing Library needs the DOM globals above to exist when it loads —
+ * but it must still load at preload time, not inside the hook. Loading it
+ * inside meant the first test file to run without another having already
+ * imported it saw Testing Library register its own hooks mid-test, which bun
+ * rejects outright. That failed only when a pure test file ran on its own,
+ * so the full suite hid it.
  */
-afterEach(() => {
-  const { cleanup } = require('@testing-library/react') as { cleanup: () => void };
-  cleanup();
-});
+const { cleanup } = require('@testing-library/react') as { cleanup: () => void };
+afterEach(cleanup);
