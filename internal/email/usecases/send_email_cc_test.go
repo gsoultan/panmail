@@ -268,3 +268,71 @@ func TestAPlainHTTPBaseURLCannotCarryOneClickUnsubscribe(t *testing.T) {
 		t.Error("an http target cannot satisfy RFC 8058 and must not be advertised as if it did")
 	}
 }
+
+// A malformed address that reaches a provider becomes a rejected RCPT TO, and
+// enough of those get a sending domain throttled. Catching them here keeps them
+// out of the outbox entirely.
+func TestMalformedAddressesAreRefusedBeforeQueueing(t *testing.T) {
+	cases := []struct {
+		name string
+		req  *panmailv1.SendEmailRequest
+	}{
+		{"no at sign in recipient", &panmailv1.SendEmailRequest{
+			From: "from@example.com", To: []string{"not-an-address"}}},
+		{"empty recipient", &panmailv1.SendEmailRequest{
+			From: "from@example.com", To: []string{""}}},
+		{"malformed cc", &panmailv1.SendEmailRequest{
+			From: "from@example.com", To: []string{"ok@example.com"}, Cc: []string{"bad@"}}},
+		{"malformed bcc", &panmailv1.SendEmailRequest{
+			From: "from@example.com", To: []string{"ok@example.com"}, Bcc: []string{"@example.com"}}},
+		{"malformed from fails the whole message", &panmailv1.SendEmailRequest{
+			From: "not-an-address", To: []string{"ok@example.com"}}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			u, sender := newUsecaseWithBaseURL("https://mail.example.com")
+			tc.req.ProviderId = testProviderID
+			tc.req.Subject = "Hello"
+			tc.req.BodyHtml = "<html><body>hi</body></html>"
+
+			ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
+			if _, err := u.SendEmail(ctx, testTenantID, tc.req); err == nil {
+				t.Error("expected the send to be refused")
+			}
+			if len(sender.sentEmails) != 0 {
+				t.Errorf("nothing should have been sent, got %d", len(sender.sentEmails))
+			}
+		})
+	}
+}
+
+// Validation must not reject addresses that are unusual but legal, or it
+// becomes the thing blocking legitimate mail.
+func TestLegitimateAddressesAreAccepted(t *testing.T) {
+	for _, addr := range []string{
+		"plain@example.com",
+		"with+tag@example.com",
+		"dotted.name@example.co.uk",
+		"under_score@example.com",
+		"Display Name <named@example.com>",
+	} {
+		t.Run(addr, func(t *testing.T) {
+			u, sender := newUsecaseWithBaseURL("https://mail.example.com")
+			ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
+			_, err := u.SendEmail(ctx, testTenantID, &panmailv1.SendEmailRequest{
+				ProviderId: testProviderID,
+				From:       "from@example.com",
+				To:         []string{addr},
+				Subject:    "Hello",
+				BodyHtml:   "<html><body>hi</body></html>",
+			})
+			if err != nil {
+				t.Errorf("%q is a legal address but was refused: %v", addr, err)
+			}
+			if len(sender.sentEmails) != 1 {
+				t.Errorf("expected the message to be sent, got %d copies", len(sender.sentEmails))
+			}
+		})
+	}
+}

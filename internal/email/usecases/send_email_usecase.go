@@ -127,6 +127,34 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, fmt.Errorf("at least one recipient is required")
 	}
 
+	// Reject malformed addresses here rather than letting the SMTP server do
+	// it. A rejected RCPT TO counts against the sending reputation, and enough
+	// of them get a sending domain throttled or blocked — so an address that
+	// cannot possibly be deliverable should never reach a provider at all.
+	//
+	// The From address is checked too: a malformed one fails every recipient of
+	// the message, which is worth catching before anything is queued.
+	// ParseEmailAddress rather than ValidateEmailSyntax, because the latter
+	// wants a bare addr-spec and callers legitimately send the display-name
+	// form, "Alice Smith <alice@example.com>". Rejecting that would make
+	// validation the thing blocking real mail.
+	if _, err := gsmail.ParseEmailAddress(req.From); err != nil {
+		return nil, fmt.Errorf("invalid from address %q: %w", req.From, err)
+	}
+	for _, list := range [][]string{req.To, req.Cc, req.Bcc} {
+		for _, addr := range list {
+			// Checked separately: an empty entry is a caller building the list
+			// wrongly rather than a malformed address, and the parser does not
+			// treat it as an error.
+			if strings.TrimSpace(addr) == "" {
+				return nil, fmt.Errorf("recipient list contains an empty address")
+			}
+			if _, err := gsmail.ParseEmailAddress(addr); err != nil {
+				return nil, fmt.Errorf("invalid recipient %q: %w", addr, err)
+			}
+		}
+	}
+
 	// Fail fast on a provider that does not exist, rather than queueing a
 	// message that can never be delivered.
 	provider, err := u.getProvider(ctx, tenantID, req.ProviderId)
