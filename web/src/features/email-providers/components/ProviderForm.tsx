@@ -7,6 +7,7 @@ import { seedSmtpValues, toProviderRequest } from './providerFormValues';
 import { DkimSection } from './DkimSection';
 import { ApiProviderFields } from './ApiProviderFields';
 import { OAuthSection } from './OAuthSection';
+import { DomainHealthPanel } from './DomainHealthPanel';
 
 interface ProviderFormProps {
   initialValues?: any;
@@ -137,6 +138,13 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
             {commonFields('smtp')}
             <OAuthSection form={form} editing={Boolean(initialValues?.id)} />
             <DkimSection form={form} editing={Boolean(initialValues?.id)} />
+            {/* Below DKIM because it is what tells you whether the key above
+                was ever published. */}
+            <DomainHealthPanel
+              providerId={initialValues?.id}
+              domain={form.values.smtp?.dkim?.domain}
+              selector={form.values.smtp?.dkim?.selector}
+            />
           </>
         );
       case ProviderType.IMAP:

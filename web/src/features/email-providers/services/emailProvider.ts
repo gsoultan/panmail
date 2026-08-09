@@ -90,6 +90,22 @@ export const emailProviderService = {
     return await providerClient.testEmailProviderConfig(req);
   },
 
+  /**
+   * Reads the DNS a sending domain publishes: SPF, DMARC, MX and each DKIM
+   * selector, plus whether the published key is the one being signed with.
+   *
+   * Takes a provider id when there is one, because only then can the key
+   * comparison happen — the private key never leaves the server, so the check
+   * has to run where it lives.
+   */
+  async checkDomainHealth(args: { providerId?: string; domain?: string; selectors?: string[] }) {
+    return await providerClient.checkDomainHealth({
+      providerId: args.providerId ?? '',
+      domain: args.domain ?? '',
+      selectors: args.selectors ?? [],
+    });
+  },
+
   async sendEmail(values: any) {
     const req = new SendEmailRequest(values);
     return await emailClient.sendEmail(req);

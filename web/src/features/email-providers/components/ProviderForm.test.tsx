@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'bun:test';
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
 import { ProviderForm } from './ProviderForm';
 
@@ -24,10 +25,18 @@ import { ProviderForm } from './ProviderForm';
  * real failure in the output.
  */
 const renderForm = async (props: Parameters<typeof ProviderForm>[0]) => {
+  // A QueryClient because the domain health panel runs its check as a
+  // mutation. Retries off so a failed request surfaces immediately rather
+  // than being retried past the end of the test.
+  const queryClient = new QueryClient({
+    defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+  });
   const result = render(
-    <MantineProvider>
-      <ProviderForm {...props} />
-    </MantineProvider>,
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider>
+        <ProviderForm {...props} />
+      </MantineProvider>
+    </QueryClientProvider>,
   );
   await act(async () => {});
   return result;
@@ -156,6 +165,21 @@ describe('rendering', () => {
   test('an SMTP provider shows the DKIM and OAuth sections', async () => {
     const { container } = await renderForm({ initialValues: savedSmtpProvider({}), onSubmit: () => {} });
     expect(container.textContent).toContain('DKIM');
+  });
+
+  test('a saved SMTP provider can have its DNS checked', async () => {
+    const { container } = await renderForm({ initialValues: savedSmtpProvider({}), onSubmit: () => {} });
+    expect(container.textContent).toContain('Domain health');
+    // Enabled because the provider is saved; without an id there is no key to
+    // compare against and the button would have nothing to check.
+    const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Check DNS'));
+    expect(button?.hasAttribute('disabled')).toBe(false);
+  });
+
+  test('an unsaved provider with no DKIM domain cannot check anything yet', async () => {
+    const { container } = await renderForm({ onSubmit: () => {} });
+    const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Check DNS'));
+    expect(button?.hasAttribute('disabled')).toBe(true);
   });
 
   // Which fields exist depends on the selected protocol, so the value
