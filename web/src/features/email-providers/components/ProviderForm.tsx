@@ -1,8 +1,9 @@
 import React from 'react';
-import { useForm } from '@mantine/form';
 import { TextInput, Select, NumberInput, Checkbox, Button, Stack, Group, Paper, Title, Divider, Text, CopyButton, Tooltip, ActionIcon } from '@mantine/core';
 import { IconCopy, IconCheck } from '@tabler/icons-react';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
+import { useAdaptedForm, type FieldErrors } from '../../../lib/form/useAdaptedForm';
+import { seedSmtpValues, toProviderRequest } from './providerFormValues';
 import { DkimSection } from './DkimSection';
 import { ApiProviderFields } from './ApiProviderFields';
 import { OAuthSection } from './OAuthSection';
@@ -41,11 +42,19 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
   const getInitialValues = () => {
     if (!initialValues) return defaultValues;
 
+    // The SMTP branch goes through seedSmtpValues so the two form-only switches
+    // are materialised from the config that came back. Without that they stay
+    // undefined, submit reads them as off, and saving an untouched provider
+    // clears its DKIM key or its OAuth credentials.
+    const smtpConfig = initialValues.config?.case === 'smtp'
+      ? initialValues.config.value
+      : initialValues.smtp;
+
     return {
       id: initialValues.id || '',
       name: initialValues.name || '',
       type: initialValues.type || ProviderType.SMTP,
-      smtp: initialValues.config?.case === 'smtp' ? initialValues.config.value : (initialValues.smtp || defaultValues.smtp),
+      smtp: seedSmtpValues(smtpConfig, defaultValues.smtp),
       imap: initialValues.config?.case === 'imap' ? initialValues.config.value : (initialValues.imap || defaultValues.imap),
       pop3: initialValues.config?.case === 'pop3' ? initialValues.config.value : (initialValues.pop3 || defaultValues.pop3),
       sendgrid: initialValues.config?.case === 'sendgrid' ? initialValues.config.value : (initialValues.sendgrid || defaultValues.sendgrid),
@@ -55,34 +64,16 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
     };
   };
 
-  // dkimEnabled is a form-only switch; the server decides whether to sign from
-  // whether all three DKIM values are present. Turning it off must therefore
-  // clear the values, or signing would continue with the switch showing off.
-  const submit = (values: any) => {
-    const { dkimEnabled, authMode, ...smtp } = values.smtp ?? {};
+  const validate = React.useCallback((values: any): FieldErrors => ({
+    name: values.name?.length < 2 ? 'Name must have at least 2 characters' : undefined,
+  }), []);
 
-    // Both switches are form-only: the server infers signing and OAuth from
-    // whether their fields are populated. Turning one off therefore has to clear
-    // the values, or the feature stays active while the switch reads off.
-    const withDkim = dkimEnabled
-      ? smtp
-      : { ...smtp, dkim: { domain: '', selector: '', privateKey: '' } };
-
-    const withAuth = authMode === 'oauth2'
-      ? withDkim
-      : {
-          ...withDkim,
-          oauth2: { mechanism: '', clientId: '', clientSecret: '', refreshToken: '', tokenEndpoint: '', scope: '' },
-        };
-
-    onSubmit({ ...values, smtp: withAuth });
-  };
-
-  const form = useForm({
+  const form = useAdaptedForm<any>({
     initialValues: getInitialValues(),
-    validate: {
-      name: (value: string) => (value.length < 2 ? 'Name must have at least 2 characters' : null),
-    }
+    validate,
+    // toProviderRequest strips the form-only switches and clears the values
+    // behind whichever one is off; see providerFormValues.ts.
+    onSubmit: (values) => onSubmit(toProviderRequest(values)),
   });
 
   const renderConfigFields = () => {
@@ -170,7 +161,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
 
   return (
     <Paper withBorder p="xl" radius="md">
-      <form onSubmit={form.onSubmit(submit)}>
+      <form onSubmit={form.onSubmit()}>
         <Stack gap="xl">
           <Stack gap={4}>
             <Title order={3} fw={800}>{initialValues ? 'Edit' : 'Connect'} Email Provider</Title>

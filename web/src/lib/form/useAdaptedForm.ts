@@ -1,0 +1,180 @@
+import { useCallback, useMemo } from 'react';
+import { useForm, useStore } from '@tanstack/react-form';
+
+/**
+ * TanStack Form behind the field API the Mantine inputs already speak.
+ *
+ * The forms in this app pass a `form` object down to section components, which
+ * spread `form.getInputProps(path)` onto Mantine inputs. Swapping the library
+ * outright would mean rewriting every field in every section as a render-prop
+ * `<form.Field>` — several hundred lines of JSX across files that carry the
+ * provider features, with no component tests to catch a mistyped path. The
+ * adapter keeps that JSX untouched while the state underneath it becomes
+ * TanStack's, so sections can move to the native API one at a time.
+ *
+ * What TanStack buys here is per-field async validation — the thing a provider
+ * form actually wants, since "is this host reachable" can only be answered by
+ * the server. Mantine's resolver is synchronous, which is why testing a
+ * connection is a separate button rather than part of validating the form.
+ */
+
+export type FieldErrors = Record<string, string | undefined>;
+
+/** Validates the whole value set, returning errors keyed by field path. */
+export type Validate<T> = (values: T) => FieldErrors;
+
+interface AdaptedFormOptions<T> {
+  initialValues: T;
+  validate?: Validate<T>;
+  onSubmit: (values: T) => void | Promise<void>;
+}
+
+/** Reads "smtp.dkim.domain" out of a nested object. */
+const readPath = (source: unknown, path: string): unknown => {
+  let current = source;
+  for (const part of path.split('.')) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+};
+
+export interface AdaptedForm<T> {
+  values: T;
+  errors: FieldErrors;
+  setFieldValue: (path: string, value: unknown) => void;
+  getInputProps: (path: string, options?: { type?: 'checkbox' | 'input' }) => Record<string, unknown>;
+  onSubmit: (handler?: (values: T) => void) => (e: React.FormEvent) => void;
+  isSubmitting: boolean;
+  /**
+   * The underlying TanStack form, for sections that have moved off the adapter
+   * and want `<form.Field>` directly.
+   *
+   * Untyped because useForm carries nine inference parameters that cannot be
+   * named through a wrapper. Type safety here comes from the surface above,
+   * which is what call sites use.
+   */
+  api: any;
+}
+
+/** The store snapshot, narrowed to the parts the adapter reads. */
+interface FormState<T> {
+  values: T;
+  isSubmitting: boolean;
+  submissionAttempts: number;
+  fieldMeta: Record<string, { isTouched?: boolean } | undefined>;
+}
+
+export const useAdaptedForm = <T extends object>({
+  initialValues,
+  validate,
+  onSubmit,
+}: AdaptedFormOptions<T>): AdaptedForm<T> => {
+  const form: any = useForm({
+    defaultValues: initialValues,
+    validators: {
+      // Registered with TanStack rather than checked in the submit handler, so
+      // the library itself refuses to run onSubmit on an invalid form. Checking
+      // separately and then calling handleSubmit to mark the attempt ran the
+      // submission regardless — an invalid form saved anyway.
+      onSubmit: ({ value }: { value: unknown }) => {
+        const found = validate ? validate(value as T) : {};
+        const fields = Object.fromEntries(
+          Object.entries(found).filter(([, message]) => Boolean(message)),
+        );
+        return Object.keys(fields).length > 0 ? { fields } : undefined;
+      },
+    },
+    onSubmit: async ({ value }: { value: unknown }) => {
+      await onSubmit(value as T);
+    },
+  });
+
+  // Subscribing to the whole value set re-renders on every keystroke, which is
+  // what Mantine did and what the conditional sections rely on: which fields
+  // render depends on `values.type` and on the two form-only switches.
+  const values = useStore(form.store, (s: FormState<T>) => s.values);
+  const isSubmitting = useStore(form.store, (s: FormState<T>) => s.isSubmitting);
+
+  // Errors are derived rather than stored so they cannot drift from the values
+  // they describe.
+  const errors = useMemo(() => (validate ? validate(values) : {}), [validate, values]);
+
+  // Mantine only shows an error once a field has been touched or the form has
+  // been submitted; showing "must be at least 2 characters" on an empty form
+  // the user has not typed into yet is noise.
+  const submissionAttempts = useStore(form.store, (s: FormState<T>) => s.submissionAttempts);
+  const touched = useStore(form.store, (s: FormState<T>) => s.fieldMeta);
+
+  const setFieldValue = useCallback(
+    (path: string, value: unknown) => {
+      form.setFieldValue(path, value);
+    },
+    [form],
+  );
+
+  const getInputProps = useCallback(
+    (path: string, options?: { type?: 'checkbox' | 'input' }) => {
+      const value = readPath(values, path);
+      const isTouched = Boolean(touched?.[path]?.isTouched);
+      const error = isTouched || submissionAttempts > 0 ? errors[path] : undefined;
+
+      if (options?.type === 'checkbox') {
+        return {
+          checked: Boolean(value),
+          onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+            setFieldValue(path, e.currentTarget.checked),
+        };
+      }
+
+      return {
+        value: value ?? '',
+        error,
+        onChange: (e: React.ChangeEvent<HTMLInputElement> | string | number | null) => {
+          // Mantine's NumberInput and Select hand back a bare value; TextInput
+          // hands back the event.
+          const next =
+            e !== null && typeof e === 'object' && 'currentTarget' in e ? e.currentTarget.value : e;
+          setFieldValue(path, next);
+        },
+        onBlur: () => {
+          form.setFieldMeta(path, (m: Record<string, unknown>) => ({ ...m, isTouched: true }));
+        },
+      };
+    },
+    [values, errors, touched, submissionAttempts, setFieldValue, form],
+  );
+
+  const handleSubmit = useCallback(
+    (handler?: (values: T) => void) => (e: React.FormEvent) => {
+      e.preventDefault();
+
+      if (!handler) {
+        // The validator registered above gates this, so an invalid form stops
+        // here and only the attempt count moves.
+        void form.handleSubmit();
+        return;
+      }
+
+      // A caller-supplied handler bypasses the form's own onSubmit, so it has
+      // to be gated separately or it would save an invalid form.
+      const found = validate ? validate(form.store.state.values as T) : {};
+      if (Object.values(found).some(Boolean)) {
+        void form.handleSubmit();
+        return;
+      }
+      handler(form.store.state.values as T);
+    },
+    [form, validate],
+  );
+
+  return {
+    values,
+    errors,
+    setFieldValue,
+    getInputProps,
+    onSubmit: handleSubmit,
+    isSubmitting,
+    api: form,
+  };
+};
