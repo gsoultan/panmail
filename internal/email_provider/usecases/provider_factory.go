@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/gsoultan/gsmail/smtp"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
+	"github.com/gsoultan/panmail/pkg/oauth2"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -168,6 +170,27 @@ func buildSMTPSender(p *entities.EmailProvider) (gsmail.Sender, error) {
 			Selector:   d.GetSelector(),
 			PrivateKey: d.GetPrivateKey(),
 		}
+	}
+
+	// OAuth2 instead of a password. gsmail's CachingTokenSource fetches a token
+	// once and reuses it until shortly before expiry, single-flighting
+	// concurrent refreshes — without it, TokenSource is called on every send and
+	// every retry, which is a round trip to the identity provider per message.
+	if o := c.GetOauth2(); o.GetClientId() != "" && o.GetRefreshToken() != "" && o.GetTokenEndpoint() != "" {
+		method := gsmail.AuthXOAUTH2
+		if strings.EqualFold(o.GetMechanism(), string(gsmail.AuthOAUTHBEARER)) {
+			method = gsmail.AuthOAUTHBEARER
+		}
+		sender.UseOAuth(method, gsmail.CachingTokenSource(
+			oauth2.RefreshFunc(oauth2.Config{
+				TokenEndpoint: o.GetTokenEndpoint(),
+				ClientID:      o.GetClientId(),
+				ClientSecret:  o.GetClientSecret(),
+				RefreshToken:  o.GetRefreshToken(),
+				Scope:         o.GetScope(),
+			}),
+			0, // zero uses gsmail's default leeway
+		))
 	}
 
 	sender.EnablePool(senderPoolConfig)

@@ -5,6 +5,7 @@ import { IconCopy, IconCheck } from '@tabler/icons-react';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
 import { DkimSection } from './DkimSection';
 import { ApiProviderFields } from './ApiProviderFields';
+import { OAuthSection } from './OAuthSection';
 
 interface ProviderFormProps {
   initialValues?: any;
@@ -24,6 +25,10 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
       // three DKIM values are present, so it is never sent.
       dkimEnabled: false,
       dkim: { domain: '', selector: '', privateKey: '' },
+      // authMode is form-only. The server infers OAuth from whether the client
+      // id, refresh token and endpoint are all present.
+      authMode: 'password',
+      oauth2: { mechanism: 'XOAUTH2', clientId: '', clientSecret: '', refreshToken: '', tokenEndpoint: '', scope: '' },
     },
     imap: { host: '', port: 993, username: '', password: '', skipVerify: false, useSsl: true },
     pop3: { host: '', port: 995, username: '', password: '', skipVerify: false, useSsl: true },
@@ -54,11 +59,23 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
   // whether all three DKIM values are present. Turning it off must therefore
   // clear the values, or signing would continue with the switch showing off.
   const submit = (values: any) => {
-    const { dkimEnabled, ...smtp } = values.smtp ?? {};
-    onSubmit({
-      ...values,
-      smtp: dkimEnabled ? smtp : { ...smtp, dkim: { domain: '', selector: '', privateKey: '' } },
-    });
+    const { dkimEnabled, authMode, ...smtp } = values.smtp ?? {};
+
+    // Both switches are form-only: the server infers signing and OAuth from
+    // whether their fields are populated. Turning one off therefore has to clear
+    // the values, or the feature stays active while the switch reads off.
+    const withDkim = dkimEnabled
+      ? smtp
+      : { ...smtp, dkim: { domain: '', selector: '', privateKey: '' } };
+
+    const withAuth = authMode === 'oauth2'
+      ? withDkim
+      : {
+          ...withDkim,
+          oauth2: { mechanism: '', clientId: '', clientSecret: '', refreshToken: '', tokenEndpoint: '', scope: '' },
+        };
+
+    onSubmit({ ...values, smtp: withAuth });
   };
 
   const form = useForm({
@@ -127,6 +144,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
         return (
           <>
             {commonFields('smtp')}
+            <OAuthSection form={form} editing={Boolean(initialValues?.id)} />
             <DkimSection form={form} editing={Boolean(initialValues?.id)} />
           </>
         );

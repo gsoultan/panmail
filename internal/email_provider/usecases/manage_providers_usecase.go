@@ -251,6 +251,13 @@ func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.
 		if c.Dkim != nil {
 			c.Dkim.PrivateKey = redactedPassword
 		}
+		// The client id, endpoint, scope and mechanism are configuration the
+		// operator needs to see in order to edit; the secret and the refresh
+		// token are credentials.
+		if c.Oauth2 != nil {
+			c.Oauth2.ClientSecret = redactedPassword
+			c.Oauth2.RefreshToken = redactedPassword
+		}
 		proto.Config = &panmailv1.EmailProvider_Smtp{Smtp: c}
 	case panmailv1.ProviderType_PROVIDER_TYPE_IMAP:
 		c := &panmailv1.ImapConfig{}

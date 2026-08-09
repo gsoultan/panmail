@@ -192,6 +192,15 @@ export class SmtpConfig extends Message<SmtpConfig> {
    */
   dkim?: DkimConfig;
 
+  /**
+   * OAuth2 instead of a password. Gmail and Office 365 are retiring password
+   * authentication for SMTP, so a provider pointed at either will eventually
+   * need this. Absent means password authentication.
+   *
+   * @generated from field: panmail.v1.OAuth2Config oauth2 = 8;
+   */
+  oauth2?: OAuth2Config;
+
   constructor(data?: PartialMessage<SmtpConfig>) {
     super();
     proto3.util.initPartial(data, this);
@@ -207,6 +216,7 @@ export class SmtpConfig extends Message<SmtpConfig> {
     { no: 5, name: "skip_verify", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 6, name: "use_ssl", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 7, name: "dkim", kind: "message", T: DkimConfig },
+    { no: 8, name: "oauth2", kind: "message", T: OAuth2Config },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SmtpConfig {
@@ -223,6 +233,86 @@ export class SmtpConfig extends Message<SmtpConfig> {
 
   static equals(a: SmtpConfig | PlainMessage<SmtpConfig> | undefined, b: SmtpConfig | PlainMessage<SmtpConfig> | undefined): boolean {
     return proto3.util.equals(SmtpConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.OAuth2Config
+ */
+export class OAuth2Config extends Message<OAuth2Config> {
+  /**
+   * XOAUTH2 is what Gmail and Office 365 accept. OAUTHBEARER is the RFC 7628
+   * mechanism, offered by fewer servers.
+   *
+   * @generated from field: string mechanism = 1;
+   */
+  mechanism = "";
+
+  /**
+   * @generated from field: string client_id = 2;
+   */
+  clientId = "";
+
+  /**
+   * Write-only, like every other stored credential.
+   *
+   * @generated from field: string client_secret = 3;
+   */
+  clientSecret = "";
+
+  /**
+   * The long-lived grant exchanged for short-lived access tokens. Write-only.
+   *
+   * @generated from field: string refresh_token = 4;
+   */
+  refreshToken = "";
+
+  /**
+   * Where to exchange it. Google uses https://oauth2.googleapis.com/token;
+   * Microsoft's is tenant-specific.
+   *
+   * @generated from field: string token_endpoint = 5;
+   */
+  tokenEndpoint = "";
+
+  /**
+   * Optional. Google ignores it on a refresh; some providers require it to
+   * narrow the resulting token.
+   *
+   * @generated from field: string scope = 6;
+   */
+  scope = "";
+
+  constructor(data?: PartialMessage<OAuth2Config>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.OAuth2Config";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "mechanism", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "client_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "client_secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "refresh_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "token_endpoint", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 6, name: "scope", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): OAuth2Config {
+    return new OAuth2Config().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): OAuth2Config {
+    return new OAuth2Config().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): OAuth2Config {
+    return new OAuth2Config().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: OAuth2Config | PlainMessage<OAuth2Config> | undefined, b: OAuth2Config | PlainMessage<OAuth2Config> | undefined): boolean {
+    return proto3.util.equals(OAuth2Config, a, b);
   }
 }
 
