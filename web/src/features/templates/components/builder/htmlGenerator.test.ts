@@ -2,6 +2,8 @@ import { test, expect, describe } from 'bun:test';
 import {
   generateHTML,
   styleToString,
+  vmlArcsize,
+  MSO_PREHEADER_MAX,
   MOBILE_BREAKPOINT,
   TABLET_BREAKPOINT,
   VIEWPORT_WIDTHS,
@@ -327,5 +329,46 @@ describe('structure', () => {
     const html = generateHTML(design([]));
     expect(html).toStartWith('<!DOCTYPE html>');
     expect(html).toContain('</html>');
+  });
+});
+
+describe('outlook specifics', () => {
+  // VML arcsize is a proportion of the shape's smaller dimension, not a length.
+  // Doubling the pixel radius is only correct for a 50px-tall button.
+  test('arcsize is a percentage of the button height', () => {
+    expect(vmlArcsize(6, 45)).toBe(13);
+    expect(vmlArcsize(25, 50)).toBe(50);
+    expect(vmlArcsize(0, 45)).toBe(0);
+  });
+
+  test('arcsize never exceeds 100 percent', () => {
+    expect(vmlArcsize(500, 45)).toBe(100);
+  });
+
+  test('a zero or negative height cannot produce a division by zero', () => {
+    expect(vmlArcsize(6, 0)).toBe(0);
+    expect(vmlArcsize(6, -10)).toBe(0);
+  });
+
+  test('the rendered button carries a computed arcsize', () => {
+    const html = generateHTML(design([
+      block('button', { label: 'Go', url: 'https://x.test' }, { borderRadius: '6px' }),
+    ]));
+    expect(html).toContain('arcsize="13%"');
+  });
+
+  // A preheader longer than the preview line is not hidden — it spills after
+  // the subject and pushes out the words meant to be read.
+  test('an over-long preheader is truncated with an ellipsis', () => {
+    const long = 'x'.repeat(MSO_PREHEADER_MAX + 50);
+    const html = generateHTML({ ...design([]), preheader: long });
+    expect(html).toContain('…');
+    expect(html).not.toContain('x'.repeat(MSO_PREHEADER_MAX + 1));
+  });
+
+  test('a short preheader is left alone', () => {
+    const html = generateHTML({ ...design([]), preheader: 'Your order shipped' });
+    expect(html).toContain('Your order shipped');
+    expect(html).not.toContain('…');
   });
 });

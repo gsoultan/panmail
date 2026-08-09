@@ -72,13 +72,14 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Block, BlockType, EmailDesign } from './types';
 import { generateHTML, VIEWPORT_WIDTHS, type Viewport } from './htmlGenerator';
+import { generatePlainText } from './plainTextGenerator';
 import { PropertyEditor } from './PropertyEditor';
 import { sanitizeHtml } from './sanitize';
 import { useDesignHistory } from './useDesignHistory';
 import { reorderTopLevel, reorderWithinColumn, findContainer, sameContainer } from './reorder';
 
 export interface CustomEmailBuilderHandle {
-  exportHtml: () => { design: EmailDesign; html: string };
+  exportHtml: () => { design: EmailDesign; html: string; text: string };
 }
 
 interface CustomEmailBuilderProps {
@@ -249,8 +250,13 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
 
   useImperativeHandle(ref, () => ({
     exportHtml: () => {
+      // The text part is generated alongside the HTML rather than left to the
+      // author. A message with no text/plain alternative scores worse with spam
+      // filters, and a reader on a text-only client gets whatever fallback the
+      // client invents from the markup.
       const html = generateHTML(design);
-      return { design, html };
+      const text = generatePlainText(design);
+      return { design, html, text };
     }
   }));
 

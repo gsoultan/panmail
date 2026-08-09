@@ -11,7 +11,7 @@ interface TemplateEditorProps {
 }
 
 export interface TemplateEditorHandle {
-  exportHtml: () => Promise<{ design: any; html: string }>;
+  exportHtml: () => Promise<{ design: any; html: string; text: string }>;
 }
 
 export const TemplateEditor = forwardRef<TemplateEditorHandle, TemplateEditorProps>(({
@@ -25,10 +25,10 @@ export const TemplateEditor = forwardRef<TemplateEditorHandle, TemplateEditorPro
   useImperativeHandle(ref, () => ({
     exportHtml: async () => {
       if (builderRef.current) {
-        const { design, html } = builderRef.current.exportHtml();
-        return { design: JSON.stringify(design), html };
+        const { design, html, text } = builderRef.current.exportHtml();
+        return { design: JSON.stringify(design), html, text };
       }
-      return { design: '', html: '' };
+      return { design: '', html: '', text: '' };
     }
   }));
 

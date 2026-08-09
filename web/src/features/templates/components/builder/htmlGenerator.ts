@@ -96,6 +96,33 @@ const pixelWidth = (value: string | undefined, fallback = 600): number => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
+// The rendered height of a button, which VML needs in order to express a corner
+// radius as a percentage.
+const BUTTON_HEIGHT_PX = 45;
+
+/**
+ * Converts a CSS corner radius into the percentage VML wants.
+ *
+ * Outlook draws the button with a VML roundrect whose arcsize is a proportion of
+ * the shape's smaller dimension, not an absolute length. Passing a doubled pixel
+ * value happens to be right at 50px tall and wrong everywhere else.
+ */
+export const vmlArcsize = (radiusPx: number, heightPx: number): number => {
+  if (radiusPx <= 0 || heightPx <= 0) return 0;
+  return Math.min(100, Math.round((radiusPx * 100) / heightPx));
+};
+
+// Outlook shows roughly this much of the preheader. Longer text is not hidden —
+// it spills into the preview line after the subject and pushes out the words
+// that were meant to be read.
+export const MSO_PREHEADER_MAX = 130;
+
+const truncatePreheader = (text: string): string => {
+  const chars = Array.from(text);
+  if (chars.length <= MSO_PREHEADER_MAX) return text;
+  return chars.slice(0, MSO_PREHEADER_MAX - 1).join('') + '…';
+};
+
 // Columns can nest, and a design loaded from storage is not guaranteed to be
 // acyclic. A depth cap turns a corrupt design into a truncated email instead of
 // a hung browser tab.
@@ -145,7 +172,7 @@ export const generateHTML = (design: EmailDesign): string => {
   const preheaderHtml = preheader
     ? `
     <div style="display: none; max-height: 0px; overflow: hidden;">
-      ${esc(preheader)}
+      ${esc(truncatePreheader(preheader))}
     </div>
     <!-- Spacer characters stop the client pulling body copy into the preview line -->
     <div style="display: none; max-height: 0px; overflow: hidden;">
@@ -163,7 +190,7 @@ export const generateHTML = (design: EmailDesign): string => {
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="color-scheme" content="light dark">
   <meta name="supported-color-schemes" content="light dark">
-  <title>${esc(preheader || 'Email')}</title>
+  <title>${esc(preheader ? truncatePreheader(preheader) : 'Email')}</title>
   <!--[if mso]>
   <xml>
     <o:OfficeDocumentSettings>
@@ -278,7 +305,11 @@ const renderBlockToHTML = (block: Block, depth = 0): string => {
       const btnAlign = block.style.textAlign || 'center';
       const btnWidth = block.style.width || 'auto';
       const btnWidthMso = btnWidth === '100%' ? '500px' : '200px';
-      const arcsize = `${Math.min(50, (parseInt(String(btnRadius), 10) || 0) * 2)}%`;
+      // VML arcsize is a percentage of the button's smaller dimension, so it
+      // depends on the height. The old formula doubled the radius, which is
+      // only correct for a 50px-tall button and rounded every other size wrong
+      // — a 6px radius on this 45px button came out as 12% instead of 13%.
+      const arcsize = `${vmlArcsize(parseInt(String(btnRadius), 10) || 0, BUTTON_HEIGHT_PX)}%`;
       const href = safeUrl(block.content.url);
       const label = esc(block.content.label);
       const fontSize = block.style.fontSize || '16px';

@@ -194,13 +194,31 @@ export const TemplateForm: React.FC<TemplateFormProps> = ({ initialValues, onSub
   });
 
   const handleSaveBuilder = async () => {
-    if (editorRef.current) {
-        const { design, html } = await editorRef.current.exportHtml();
-        form.setFieldValue('design', design);
-        form.setFieldValue('bodyHtml', html);
-        close();
-        notifications.show({ title: 'Success', message: 'Design saved to template', color: 'blue' });
+    if (!editorRef.current) return;
+
+    const { design, html, text } = await editorRef.current.exportHtml();
+    form.setFieldValue('design', design);
+    form.setFieldValue('bodyHtml', html);
+
+    // The text part is filled in only when there is nothing there. A message
+    // with no text/plain alternative scores worse with spam filters, so an
+    // empty one is worth filling automatically — but silently overwriting a
+    // version someone wrote by hand would destroy work the builder cannot
+    // reproduce.
+    const existingText = (form.values.bodyText ?? '').trim();
+    const keptManualText = existingText.length > 0;
+    if (!keptManualText) {
+      form.setFieldValue('bodyText', text);
     }
+
+    close();
+    notifications.show({
+      title: 'Design saved',
+      message: keptManualText
+        ? 'Your existing plain-text version was kept. Clear it to regenerate from the design.'
+        : 'A plain-text version was generated alongside the HTML.',
+      color: 'blue',
+    });
   };
 
   const handleFileUpload = (file: File | null) => {
