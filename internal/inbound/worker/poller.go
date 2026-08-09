@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
@@ -115,16 +114,29 @@ func (p *Poller) pollProvider(ctx context.Context, tenantID string, provider *pr
 	}
 
 	for _, e := range emails {
+		// The headers were being discarded and replaced with an empty map,
+		// which threw away the Message-ID this now identifies the message by,
+		// and with it every Reply-To, List-Id and Auto-Submitted a consumer
+		// might want.
+		headers := e.Headers
+		if headers == nil {
+			headers = make(map[string]string)
+		}
+
 		inbound := &panmailv1.InboundEmail{
-			Id:        uuid.New().String(),
+			// Derived from the message, not from the moment it was read. See
+			// messageIdentity: this loop re-reads the newest messages every
+			// tick, so a fresh uuid meant one arriving email was stored again
+			// on every pass.
+			Id:        messageIdentity(tenantID, provider.ID, e),
 			TenantId:  tenantID,
 			From:      e.From,
 			To:        e.To,
 			Subject:   e.Subject,
 			BodyHtml:  string(e.HTMLBody),
 			BodyText:  string(e.Body),
-			Timestamp: timestamppb.New(time.Now()), // Ideally use email date header
-			Headers:   make(map[string]string),
+			Timestamp: timestamppb.New(receivedAt(e)),
+			Headers:   headers,
 		}
 
 		if err := p.inboundUsecase.Process(ctx, inbound); err != nil {

@@ -44,6 +44,25 @@ func (u *inboundUsecase) Process(ctx context.Context, email *panmailv1.InboundEm
 		Headers:   email.Headers,
 	}
 
+	// A message already seen is skipped whole, not merely not-rewritten.
+	//
+	// The poller re-reads the newest messages every tick, so the same email
+	// arrives here again and again. Storing it twice was the visible symptom;
+	// the expensive ones were downstream — bounce detection recording a bounce
+	// again, and the tenant's webhook firing again for a message that arrived
+	// once. Anyone consuming that endpoint saw the same delivery failure
+	// reported every thirty seconds for as long as the message sat in the
+	// mailbox.
+	//
+	// A lookup that fails is treated as not-seen: refusing to accept mail
+	// because the store could not be read would lose it outright, whereas
+	// processing it twice is recoverable.
+	if email.Id != "" {
+		if existing, lookupErr := u.repo.GetByID(ctx, email.TenantId, email.Id); lookupErr == nil && existing != nil {
+			return nil
+		}
+	}
+
 	// Basic Bounce Detection
 	u.detectAndRecordBounce(ctx, email)
 
