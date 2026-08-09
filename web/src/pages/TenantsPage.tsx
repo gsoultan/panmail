@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, ActionIcon, Menu, Button, Modal, TextInput, Select } from '@mantine/core';
-import { IconBuildingCommunity, IconDotsVertical, IconTrash, IconPlus, IconExternalLink, IconCheck, IconEdit, IconRefresh, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, ActionIcon, Menu, Button, Modal, TextInput, Select, NumberInput, Divider } from '@mantine/core';
+import { IconBuildingCommunity, IconDotsVertical, IconTrash, IconPlus, IconExternalLink, IconCheck, IconEdit, IconRefresh, IconChevronLeft, IconChevronRight, IconGauge } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tenantService } from '../services/tenant';
 import { useDisclosure } from '@mantine/hooks';
@@ -29,9 +29,13 @@ export const TenantsPage: React.FC = () => {
   });
 
   const form = useForm({
-    initialValues: { 
+    initialValues: {
       name: '',
-      retryPattern: [] as string[]
+      retryPattern: [] as string[],
+      // Zero is unlimited, and unlimited is the default: adding a ceiling must
+      // not start refusing mail for tenants already running.
+      sendRatePerMinute: 0,
+      sendBurst: 0,
     },
     validate: {
       name: (value) => (value.length < 2 ? 'Name must be at least 2 characters' : null),
@@ -39,8 +43,11 @@ export const TenantsPage: React.FC = () => {
   });
 
   const createMutation = useMutation({
-    mutationFn: (values: { name: string, retryPattern: string[] }) => 
-      tenantService.createTenant(values.name, values.retryPattern),
+    mutationFn: (values: { name: string; retryPattern: string[]; sendRatePerMinute: number; sendBurst: number }) =>
+      tenantService.createTenant(values.name, values.retryPattern, {
+        sendRatePerMinute: values.sendRatePerMinute,
+        sendBurst: values.sendBurst,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       notifications.show({
@@ -62,8 +69,11 @@ export const TenantsPage: React.FC = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (values: { id: string, name: string, retryPattern: string[] }) => 
-      tenantService.updateTenant(values.id, values.name, values.retryPattern),
+    mutationFn: (values: { id: string; name: string; retryPattern: string[]; sendRatePerMinute: number; sendBurst: number }) =>
+      tenantService.updateTenant(values.id, values.name, values.retryPattern, {
+        sendRatePerMinute: values.sendRatePerMinute,
+        sendBurst: values.sendBurst,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       notifications.show({
@@ -131,7 +141,9 @@ export const TenantsPage: React.FC = () => {
     setEditingTenant(tenant);
     form.setValues({
       name: tenant.name,
-      retryPattern: tenant.retryPattern || []
+      retryPattern: tenant.retryPattern || [],
+      sendRatePerMinute: tenant.sendRatePerMinute ?? 0,
+      sendBurst: tenant.sendBurst ?? 0,
     });
     open();
   };
@@ -184,6 +196,29 @@ export const TenantsPage: React.FC = () => {
                 leftSection={<IconRefresh size={14} />}
                 {...form.getInputProps('retryPattern')}
               />
+              <Divider label="Send rate" labelPosition="left" />
+              <Text size="xs" c="dimmed" mt={-8}>
+                Tenants share a provider and a sending IP, so an unbounded send
+                gets the shared domain blocklisted and degrades everyone's
+                delivery — not just this tenant's. Leave at 0 for no limit.
+              </Text>
+              <Group grow align="flex-start">
+                <NumberInput
+                  label="Messages per minute"
+                  description="0 means unlimited"
+                  min={0}
+                  allowNegative={false}
+                  leftSection={<IconGauge size={14} />}
+                  {...form.getInputProps('sendRatePerMinute')}
+                />
+                <NumberInput
+                  label="Burst"
+                  description="How many may go at once. 0 uses one minute's worth."
+                  min={0}
+                  allowNegative={false}
+                  {...form.getInputProps('sendBurst')}
+                />
+              </Group>
               <Group justify="flex-end" mt="md">
                 <Button variant="subtle" onClick={close} color="gray">Cancel</Button>
                 <Button type="submit" color="brand" loading={createMutation.isPending || updateMutation.isPending}>

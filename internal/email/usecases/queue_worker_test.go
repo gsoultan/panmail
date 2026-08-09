@@ -9,6 +9,7 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
 	tenantentities "github.com/gsoultan/panmail/internal/tenant/entities"
+	tenantusecases "github.com/gsoultan/panmail/internal/tenant/usecases"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -100,7 +101,7 @@ func (m *mockSuppressionUsecase) Check(ctx context.Context, tenantID, email stri
 
 type mockTenantUsecase struct{}
 
-func (m *mockTenantUsecase) CreateTenant(ctx context.Context, name string, retryPattern []string) (*tenantentities.Tenant, error) {
+func (m *mockTenantUsecase) CreateTenant(ctx context.Context, name string, retryPattern []string, limits tenantusecases.SendLimits) (*tenantentities.Tenant, error) {
 	return nil, nil
 }
 func (m *mockTenantUsecase) ListTenants(ctx context.Context, pageSize int, pageToken string) ([]*tenantentities.Tenant, string, error) {
@@ -109,7 +110,7 @@ func (m *mockTenantUsecase) ListTenants(ctx context.Context, pageSize int, pageT
 func (m *mockTenantUsecase) GetTenantByID(ctx context.Context, id string) (*tenantentities.Tenant, error) {
 	return &tenantentities.Tenant{ID: id}, nil
 }
-func (m *mockTenantUsecase) UpdateTenant(ctx context.Context, id string, name string, retryPattern []string) (*tenantentities.Tenant, error) {
+func (m *mockTenantUsecase) UpdateTenant(ctx context.Context, id string, name string, retryPattern []string, limits tenantusecases.SendLimits) (*tenantentities.Tenant, error) {
 	return nil, nil
 }
 func (m *mockTenantUsecase) DeleteTenant(ctx context.Context, id string) error {

@@ -44,11 +44,33 @@ message Tenant {
   string name = 2;
   string created_at = 3;
   repeated string retry_pattern = 4;
+
+  // Ceiling on how fast this tenant may send. Zero means unlimited, which is
+  // the default: introducing a limit must not start refusing mail that was
+  // already flowing. The cap exists because tenants share a provider and a
+  // sending IP, so an unbounded send blocklists the shared domain and degrades
+  // every other tenant's delivery, not just the offender's.
+  int32 send_rate_per_minute = 5;
+  // How much may go at once before the rate binds. Sending is bursty — a
+  // campaign is queued in one go — so zero falls back to one minute's worth
+  // rather than to no burst at all.
+  int32 send_burst = 6;
 }
 
 message CreateTenantRequest {
   string name = 1;
   repeated string retry_pattern = 2;
+
+  // Ceiling on how fast this tenant may send. Zero means unlimited, which is
+  // the default: introducing a limit must not start refusing mail that was
+  // already flowing. The cap exists because tenants share a provider and a
+  // sending IP, so an unbounded send blocklists the shared domain and degrades
+  // every other tenant's delivery, not just the offender's.
+  int32 send_rate_per_minute = 3;
+  // How much may go at once before the rate binds. Sending is bursty — a
+  // campaign is queued in one go — so zero falls back to one minute's worth
+  // rather than to no burst at all.
+  int32 send_burst = 4;
 }
 
 message CreateTenantResponse {
@@ -59,6 +81,11 @@ message UpdateTenantRequest {
   string id = 1;
   string name = 2;
   repeated string retry_pattern = 3;
+
+  // See CreateTenantRequest. Zero is unlimited here too, so clearing the field
+  // removes the ceiling rather than setting it to nothing.
+  int32 send_rate_per_minute = 4;
+  int32 send_burst = 5;
 }
 
 message UpdateTenantResponse {

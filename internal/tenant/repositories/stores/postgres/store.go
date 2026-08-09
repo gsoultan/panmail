@@ -47,7 +47,7 @@ func (s *store) Create(ctx context.Context, t *entities.Tenant) error {
 		return err
 	}
 	retryPatternJSON, _ := json.Marshal(t.RetryPattern)
-	_, err = dbConn.ExecContext(ctx, createTenantQuery, t.ID, t.Name, string(retryPatternJSON), t.CreatedAt, t.UpdatedAt)
+	_, err = dbConn.ExecContext(ctx, createTenantQuery, t.ID, t.Name, string(retryPatternJSON), t.SendRatePerMinute, t.SendBurst, t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
@@ -58,7 +58,7 @@ func (s *store) GetByID(ctx context.Context, id string) (*entities.Tenant, error
 	}
 	t := &entities.Tenant{}
 	var retryPatternJSON sql.NullString
-	err = dbConn.QueryRowContext(ctx, getTenantByIDQuery, id).Scan(&t.ID, &t.Name, &retryPatternJSON, &t.CreatedAt, &t.UpdatedAt)
+	err = dbConn.QueryRowContext(ctx, getTenantByIDQuery, id).Scan(&t.ID, &t.Name, &retryPatternJSON, &t.SendRatePerMinute, &t.SendBurst, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (s *store) List(ctx context.Context, pageSize int, pageToken string) ([]*en
 	for rows.Next() {
 		t := &entities.Tenant{}
 		var retryPatternJSON sql.NullString
-		if err := rows.Scan(&t.ID, &t.Name, &retryPatternJSON, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &retryPatternJSON, &t.SendRatePerMinute, &t.SendBurst, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, "", err
 		}
 		if retryPatternJSON.Valid {
@@ -115,7 +115,7 @@ func (s *store) Update(ctx context.Context, t *entities.Tenant) error {
 		return err
 	}
 	retryPatternJSON, _ := json.Marshal(t.RetryPattern)
-	_, err = dbConn.ExecContext(ctx, updateTenantQuery, t.ID, t.Name, string(retryPatternJSON), t.UpdatedAt)
+	_, err = dbConn.ExecContext(ctx, updateTenantQuery, t.ID, t.Name, string(retryPatternJSON), t.SendRatePerMinute, t.SendBurst, t.UpdatedAt)
 	return err
 }
 

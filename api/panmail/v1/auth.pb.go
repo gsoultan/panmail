@@ -77,11 +77,21 @@ func (UserRole) EnumDescriptor() ([]byte, []int) {
 }
 
 type Tenant struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	CreatedAt     string                 `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	RetryPattern  []string               `protobuf:"bytes,4,rep,name=retry_pattern,json=retryPattern,proto3" json:"retry_pattern,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name         string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	CreatedAt    string                 `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	RetryPattern []string               `protobuf:"bytes,4,rep,name=retry_pattern,json=retryPattern,proto3" json:"retry_pattern,omitempty"`
+	// Ceiling on how fast this tenant may send. Zero means unlimited, which is
+	// the default: introducing a limit must not start refusing mail that was
+	// already flowing. The cap exists because tenants share a provider and a
+	// sending IP, so an unbounded send blocklists the shared domain and degrades
+	// every other tenant's delivery, not just the offender's.
+	SendRatePerMinute int32 `protobuf:"varint,5,opt,name=send_rate_per_minute,json=sendRatePerMinute,proto3" json:"send_rate_per_minute,omitempty"`
+	// How much may go at once before the rate binds. Sending is bursty — a
+	// campaign is queued in one go — so zero falls back to one minute's worth
+	// rather than to no burst at all.
+	SendBurst     int32 `protobuf:"varint,6,opt,name=send_burst,json=sendBurst,proto3" json:"send_burst,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -144,10 +154,34 @@ func (x *Tenant) GetRetryPattern() []string {
 	return nil
 }
 
+func (x *Tenant) GetSendRatePerMinute() int32 {
+	if x != nil {
+		return x.SendRatePerMinute
+	}
+	return 0
+}
+
+func (x *Tenant) GetSendBurst() int32 {
+	if x != nil {
+		return x.SendBurst
+	}
+	return 0
+}
+
 type CreateTenantRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	RetryPattern  []string               `protobuf:"bytes,2,rep,name=retry_pattern,json=retryPattern,proto3" json:"retry_pattern,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Name         string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	RetryPattern []string               `protobuf:"bytes,2,rep,name=retry_pattern,json=retryPattern,proto3" json:"retry_pattern,omitempty"`
+	// Ceiling on how fast this tenant may send. Zero means unlimited, which is
+	// the default: introducing a limit must not start refusing mail that was
+	// already flowing. The cap exists because tenants share a provider and a
+	// sending IP, so an unbounded send blocklists the shared domain and degrades
+	// every other tenant's delivery, not just the offender's.
+	SendRatePerMinute int32 `protobuf:"varint,3,opt,name=send_rate_per_minute,json=sendRatePerMinute,proto3" json:"send_rate_per_minute,omitempty"`
+	// How much may go at once before the rate binds. Sending is bursty — a
+	// campaign is queued in one go — so zero falls back to one minute's worth
+	// rather than to no burst at all.
+	SendBurst     int32 `protobuf:"varint,4,opt,name=send_burst,json=sendBurst,proto3" json:"send_burst,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -196,6 +230,20 @@ func (x *CreateTenantRequest) GetRetryPattern() []string {
 	return nil
 }
 
+func (x *CreateTenantRequest) GetSendRatePerMinute() int32 {
+	if x != nil {
+		return x.SendRatePerMinute
+	}
+	return 0
+}
+
+func (x *CreateTenantRequest) GetSendBurst() int32 {
+	if x != nil {
+		return x.SendBurst
+	}
+	return 0
+}
+
 type CreateTenantResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tenant        *Tenant                `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
@@ -241,12 +289,16 @@ func (x *CreateTenantResponse) GetTenant() *Tenant {
 }
 
 type UpdateTenantRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	RetryPattern  []string               `protobuf:"bytes,3,rep,name=retry_pattern,json=retryPattern,proto3" json:"retry_pattern,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name         string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	RetryPattern []string               `protobuf:"bytes,3,rep,name=retry_pattern,json=retryPattern,proto3" json:"retry_pattern,omitempty"`
+	// See CreateTenantRequest. Zero is unlimited here too, so clearing the field
+	// removes the ceiling rather than setting it to nothing.
+	SendRatePerMinute int32 `protobuf:"varint,4,opt,name=send_rate_per_minute,json=sendRatePerMinute,proto3" json:"send_rate_per_minute,omitempty"`
+	SendBurst         int32 `protobuf:"varint,5,opt,name=send_burst,json=sendBurst,proto3" json:"send_burst,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *UpdateTenantRequest) Reset() {
@@ -298,6 +350,20 @@ func (x *UpdateTenantRequest) GetRetryPattern() []string {
 		return x.RetryPattern
 	}
 	return nil
+}
+
+func (x *UpdateTenantRequest) GetSendRatePerMinute() int32 {
+	if x != nil {
+		return x.SendRatePerMinute
+	}
+	return 0
+}
+
+func (x *UpdateTenantRequest) GetSendBurst() int32 {
+	if x != nil {
+		return x.SendBurst
+	}
+	return 0
 }
 
 type UpdateTenantResponse struct {
@@ -2323,22 +2389,31 @@ var File_panmail_v1_auth_proto protoreflect.FileDescriptor
 const file_panmail_v1_auth_proto_rawDesc = "" +
 	"\n" +
 	"\x15panmail/v1/auth.proto\x12\n" +
-	"panmail.v1\"p\n" +
+	"panmail.v1\"\xc0\x01\n" +
 	"\x06Tenant\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\tR\tcreatedAt\x12#\n" +
-	"\rretry_pattern\x18\x04 \x03(\tR\fretryPattern\"N\n" +
+	"\rretry_pattern\x18\x04 \x03(\tR\fretryPattern\x12/\n" +
+	"\x14send_rate_per_minute\x18\x05 \x01(\x05R\x11sendRatePerMinute\x12\x1d\n" +
+	"\n" +
+	"send_burst\x18\x06 \x01(\x05R\tsendBurst\"\x9e\x01\n" +
 	"\x13CreateTenantRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
-	"\rretry_pattern\x18\x02 \x03(\tR\fretryPattern\"B\n" +
+	"\rretry_pattern\x18\x02 \x03(\tR\fretryPattern\x12/\n" +
+	"\x14send_rate_per_minute\x18\x03 \x01(\x05R\x11sendRatePerMinute\x12\x1d\n" +
+	"\n" +
+	"send_burst\x18\x04 \x01(\x05R\tsendBurst\"B\n" +
 	"\x14CreateTenantResponse\x12*\n" +
-	"\x06tenant\x18\x01 \x01(\v2\x12.panmail.v1.TenantR\x06tenant\"^\n" +
+	"\x06tenant\x18\x01 \x01(\v2\x12.panmail.v1.TenantR\x06tenant\"\xae\x01\n" +
 	"\x13UpdateTenantRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12#\n" +
-	"\rretry_pattern\x18\x03 \x03(\tR\fretryPattern\"B\n" +
+	"\rretry_pattern\x18\x03 \x03(\tR\fretryPattern\x12/\n" +
+	"\x14send_rate_per_minute\x18\x04 \x01(\x05R\x11sendRatePerMinute\x12\x1d\n" +
+	"\n" +
+	"send_burst\x18\x05 \x01(\x05R\tsendBurst\"B\n" +
 	"\x14UpdateTenantResponse\x12*\n" +
 	"\x06tenant\x18\x01 \x01(\v2\x12.panmail.v1.TenantR\x06tenant\"P\n" +
 	"\x12ListTenantsRequest\x12\x1b\n" +

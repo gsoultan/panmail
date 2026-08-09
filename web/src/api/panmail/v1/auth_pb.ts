@@ -68,6 +68,26 @@ export class Tenant extends Message<Tenant> {
    */
   retryPattern: string[] = [];
 
+  /**
+   * Ceiling on how fast this tenant may send. Zero means unlimited, which is
+   * the default: introducing a limit must not start refusing mail that was
+   * already flowing. The cap exists because tenants share a provider and a
+   * sending IP, so an unbounded send blocklists the shared domain and degrades
+   * every other tenant's delivery, not just the offender's.
+   *
+   * @generated from field: int32 send_rate_per_minute = 5;
+   */
+  sendRatePerMinute = 0;
+
+  /**
+   * How much may go at once before the rate binds. Sending is bursty — a
+   * campaign is queued in one go — so zero falls back to one minute's worth
+   * rather than to no burst at all.
+   *
+   * @generated from field: int32 send_burst = 6;
+   */
+  sendBurst = 0;
+
   constructor(data?: PartialMessage<Tenant>) {
     super();
     proto3.util.initPartial(data, this);
@@ -80,6 +100,8 @@ export class Tenant extends Message<Tenant> {
     { no: 2, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "created_at", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "retry_pattern", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 5, name: "send_rate_per_minute", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 6, name: "send_burst", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Tenant {
@@ -113,6 +135,26 @@ export class CreateTenantRequest extends Message<CreateTenantRequest> {
    */
   retryPattern: string[] = [];
 
+  /**
+   * Ceiling on how fast this tenant may send. Zero means unlimited, which is
+   * the default: introducing a limit must not start refusing mail that was
+   * already flowing. The cap exists because tenants share a provider and a
+   * sending IP, so an unbounded send blocklists the shared domain and degrades
+   * every other tenant's delivery, not just the offender's.
+   *
+   * @generated from field: int32 send_rate_per_minute = 3;
+   */
+  sendRatePerMinute = 0;
+
+  /**
+   * How much may go at once before the rate binds. Sending is bursty — a
+   * campaign is queued in one go — so zero falls back to one minute's worth
+   * rather than to no burst at all.
+   *
+   * @generated from field: int32 send_burst = 4;
+   */
+  sendBurst = 0;
+
   constructor(data?: PartialMessage<CreateTenantRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -123,6 +165,8 @@ export class CreateTenantRequest extends Message<CreateTenantRequest> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "retry_pattern", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 3, name: "send_rate_per_minute", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 4, name: "send_burst", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CreateTenantRequest {
@@ -198,6 +242,19 @@ export class UpdateTenantRequest extends Message<UpdateTenantRequest> {
    */
   retryPattern: string[] = [];
 
+  /**
+   * See CreateTenantRequest. Zero is unlimited here too, so clearing the field
+   * removes the ceiling rather than setting it to nothing.
+   *
+   * @generated from field: int32 send_rate_per_minute = 4;
+   */
+  sendRatePerMinute = 0;
+
+  /**
+   * @generated from field: int32 send_burst = 5;
+   */
+  sendBurst = 0;
+
   constructor(data?: PartialMessage<UpdateTenantRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -209,6 +266,8 @@ export class UpdateTenantRequest extends Message<UpdateTenantRequest> {
     { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "retry_pattern", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 4, name: "send_rate_per_minute", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 5, name: "send_burst", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateTenantRequest {

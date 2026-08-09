@@ -20,17 +20,22 @@ func NewTenantService(usecase usecases.TenantUsecase) panmailv1connect.TenantSer
 }
 
 func (s *tenantService) CreateTenant(ctx context.Context, req *connect.Request[panmailv1.CreateTenantRequest]) (*connect.Response[panmailv1.CreateTenantResponse], error) {
-	tenant, err := s.usecase.CreateTenant(ctx, req.Msg.Name, req.Msg.RetryPattern)
+	tenant, err := s.usecase.CreateTenant(ctx, req.Msg.Name, req.Msg.RetryPattern, usecases.SendLimits{
+		PerMinute: int(req.Msg.SendRatePerMinute),
+		Burst:     int(req.Msg.SendBurst),
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
 	return connect.NewResponse(&panmailv1.CreateTenantResponse{
 		Tenant: &panmailv1.Tenant{
-			Id:           tenant.ID,
-			Name:         tenant.Name,
-			RetryPattern: tenant.RetryPattern,
-			CreatedAt:    tenant.CreatedAt.Format(time.RFC3339),
+			Id:                tenant.ID,
+			Name:              tenant.Name,
+			RetryPattern:      tenant.RetryPattern,
+			SendRatePerMinute: int32(tenant.SendRatePerMinute),
+			SendBurst:         int32(tenant.SendBurst),
+			CreatedAt:         tenant.CreatedAt.Format(time.RFC3339),
 		},
 	}), nil
 }
@@ -44,10 +49,12 @@ func (s *tenantService) ListTenants(ctx context.Context, req *connect.Request[pa
 	var protoTenants []*panmailv1.Tenant
 	for _, t := range tenants {
 		protoTenants = append(protoTenants, &panmailv1.Tenant{
-			Id:           t.ID,
-			Name:         t.Name,
-			RetryPattern: t.RetryPattern,
-			CreatedAt:    t.CreatedAt.Format(time.RFC3339),
+			Id:                t.ID,
+			Name:              t.Name,
+			RetryPattern:      t.RetryPattern,
+			SendRatePerMinute: int32(t.SendRatePerMinute),
+			SendBurst:         int32(t.SendBurst),
+			CreatedAt:         t.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
@@ -58,17 +65,22 @@ func (s *tenantService) ListTenants(ctx context.Context, req *connect.Request[pa
 }
 
 func (s *tenantService) UpdateTenant(ctx context.Context, req *connect.Request[panmailv1.UpdateTenantRequest]) (*connect.Response[panmailv1.UpdateTenantResponse], error) {
-	tenant, err := s.usecase.UpdateTenant(ctx, req.Msg.Id, req.Msg.Name, req.Msg.RetryPattern)
+	tenant, err := s.usecase.UpdateTenant(ctx, req.Msg.Id, req.Msg.Name, req.Msg.RetryPattern, usecases.SendLimits{
+		PerMinute: int(req.Msg.SendRatePerMinute),
+		Burst:     int(req.Msg.SendBurst),
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
 	return connect.NewResponse(&panmailv1.UpdateTenantResponse{
 		Tenant: &panmailv1.Tenant{
-			Id:           tenant.ID,
-			Name:         tenant.Name,
-			RetryPattern: tenant.RetryPattern,
-			CreatedAt:    tenant.CreatedAt.Format(time.RFC3339),
+			Id:                tenant.ID,
+			Name:              tenant.Name,
+			RetryPattern:      tenant.RetryPattern,
+			SendRatePerMinute: int32(tenant.SendRatePerMinute),
+			SendBurst:         int32(tenant.SendBurst),
+			CreatedAt:         tenant.CreatedAt.Format(time.RFC3339),
 		},
 	}), nil
 }

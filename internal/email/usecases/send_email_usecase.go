@@ -21,6 +21,7 @@ import (
 	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
+	"github.com/gsoultan/panmail/internal/ratelimit"
 	suppressionStores "github.com/gsoultan/panmail/internal/suppression/repositories/stores"
 	templateEntities "github.com/gsoultan/panmail/internal/template/repositories/entities"
 	templateStores "github.com/gsoultan/panmail/internal/template/repositories/stores"
@@ -53,9 +54,16 @@ type SendEmailDeps struct {
 	Renderer        TemplateRenderer
 	BaseURL         string
 	TrackingSigner  *tracking.Signer
+
+	// Both optional. Without them the send path is unlimited, which is what
+	// every deployment had before the ceiling existed.
+	Limiter    *ratelimit.Limiter
+	SendLimits SendLimits
 }
 
 type sendEmailUsecase struct {
+	limiter         *ratelimit.Limiter
+	sendLimits      SendLimits
 	providerRepo    providerStores.Repository
 	templateRepo    templateStores.TemplateRepository
 	suppressionRepo suppressionStores.SuppressionRepository
@@ -73,6 +81,8 @@ type sendEmailUsecase struct {
 
 func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 	return &sendEmailUsecase{
+		limiter:         deps.Limiter,
+		sendLimits:      deps.SendLimits,
 		providerRepo:    deps.ProviderRepo,
 		templateRepo:    deps.TemplateRepo,
 		suppressionRepo: deps.SuppressionRepo,
@@ -184,6 +194,25 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	}
 
 	// 2. Client mode (Async Queuing)
+
+	// The send rate is charged here and only here.
+	//
+	// SendEmail is called twice for every message — once by a client, which
+	// queues it, and again by the outbox worker, which delivers it. Charging
+	// above this branch therefore billed each message twice and halved the
+	// rate an operator had configured. Admission is the half worth keeping: it
+	// is the only point at which anyone is waiting to be told to slow down,
+	// and a message already accepted should not be refused later for a
+	// condition it did not cause.
+	//
+	// Everything admitted is eventually delivered, so egress over time follows
+	// the admission rate. The gap is a backlog drained after an outage, which
+	// leaves faster than it arrived; pacing that needs a limit on queue depth,
+	// which is a different measurement from this one.
+	if err := u.checkSendRate(ctx, tenantID, recipientCount(req.To, req.Cc, req.Bcc)); err != nil {
+		return nil, err
+	}
+
 	messageID := uuid.New().String()
 
 	// Extract domain from From address

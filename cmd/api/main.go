@@ -47,6 +47,7 @@ import (
 	inboundworker "github.com/gsoultan/panmail/internal/inbound/worker"
 	"github.com/gsoultan/panmail/internal/logging"
 	migrator "github.com/gsoultan/panmail/internal/migrate"
+	"github.com/gsoultan/panmail/internal/ratelimit"
 	setupservices "github.com/gsoultan/panmail/internal/setup/services"
 	setupusecases "github.com/gsoultan/panmail/internal/setup/usecases"
 	suppressionstores "github.com/gsoultan/panmail/internal/suppression/repositories/stores/postgres"
@@ -312,6 +313,12 @@ func main() {
 	}
 	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo)
 	templateRenderer := emailusecases.NewTemplateRenderer()
+	// One limiter shared by the API path and the outbox worker, so a tenant
+	// cannot get twice its allowance by using both. Its state is per process;
+	// see the package comment for what that means for a multi-instance
+	// deployment.
+	sendLimiter := ratelimit.New()
+
 	sendEmailUsecase := emailusecases.NewSendEmailUsecase(emailusecases.SendEmailDeps{
 		ProviderRepo:    providerRepo,
 		TemplateRepo:    templateRepo,
@@ -322,6 +329,8 @@ func main() {
 		Renderer:        templateRenderer,
 		BaseURL:         baseURL,
 		TrackingSigner:  trackingSigner,
+		Limiter:         sendLimiter,
+		SendLimits:      emailusecases.NewTenantSendLimits(tenantUsecase),
 	})
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
