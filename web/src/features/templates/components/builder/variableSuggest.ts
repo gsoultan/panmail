@@ -103,6 +103,11 @@ export const insertVariable = (
 export const variablesInDesign = (design: unknown): string[] => {
   const found = new Set<string>();
 
+  // A design loaded from storage is not guaranteed to be acyclic — the lint
+  // suite carries a cyclic fixture for exactly this reason. Without a guard
+  // this recursion blows the stack, and in the builder it would do so on every
+  // keystroke, taking the tab with it.
+  const seen = new WeakSet<object>();
   const scan = (value: unknown): void => {
     if (typeof value === 'string') {
       for (const match of value.matchAll(/\{\{\s*[#/]?\s*\.?([\w.]+)\s*\}\}/g)) {
@@ -116,6 +121,10 @@ export const variablesInDesign = (design: unknown): string[] => {
         found.add(match[1]);
       }
       return;
+    }
+    if (value && typeof value === 'object') {
+      if (seen.has(value)) return;
+      seen.add(value);
     }
     if (Array.isArray(value)) {
       value.forEach(scan);

@@ -1,4 +1,5 @@
 import { Block, EmailDesign } from './types';
+import { countVariables, findTypos } from './variableTypos';
 
 /**
  * Checks a design for the things that quietly hurt a campaign.
@@ -169,6 +170,22 @@ export const lintDesign = (design: EmailDesign): LintFinding[] => {
       title: 'No visible unsubscribe link',
       detail:
         'The one-click header is added automatically, but bulk mail is also expected to carry a visible link. Insert {{unsubscribe_url}} in a text block.',
+    });
+  }
+
+  // A misspelled merge tag is the quietest failure in the whole pipeline.
+  // `{{frist_name}}` is valid syntax, the renderer finds no value, substitutes
+  // nothing, and the message goes out reading "Hi ," to every recipient.
+  // Nothing downstream can object, because nothing can distinguish a typo from
+  // an intentionally optional field. A name used once that closely resembles a
+  // name used throughout is the one case where the template answers that on
+  // its own.
+  for (const typo of findTypos(countVariables(design))) {
+    findings.push({
+      id: `variable-typo-${typo.variable}`,
+      severity: 'warning',
+      title: `{{${typo.variable}}} may be a typo`,
+      detail: `Used once, and close to {{${typo.suggestion}}} which is used throughout. A variable with no value renders as nothing at all, so if this is a slip the message goes out with a gap where the text should be.`,
     });
   }
 

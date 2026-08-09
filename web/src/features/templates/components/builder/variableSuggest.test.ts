@@ -165,3 +165,15 @@ describe('collecting the variables a design already uses', () => {
     expect(variablesInDesign(null)).toEqual([]);
   });
 });
+
+describe('a corrupt design', () => {
+  // Same guard as countVariables, and this one runs on every render of the
+  // builder rather than only when the lint panel is open.
+  test('a cycle terminates instead of exhausting the stack', () => {
+    const parent: any = { id: '1', content: { text: '{{name}}', columns: [{ id: 'c', blocks: [] }] } };
+    parent.content.columns[0].blocks.push(parent);
+
+    expect(() => variablesInDesign({ blocks: [parent] })).not.toThrow();
+    expect(variablesInDesign({ blocks: [parent] })).toEqual(['name']);
+  });
+});
