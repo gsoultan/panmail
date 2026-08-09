@@ -3,6 +3,8 @@ import { useForm } from '@mantine/form';
 import { TextInput, Select, NumberInput, Checkbox, Button, Stack, Group, Paper, Title, Divider, Text, CopyButton, Tooltip, ActionIcon } from '@mantine/core';
 import { IconCopy, IconCheck } from '@tabler/icons-react';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
+import { DkimSection } from './DkimSection';
+import { ApiProviderFields } from './ApiProviderFields';
 
 interface ProviderFormProps {
   initialValues?: any;
@@ -16,9 +18,19 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
   const defaultValues = {
     name: '',
     type: ProviderType.SMTP,
-    smtp: { host: '', port: 587, username: '', password: '', skipVerify: false, useSsl: false },
+    smtp: {
+      host: '', port: 587, username: '', password: '', skipVerify: false, useSsl: false,
+      // dkimEnabled is form-only: the server infers signing from whether all
+      // three DKIM values are present, so it is never sent.
+      dkimEnabled: false,
+      dkim: { domain: '', selector: '', privateKey: '' },
+    },
     imap: { host: '', port: 993, username: '', password: '', skipVerify: false, useSsl: true },
     pop3: { host: '', port: 995, username: '', password: '', skipVerify: false, useSsl: true },
+    sendgrid: { apiKey: '', baseUrl: '' },
+    ses: { region: 'us-east-1', accessKey: '', secretKey: '', endpoint: '' },
+    postmark: { serverToken: '', messageStream: '', baseUrl: '' },
+    mailgun: { domain: '', apiKey: '', baseUrl: '' },
   };
 
   const getInitialValues = () => {
@@ -31,7 +43,22 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
       smtp: initialValues.config?.case === 'smtp' ? initialValues.config.value : (initialValues.smtp || defaultValues.smtp),
       imap: initialValues.config?.case === 'imap' ? initialValues.config.value : (initialValues.imap || defaultValues.imap),
       pop3: initialValues.config?.case === 'pop3' ? initialValues.config.value : (initialValues.pop3 || defaultValues.pop3),
+      sendgrid: initialValues.config?.case === 'sendgrid' ? initialValues.config.value : (initialValues.sendgrid || defaultValues.sendgrid),
+      ses: initialValues.config?.case === 'ses' ? initialValues.config.value : (initialValues.ses || defaultValues.ses),
+      postmark: initialValues.config?.case === 'postmark' ? initialValues.config.value : (initialValues.postmark || defaultValues.postmark),
+      mailgun: initialValues.config?.case === 'mailgun' ? initialValues.config.value : (initialValues.mailgun || defaultValues.mailgun),
     };
+  };
+
+  // dkimEnabled is a form-only switch; the server decides whether to sign from
+  // whether all three DKIM values are present. Turning it off must therefore
+  // clear the values, or signing would continue with the switch showing off.
+  const submit = (values: any) => {
+    const { dkimEnabled, ...smtp } = values.smtp ?? {};
+    onSubmit({
+      ...values,
+      smtp: dkimEnabled ? smtp : { ...smtp, dkim: { domain: '', selector: '', privateKey: '' } },
+    });
   };
 
   const form = useForm({
@@ -97,11 +124,27 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
 
     switch (form.values.type) {
       case ProviderType.SMTP:
-        return commonFields('smtp');
+        return (
+          <>
+            {commonFields('smtp')}
+            <DkimSection form={form} editing={Boolean(initialValues?.id)} />
+          </>
+        );
       case ProviderType.IMAP:
         return commonFields('imap');
       case ProviderType.POP3:
         return commonFields('pop3');
+      case ProviderType.SENDGRID:
+      case ProviderType.SES:
+      case ProviderType.POSTMARK:
+      case ProviderType.MAILGUN:
+        return (
+          <ApiProviderFields
+            form={form}
+            type={form.values.type}
+            editing={Boolean(initialValues?.id)}
+          />
+        );
       default:
         return null;
     }
@@ -109,7 +152,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
 
   return (
     <Paper withBorder p="xl" radius="md">
-      <form onSubmit={form.onSubmit(onSubmit)}>
+      <form onSubmit={form.onSubmit(submit)}>
         <Stack gap="xl">
           <Stack gap={4}>
             <Title order={3} fw={800}>{initialValues ? 'Edit' : 'Connect'} Email Provider</Title>
@@ -153,9 +196,19 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
               <Select
                 label="Connection Protocol"
                 data={[
-                  { value: ProviderType.SMTP.toString(), label: 'SMTP (Outgoing)' },
-                  { value: ProviderType.IMAP.toString(), label: 'IMAP (Incoming)' },
-                  { value: ProviderType.POP3.toString(), label: 'POP3 (Incoming)' },
+                  { group: 'Outgoing (SMTP)', items: [
+                    { value: ProviderType.SMTP.toString(), label: 'SMTP' },
+                  ]},
+                  { group: 'Outgoing (provider API)', items: [
+                    { value: ProviderType.SENDGRID.toString(), label: 'SendGrid' },
+                    { value: ProviderType.SES.toString(), label: 'Amazon SES' },
+                    { value: ProviderType.POSTMARK.toString(), label: 'Postmark' },
+                    { value: ProviderType.MAILGUN.toString(), label: 'Mailgun' },
+                  ]},
+                  { group: 'Incoming', items: [
+                    { value: ProviderType.IMAP.toString(), label: 'IMAP' },
+                    { value: ProviderType.POP3.toString(), label: 'POP3' },
+                  ]},
                 ]}
                 {...form.getInputProps('type')}
                 onChange={(val) => form.setFieldValue('type', parseInt(val || '0'))}

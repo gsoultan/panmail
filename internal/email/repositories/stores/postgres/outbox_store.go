@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email/repositories/stores"
 	"github.com/gsoultan/panmail/pkg/db"
@@ -19,6 +20,12 @@ var (
 	getOutboxByIDQuery string
 	//go:embed sql/list_pending_outbox.sql
 	listPendingOutboxQuery string
+	//go:embed sql/claim_pending_outbox.sql
+	claimPendingOutboxQuery string
+	//go:embed sql/list_claimed_outbox.sql
+	listClaimedOutboxQuery string
+	//go:embed sql/release_outbox_claim.sql
+	releaseOutboxClaimQuery string
 	//go:embed sql/update_outbox.sql
 	updateOutboxQuery string
 	//go:embed sql/delete_outbox.sql
@@ -66,12 +73,32 @@ func (s *outboxStore) GetByID(ctx context.Context, id string) (*entities.OutboxE
 	return e, nil
 }
 
-func (s *outboxStore) ListPending(ctx context.Context, limit int) ([]*entities.OutboxEmail, error) {
-	db, err := s.getDB()
+// ClaimPending marks a batch of due messages as this worker's, then reads back
+// exactly the rows it won.
+//
+// The claim is a single UPDATE, so concurrent workers cannot both take a row:
+// whichever UPDATE commits first moves those rows to SENDING, and the other's
+// predicate no longer matches them. Rows whose lease has lapsed are eligible
+// again, which is how work is recovered from a worker that died mid-send.
+func (s *outboxStore) ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error) {
+	dbConn, err := s.getDB()
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.QueryContext(ctx, listPendingOutboxQuery, time.Now(), limit)
+
+	now := time.Now()
+	token := uuid.New().String()
+
+	res, err := dbConn.ExecContext(ctx, claimPendingOutboxQuery,
+		token, now.Add(leaseFor), now, now, limit)
+	if err != nil {
+		return nil, err
+	}
+	if affected, err := res.RowsAffected(); err == nil && affected == 0 {
+		return nil, nil
+	}
+
+	rows, err := dbConn.QueryContext(ctx, listClaimedOutboxQuery, token)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +114,8 @@ func (s *outboxStore) ListPending(ctx context.Context, limit int) ([]*entities.O
 		e.LastError = lastError.String
 		emails = append(emails, e)
 	}
-	return emails, nil
+
+	return emails, rows.Err()
 }
 
 func (s *outboxStore) Update(ctx context.Context, email *entities.OutboxEmail) error {

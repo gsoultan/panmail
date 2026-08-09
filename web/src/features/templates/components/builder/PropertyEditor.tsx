@@ -13,7 +13,6 @@ import {
   Button,
   Paper,
   ActionIcon,
-  Badge,
   SimpleGrid,
   Checkbox,
   Tabs
@@ -26,19 +25,45 @@ interface PropertyEditorProps {
   onChange: (updates: Partial<Block>) => void;
 }
 
+const BUILTIN_VARS = [
+  '{{name}}',
+  '{{email}}',
+  '{{company}}',
+  '{{unsubscribe_url}}',
+  '{{current_date}}',
+  '{{current_year}}',
+  '{{logo_url}}',
+  '{{verification_link}}',
+];
+
+// Variables the author added themselves are kept across reloads. They were
+// component state, so every one had to be retyped after a refresh — which for a
+// list whose whole purpose is saving typing made the feature close to useless.
+//
+// localStorage rather than the server: this is a per-person convenience list,
+// not part of the template, and it must not become another thing that can fail
+// to save.
+const CUSTOM_VARS_KEY = 'panmail.builder.customVariables';
+
+const loadCustomVars = (): string[] => {
+  try {
+    const raw = localStorage.getItem(CUSTOM_VARS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+  } catch {
+    // Private browsing, a disabled store or corrupt JSON: the built-ins still
+    // work, and losing a convenience list is not worth breaking the editor.
+    return [];
+  }
+};
+
 export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange }) => {
   const [varAssistantOpened, setVarAssistantOpened] = useState(false);
-  const [customVars, setCustomVars] = useState<string[]>([
-    '{{name}}', 
-    '{{email}}', 
-    '{{company}}', 
-    '{{unsubscribe_url}}',
-    '{{current_date}}',
-    '{{current_year}}',
-    '{{logo_url}}',
-    '{{verification_link}}'
-  ]);
+  const [userVars, setUserVars] = useState<string[]>(loadCustomVars);
   const [newVar, setNewVar] = useState('');
+
+  const customVars = [...BUILTIN_VARS, ...userVars.filter((v) => !BUILTIN_VARS.includes(v))];
 
   const updateContent = (key: string, value: any) => {
     onChange({ content: { ...block.content, [key]: value } });
@@ -49,9 +74,33 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
   };
 
   const addVariable = () => {
-    if (newVar && !customVars.includes(`{{${newVar}}}`)) {
-      setCustomVars([...customVars, `{{${newVar}}}`]);
+    // Accept either `foo` or `{{foo}}`, since both are natural to type.
+    const name = newVar.trim().replace(/^\{+|\}+$/g, '').trim();
+    if (!name) return;
+
+    const token = `{{${name}}}`;
+    if (customVars.includes(token)) {
       setNewVar('');
+      return;
+    }
+
+    const next = [...userVars, token];
+    setUserVars(next);
+    setNewVar('');
+    try {
+      localStorage.setItem(CUSTOM_VARS_KEY, JSON.stringify(next));
+    } catch {
+      // Kept in memory for this session even if it cannot be persisted.
+    }
+  };
+
+  const removeVariable = (token: string) => {
+    const next = userVars.filter((v) => v !== token);
+    setUserVars(next);
+    try {
+      localStorage.setItem(CUSTOM_VARS_KEY, JSON.stringify(next));
+    } catch {
+      /* nothing to do */
     }
   };
 
@@ -62,11 +111,18 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
       updateContent('text', (block.content.text || '') + v);
     } else if (block.type === 'button') {
       updateContent('label', (block.content.label || '') + v);
+    } else if (block.type === 'list') {
+      // The button is offered for lists (see the block-type filter below) but
+      // used to do nothing at all, because this chain had no branch for them.
+      const items = block.content.items || [];
+      const next = items.length ? [...items] : [''];
+      next[next.length - 1] = (next[next.length - 1] || '') + v;
+      updateContent('items', next);
     } else if (block.type === 'table') {
         if (block.content.rows && block.content.rows[0]) {
-            const newRows = [...block.content.rows];
-            newRows[0] = [...newRows[0]];
-            newRows[0][0] = (newRows[0][0] || '') + v;
+            const newRows = block.content.rows.map((row: string[], i: number) =>
+              i === 0 ? row.map((cell, j) => (j === 0 ? (cell || '') + v : cell)) : row,
+            );
             updateContent('rows', newRows);
         }
     }
@@ -103,18 +159,26 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                     <Stack gap="xs">
                         <Text size="xs" c="dimmed">Click to insert a variable:</Text>
                         <Group gap={4} wrap="wrap">
-                        {customVars.map(v => (
+                        {customVars.map(v => {
+                            const isCustom = !BUILTIN_VARS.includes(v);
+                            return (
                             <Button
                             key={v}
                             variant="light"
                             size="compact-xs"
                             onClick={() => insertVariable(v)}
-                            color="indigo"
+                            // Right-click removes a variable the author added.
+                            // Built-ins have no remove path, so they cannot be
+                            // lost by accident.
+                            onContextMenu={isCustom ? (e) => { e.preventDefault(); removeVariable(v); } : undefined}
+                            title={isCustom ? `${v} — right-click to remove` : v}
+                            color={isCustom ? 'grape' : 'indigo'}
                             radius="xs"
                             >
                             {v}
                             </Button>
-                        ))}
+                            );
+                        })}
                         </Group>
 
                         <Divider />
@@ -249,7 +313,6 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                                   data={['Facebook', 'Twitter', 'LinkedIn', 'Instagram', 'YouTube', 'GitHub', 'Custom']}
                                   value={['Facebook', 'Twitter', 'LinkedIn', 'Instagram', 'YouTube', 'GitHub'].includes(link.platform) ? link.platform : 'Custom'}
                                   onChange={(val) => {
-                                    const newLinks = [...block.content.links];
                                     const icons: any = {
                                       'Facebook': 'https://cdn-icons-png.flaticon.com/512/124/124010.png',
                                       'Twitter': 'https://cdn-icons-png.flaticon.com/512/124/124021.png',
@@ -259,8 +322,14 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                                       'GitHub': 'https://cdn-icons-png.flaticon.com/512/733/733553.png',
                                       'Custom': link.icon
                                     };
-                                    newLinks[index].platform = val || 'Custom';
-                                    newLinks[index].icon = icons[val || 'Custom'];
+                                    const platform = val || 'Custom';
+                                    // Replaced, not assigned into: spreading the
+                                    // array still shares the link objects with
+                                    // the current state, so writing a field here
+                                    // edited the design React was rendering from.
+                                    const newLinks = block.content.links.map((l: any, i: number) =>
+                                      i === index ? { ...l, platform, icon: icons[platform] } : l,
+                                    );
                                     updateContent('links', newLinks);
                                   }}
                                   style={{ flex: 1 }}
@@ -278,8 +347,10 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                                   size="xs"
                                   value={link.icon}
                                   onChange={(e) => {
-                                    const newLinks = [...block.content.links];
-                                    newLinks[index].icon = e.currentTarget.value;
+                                    const icon = e.currentTarget.value;
+                                    const newLinks = block.content.links.map((l: any, i: number) =>
+                                      i === index ? { ...l, icon } : l,
+                                    );
                                     updateContent('links', newLinks);
                                   }}
                                 />
@@ -289,8 +360,10 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                                   size="xs"
                                   value={link.url}
                                   onChange={(e) => {
-                                      const newLinks = [...block.content.links];
-                                      newLinks[index].url = e.currentTarget.value;
+                                      const url = e.currentTarget.value;
+                                      const newLinks = block.content.links.map((l: any, i: number) =>
+                                        i === index ? { ...l, url } : l,
+                                      );
                                       updateContent('links', newLinks);
                                   }}
                               />
@@ -402,8 +475,13 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
                             size="xs"
                             value={cell}
                             onChange={(e) => {
-                              const newRows = [...block.content.rows];
-                              newRows[i][j] = e.currentTarget.value;
+                              // The outer array was copied but the row was not,
+                              // so `newRows[i][j] = ...` wrote through into the
+                              // row object still held by the current state.
+                              const value = e.currentTarget.value;
+                              const newRows = block.content.rows.map((row: string[], ri: number) =>
+                                ri === i ? row.map((cell, ci) => (ci === j ? value : cell)) : row,
+                              );
                               updateContent('rows', newRows);
                             }}
                             placeholder={block.content.headers[j]}

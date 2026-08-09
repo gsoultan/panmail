@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -44,6 +46,7 @@ import (
 	inboundusecases "github.com/gsoultan/panmail/internal/inbound/usecases"
 	inboundworker "github.com/gsoultan/panmail/internal/inbound/worker"
 	"github.com/gsoultan/panmail/internal/logging"
+	migrator "github.com/gsoultan/panmail/internal/migrate"
 	setupservices "github.com/gsoultan/panmail/internal/setup/services"
 	setupusecases "github.com/gsoultan/panmail/internal/setup/usecases"
 	suppressionstores "github.com/gsoultan/panmail/internal/suppression/repositories/stores/postgres"
@@ -63,6 +66,8 @@ import (
 	webhookworker "github.com/gsoultan/panmail/internal/webhook/worker"
 	"github.com/gsoultan/panmail/pkg/auth"
 	"github.com/gsoultan/panmail/pkg/db"
+	"github.com/gsoultan/panmail/pkg/secrets"
+	"github.com/gsoultan/panmail/pkg/tracking"
 	"github.com/gsoultan/panmail/web"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"golang.org/x/net/http2"
@@ -72,6 +77,17 @@ import (
 
 const (
 	defaultPort = "8080"
+
+	// Server limits. An email gateway is internet-facing, so a connection that
+	// never finishes must not be able to hold a slot open forever.
+	readHeaderTimeout = 10 * time.Second
+	readTimeout       = 60 * time.Second
+	writeTimeout      = 120 * time.Second
+	idleTimeout       = 120 * time.Second
+	maxHeaderBytes    = 1 << 20 // 1 MiB
+
+	shutdownTimeout    = 15 * time.Second
+	workerDrainTimeout = 30 * time.Second
 )
 
 func (m *multiHandler) WithGroup(name string) slog.Handler {
@@ -199,8 +215,33 @@ func main() {
 		}
 	}
 
+	// 3b. Derive the data encryption key for stored credentials. It is kept
+	// separate from the token signing key so the two can be rotated and
+	// compromised independently.
+	var keyring *secrets.Keyring
+	if cfg != nil {
+		dataKey, err := config.EnsureDataKey(cfg)
+		if err != nil {
+			slog.Error("failed to resolve the data encryption key", "error", err)
+			os.Exit(1)
+		}
+		keyring, err = secrets.NewKeyring(dataKey)
+		if err != nil {
+			slog.Error("failed to initialize the data encryption keyring", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	// Tracking links are signed so recorded opens and clicks can be trusted
+	// and the click endpoint cannot be used as an open redirect.
+	trackingSigner, err := newTrackingSigner(cfg)
+	if err != nil {
+		slog.Error("failed to initialize the tracking link signer", "error", err)
+		os.Exit(1)
+	}
+
 	// 4. Setup Layered Architecture
-	providerRepo := postgres.NewStore(conn)
+	providerRepo := postgres.NewStore(conn, keyring)
 	userRepo := authstores.NewStore(conn)
 	tenantRepo := tenantstores.NewStore(conn)
 	apiKeyRepo := authstores.NewApiKeyStore(conn)
@@ -239,8 +280,13 @@ func main() {
 	settingsUsecase := settingsusecases.NewSettingsUsecase()
 	settingsService := settingsservices.NewSettingsService(settingsUsecase)
 
+	// Background work runs under a context this process controls, so shutdown
+	// can stop the workers before the stores they write to are closed.
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	var workers sync.WaitGroup
+
 	outboundWebhookWorker := webhookworker.NewWebhookWorker(webhookUsecase)
-	go outboundWebhookWorker.Start(context.Background())
+	runWorker(&workers, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
 
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
 	eventService := eventservices.NewEventService(processEventUsecase)
@@ -251,7 +297,9 @@ func main() {
 	if cfg != nil && cfg.App.LogRetentionDays > 0 {
 		retentionDays = cfg.App.LogRetentionDays
 	}
-	go processEventUsecase.StartCleanupTask(context.Background(), 24*time.Hour, retentionDays)
+	runWorker(&workers, "log-retention", func() {
+		processEventUsecase.StartCleanupTask(workerCtx, 24*time.Hour, retentionDays)
+	})
 
 	inboundUsecase := inboundusecases.NewInboundUsecase(inboundRepo, processEventUsecase, outboundWebhookWorker)
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
@@ -263,17 +311,34 @@ func main() {
 	}
 	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo)
 	templateRenderer := emailusecases.NewTemplateRenderer()
-	sendEmailUsecase := emailusecases.NewSendEmailUsecase(providerRepo, templateRepo, suppressionRepo, outboxRepo, processEventUsecase, providerFactory, templateRenderer, baseURL)
+	sendEmailUsecase := emailusecases.NewSendEmailUsecase(emailusecases.SendEmailDeps{
+		ProviderRepo:    providerRepo,
+		TemplateRepo:    templateRepo,
+		SuppressionRepo: suppressionRepo,
+		OutboxRepo:      outboxRepo,
+		EventUsecase:    processEventUsecase,
+		ProviderFactory: providerFactory,
+		Renderer:        templateRenderer,
+		BaseURL:         baseURL,
+		TrackingSigner:  trackingSigner,
+	})
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
 	queueWorker := emailusecases.NewQueueWorker(outboxRepo, sendEmailUsecase, manageSuppressionsUsecase, tenantUsecase, 5*time.Second)
 	sendEmailUsecase.RegisterQueueWorker(queueWorker)
-	go queueWorker.Start(context.Background())
+	runWorker(&workers, "outbox-queue", func() { queueWorker.Start(workerCtx) })
 
-	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase)
+	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase, trackingSigner)
+
+	// One-click unsubscribe (RFC 8058), which Gmail and Yahoo require from bulk
+	// senders. It suppresses on POST and only shows a confirmation page on GET —
+	// link scanners fetch every URL in a message, so a GET that acted would
+	// unsubscribe recipients who never clicked.
+	unsubscribeHandler := eventhttp.NewUnsubscribeHandler(
+		manageSuppressionsUsecase, processEventUsecase, trackingSigner)
 
 	poller := inboundworker.NewPoller(tenantRepo, providerRepo, inboundUsecase, providerFactory, 30*time.Second)
-	go poller.Start(context.Background()) // In production, use a separate context for shutdown
+	runWorker(&workers, "inbound-poller", func() { poller.Start(workerCtx) })
 
 	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, swappableTokenMaker)
 	authService := authservices.NewAuthService(authUsecase)
@@ -299,20 +364,52 @@ func main() {
 	interceptors := connect.WithInterceptors(rbacInterceptor)
 
 	mux := http.NewServeMux()
-	mux.Handle(providerconnect.NewHandler(emailProviderService, interceptors))
-	mux.Handle(emailconnect.NewHandler(emailService, interceptors))
-	mux.Handle(panmailv1connect.NewAuthServiceHandler(authService, interceptors))
-	mux.Handle(panmailv1connect.NewApiKeyServiceHandler(apiKeyService, interceptors))
-	mux.Handle(panmailv1connect.NewUserServiceHandler(userService, interceptors))
-	mux.Handle(panmailv1connect.NewTenantServiceHandler(tenantService, interceptors))
-	mux.Handle(panmailv1connect.NewSetupServiceHandler(setupService)) // Setup usually doesn't need auth/rbac
-	mux.Handle(panmailv1connect.NewTemplateServiceHandler(templateService, interceptors))
-	mux.Handle(panmailv1connect.NewSuppressionServiceHandler(suppressionService, interceptors))
-	mux.Handle(panmailv1connect.NewWebhookServiceHandler(webhookService, interceptors))
-	mux.Handle(panmailv1connect.NewSystemSettingsServiceHandler(settingsService, interceptors))
-	mux.Handle(panmailv1connect.NewEventServiceHandler(eventService, interceptors))
-	mux.Handle(panmailv1connect.NewInboundServiceHandler(inboundService, interceptors))
-	mux.Handle(panmailv1connect.NewLogServiceHandler(logService, interceptors))
+
+	// Every RPC handler is mounted through this one helper, which always
+	// applies the interceptor chain. Registering a service without
+	// authorization is therefore not something that can be done by
+	// forgetting an argument.
+	rpc := &rpcRegistrar{mux: mux, interceptors: interceptors}
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return providerconnect.NewHandler(emailProviderService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) { return emailconnect.NewHandler(emailService, o) })
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewAuthServiceHandler(authService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewApiKeyServiceHandler(apiKeyService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewUserServiceHandler(userService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewTenantServiceHandler(tenantService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewSetupServiceHandler(setupService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewTemplateServiceHandler(templateService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewSuppressionServiceHandler(suppressionService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewWebhookServiceHandler(webhookService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewSystemSettingsServiceHandler(settingsService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewEventServiceHandler(eventService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewInboundServiceHandler(inboundService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewLogServiceHandler(logService, o)
+	})
 	mux.Handle(grpchealth.NewHandler(healthChecker))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// Respond with 200 OK if the service is serving, otherwise 503
@@ -330,6 +427,7 @@ func main() {
 	mux.Handle("/inbound/", inboundWebhookHandler)
 	mux.HandleFunc("/track/open/", trackingHandler.HandleOpen)
 	mux.HandleFunc("/track/click/", trackingHandler.HandleClick)
+	mux.Handle("/unsubscribe/", unsubscribeHandler)
 
 	// 6. Serve Frontend (Embedded or Disk)
 	serveUI := *builtUIFlag || web.IsBuiltUI
@@ -397,6 +495,14 @@ func main() {
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: h2c.NewHandler(authMiddleware.Handle(mux), &http2.Server{}),
+
+		// Without these a client can hold a connection open indefinitely by
+		// dribbling out a request, and enough of those exhaust the server.
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    maxHeaderBytes,
 	}
 
 	// 7. Graceful Shutdown
@@ -416,14 +522,86 @@ func main() {
 	slog.Info("Shutting down server...")
 	healthChecker.SetStatus("", grpchealth.StatusNotServing)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Stop accepting requests first, then let the workers finish what they
+	// already claimed, and only then close the stores. Closing Pebble while a
+	// worker is still writing to it is a crash, and dropping an in-flight send
+	// loses mail the caller was told had been accepted.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown failed", "error", err)
-		os.Exit(1)
 	}
+
+	slog.Info("stopping background workers")
+	stopWorkers()
+
+	if waitForWorkers(&workers, workerDrainTimeout) {
+		slog.Info("background workers stopped")
+	} else {
+		slog.Warn("background workers did not stop in time", "timeout", workerDrainTimeout)
+	}
+
+	if err := providerFactory.Close(); err != nil {
+		slog.Error("failed to close provider connections", "error", err)
+	}
+
 	slog.Info("Server stopped gracefully")
+}
+
+// rpcRegistrar mounts ConnectRPC handlers with a fixed interceptor chain.
+type rpcRegistrar struct {
+	mux          *http.ServeMux
+	interceptors connect.Option
+}
+
+func (r *rpcRegistrar) register(build func(connect.Option) (string, http.Handler)) {
+	pattern, handler := build(r.interceptors)
+	r.mux.Handle(pattern, handler)
+}
+
+// runWorker starts a background worker, tracking it so shutdown can wait for
+// it and recovering panics so one worker cannot take the process down.
+func runWorker(wg *sync.WaitGroup, name string, fn func()) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("background worker panicked", "worker", name, "panic", r)
+			}
+		}()
+		fn()
+	}()
+}
+
+// waitForWorkers reports whether every worker finished within the timeout.
+func waitForWorkers(wg *sync.WaitGroup, timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// newTrackingSigner derives the key that signs open and click links. It is
+// bound to the instance's signing key so that links survive restarts.
+func newTrackingSigner(cfg *config.Config) (*tracking.Signer, error) {
+	if cfg == nil || cfg.Auth.SymmetricKey == "" {
+		// Not configured yet: links are only generated once a provider exists,
+		// which cannot happen before setup completes.
+		return tracking.NewSigner([]byte("panmail-unconfigured-tracking-key")), nil
+	}
+
+	key := sha256.Sum256([]byte("panmail-tracking-v1:" + cfg.Auth.SymmetricKey))
+	return tracking.NewSigner(key[:]), nil
 }
 
 func buildUI(version string) {
@@ -494,156 +672,5 @@ func handleBuildCommand() {
 }
 
 func migrate(conn db.Connection, dbType string) error {
-	db := conn.GetDB()
-	if db == nil {
-		return errors.New("database not connected")
-	}
-	jsonType := "JSONB"
-	uuidType := "UUID"
-	timestampType := "TIMESTAMP WITH TIME ZONE"
-
-	if dbType == "sqlite" || dbType == "mysql" || dbType == "mariadb" {
-		jsonType = "TEXT"
-		uuidType = "VARCHAR(36)"
-		timestampType = "DATETIME"
-	}
-
-	queries := []string{
-		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS tenants (
-			id %s PRIMARY KEY,
-			name TEXT NOT NULL,
-			retry_pattern %s,
-			created_at %s NOT NULL,
-			updated_at %s NOT NULL
-		);`, uuidType, jsonType, timestampType, timestampType),
-		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS users (
-			id %s PRIMARY KEY,
-			tenant_id %s NOT NULL,
-			email VARCHAR(255) NOT NULL UNIQUE,
-			password TEXT NOT NULL,
-			name TEXT NOT NULL,
-			role VARCHAR(50) NOT NULL DEFAULT 'USER_ROLE_VIEWER',
-			two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-			two_factor_secret TEXT,
-			created_at %s NOT NULL,
-			updated_at %s NOT NULL,
-			FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-		);`, uuidType, uuidType, timestampType, timestampType),
-		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS email_providers (
-			id %s PRIMARY KEY,
-			tenant_id %s NOT NULL,
-			name TEXT NOT NULL,
-			type INTEGER NOT NULL,
-			config %s NOT NULL,
-			allowed_domains %s,
-			created_at %s NOT NULL,
-			updated_at %s NOT NULL,
-			FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-			UNIQUE(tenant_id, name)
-		);`, uuidType, uuidType, jsonType, jsonType, timestampType, timestampType),
-		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS api_keys (
-			id %s PRIMARY KEY,
-			tenant_id %s NOT NULL,
-			name TEXT NOT NULL,
-			key_hash TEXT NOT NULL,
-			prefix VARCHAR(10) NOT NULL,
-			last_used_at %s,
-			expires_at %s,
-			is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-			created_at %s NOT NULL,
-			updated_at %s NOT NULL,
-			FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-		);`, uuidType, uuidType, timestampType, timestampType, timestampType, timestampType),
-		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS templates (
-			id %s PRIMARY KEY,
-			tenant_id %s NOT NULL,
-			name TEXT NOT NULL,
-			subject TEXT NOT NULL,
-			body_html TEXT NOT NULL,
-			body_text TEXT NOT NULL,
-			design TEXT,
-			created_at %s NOT NULL,
-			updated_at %s NOT NULL,
-			FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-		);`, uuidType, uuidType, timestampType, timestampType),
-		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS suppressions (
-			id %s PRIMARY KEY,
-			tenant_id %s NOT NULL,
-			email VARCHAR(255) NOT NULL,
-			reason TEXT,
-			created_at %s NOT NULL,
-			FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-			UNIQUE(tenant_id, email)
-		);`, uuidType, uuidType, timestampType),
-		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS webhooks (
-			id %s PRIMARY KEY,
-			tenant_id %s NOT NULL,
-			name TEXT NOT NULL,
-			url TEXT NOT NULL,
-			events %s NOT NULL,
-			active BOOLEAN NOT NULL DEFAULT TRUE,
-			created_at %s NOT NULL,
-			updated_at %s NOT NULL,
-			FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-		);`, uuidType, uuidType, jsonType, timestampType, timestampType),
-		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS outbox (
-			id %s PRIMARY KEY,
-			tenant_id %s NOT NULL,
-			request %s NOT NULL,
-			status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-			retry_count INTEGER NOT NULL DEFAULT 0,
-			next_retry_at %s NOT NULL,
-			last_error TEXT,
-			created_at %s NOT NULL,
-			updated_at %s NOT NULL,
-			FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-		);`, uuidType, uuidType, jsonType, timestampType, timestampType, timestampType),
-	}
-
-	for _, q := range queries {
-		if _, err := db.Exec(q); err != nil {
-			slog.Error("migration failed", "query", q, "error", err)
-			return err
-		}
-	}
-
-	// Handle adding columns to existing tables
-	alterQueries := []string{
-		fmt.Sprintf("ALTER TABLE tenants ADD COLUMN retry_pattern %s;", jsonType),
-		fmt.Sprintf("ALTER TABLE users ADD COLUMN tenant_id %s;", uuidType),
-		fmt.Sprintf("ALTER TABLE email_providers ADD COLUMN tenant_id %s;", uuidType),
-		"ALTER TABLE users ADD COLUMN role VARCHAR(50) NOT NULL DEFAULT 'USER_ROLE_VIEWER';",
-		fmt.Sprintf("ALTER TABLE api_keys ADD COLUMN expires_at %s;", timestampType),
-		"ALTER TABLE api_keys ADD COLUMN is_enabled BOOLEAN NOT NULL DEFAULT TRUE;",
-		fmt.Sprintf("ALTER TABLE email_providers ADD COLUMN allowed_domains %s;", jsonType),
-		"ALTER TABLE templates ADD COLUMN design TEXT;",
-		"ALTER TABLE users ADD COLUMN two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE;",
-		"ALTER TABLE users ADD COLUMN two_factor_secret TEXT;",
-		"CREATE UNIQUE INDEX IF NOT EXISTS idx_email_providers_tenant_name ON email_providers(tenant_id, name);",
-		"CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);",
-		"CREATE INDEX IF NOT EXISTS idx_api_keys_tenant_id ON api_keys(tenant_id);",
-		"CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);",
-		"CREATE INDEX IF NOT EXISTS idx_templates_tenant_id ON templates(tenant_id);",
-		"CREATE UNIQUE INDEX IF NOT EXISTS idx_templates_tenant_name ON templates(tenant_id, name);",
-		"CREATE INDEX IF NOT EXISTS idx_webhooks_tenant_id ON webhooks(tenant_id);",
-		"CREATE UNIQUE INDEX IF NOT EXISTS idx_webhooks_tenant_name ON webhooks(tenant_id, name);",
-		"CREATE INDEX IF NOT EXISTS idx_outbox_tenant_id ON outbox(tenant_id);",
-		"CREATE INDEX IF NOT EXISTS idx_outbox_status_next_retry ON outbox(status, next_retry_at);",
-		"CREATE INDEX IF NOT EXISTS idx_suppressions_tenant_id ON suppressions(tenant_id);",
-		"CREATE INDEX IF NOT EXISTS idx_tenants_name ON tenants(name);",
-	}
-
-	for _, q := range alterQueries {
-		_, _ = db.Exec(q) // Ignore error if column already exists
-	}
-
-	return nil
+	return migrator.Run(conn.GetDB(), dbType)
 }

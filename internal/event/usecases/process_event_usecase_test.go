@@ -99,11 +99,11 @@ func (m *mockEventRepo) TruncateBefore(ctx context.Context, before time.Time) er
 	return nil
 }
 
-func (m *mockEventRepo) ListArchives(ctx context.Context, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
+func (m *mockEventRepo) ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
 	return nil, "", nil
 }
 
-func (m *mockEventRepo) GetArchive(ctx context.Context, id string) ([]byte, string, error) {
+func (m *mockEventRepo) GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error) {
 	return nil, "", nil
 }
 

@@ -15,11 +15,19 @@ message EmailProvider {
     SmtpConfig smtp = 4;
     ImapConfig imap = 9;
     Pop3Config pop3 = 10;
+    SendGridConfig sendgrid = 16;
+    SesConfig ses = 17;
+    PostmarkConfig postmark = 18;
+    MailgunConfig mailgun = 19;
   }
   google.protobuf.Timestamp create_time = 11;
   google.protobuf.Timestamp update_time = 12;
   string tenant_id = 13;
   repeated string allowed_domains = 14;
+  // Verification material for this provider's delivery webhooks: SendGrid's
+  // base64 ECDSA public key, Mailgun's HTTP webhook signing key, or a shared
+  // secret for the generic HMAC format. Write-only; never returned.
+  string webhook_secret = 15;
 }
 
 message SmtpConfig {
@@ -29,6 +37,28 @@ message SmtpConfig {
   string password = 4;
   bool skip_verify = 5;
   bool use_ssl = 6;
+
+  // DKIM signing. Unsigned mail is treated as suspicious by every major
+  // mailbox provider, and DMARC cannot pass on SPF alone once a message is
+  // forwarded, so this is the difference between the inbox and the spam folder.
+  //
+  // The private key lives in this message because the whole config blob is
+  // encrypted at rest with AES-256-GCM and redacted from every API response.
+  // Signing is off unless all three of domain, selector and private key are
+  // present.
+  DkimConfig dkim = 7;
+}
+
+message DkimConfig {
+  // The domain being signed for. Should match the From domain, or DMARC
+  // alignment fails even though the signature itself verifies.
+  string domain = 1;
+  // The selector, which names which key to fetch: the receiver looks up
+  // <selector>._domainkey.<domain>.
+  string selector = 2;
+  // PEM-encoded RSA or Ed25519 private key. Write-only: it is redacted on read
+  // like every other stored credential.
+  string private_key = 3;
 }
 
 message ImapConfig {
@@ -47,4 +77,39 @@ message Pop3Config {
   string password = 4;
   bool skip_verify = 5;
   bool use_ssl = 6;
+}
+
+// The API-based senders. Each carries only what its vendor needs; the whole
+// config blob is encrypted at rest, so the credentials inherit that protection.
+// Every secret field is redacted on read, like the SMTP password.
+
+message SendGridConfig {
+  string api_key = 1;
+  // Overrides the API host. For a regional endpoint or a test double; leave
+  // empty for api.sendgrid.com.
+  string base_url = 2;
+}
+
+message SesConfig {
+  string region = 1;
+  string access_key = 2;
+  string secret_key = 3;
+  // Optional endpoint override, for a VPC endpoint or a local test double.
+  string endpoint = 4;
+}
+
+message PostmarkConfig {
+  string server_token = 1;
+  // Postmark rejects bulk mail sent on a transactional stream, so a campaign
+  // needs this set to a broadcast stream. Empty uses the server default.
+  string message_stream = 2;
+  string base_url = 3;
+}
+
+message MailgunConfig {
+  string domain = 1;
+  string api_key = 2;
+  // Mailgun's EU region uses a different host, and sending to the wrong one
+  // fails authentication rather than falling back.
+  string base_url = 3;
 }

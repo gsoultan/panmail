@@ -1,7 +1,6 @@
 /panmail
 /panmail.db
 /panmail_no_ui
-/go.sum
 /logs.db/
 /inbound.db/
 /events.db/
@@ -9,3 +8,18 @@
 /.rtk/
 /.serena/
 /.idea
+
+# Everything scripts/dev.sh creates: the development config (which holds a
+# PASETO key and, on PostgreSQL, an encrypted database password), the database,
+# the Pebble stores, the generated admin password and the compiled binary.
+/.dev/
+
+# Generated knowledge-graph artefacts, including a per-file AST cache. Rebuilt
+# from the source it describes, so committing it only produces merge conflicts.
+/graphify-out/
+
+# Per-developer tool configuration.
+/.ai/
+
+# Event log archives written at runtime; these are tenant data, not source.
+/archives/

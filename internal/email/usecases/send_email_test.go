@@ -18,6 +18,7 @@ import (
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
 	suppressionentities "github.com/gsoultan/panmail/internal/suppression/repositories/entities"
 	templateentities "github.com/gsoultan/panmail/internal/template/repositories/entities"
+	"github.com/gsoultan/panmail/pkg/tracking"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -107,11 +108,11 @@ func (m *mockEventRepo) TruncateBefore(ctx context.Context, before time.Time) er
 	return nil
 }
 
-func (m *mockEventRepo) ListArchives(ctx context.Context, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
+func (m *mockEventRepo) ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
 	return nil, "", nil
 }
 
-func (m *mockEventRepo) GetArchive(ctx context.Context, id string) ([]byte, string, error) {
+func (m *mockEventRepo) GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error) {
 	return nil, "", nil
 }
 
@@ -185,10 +186,10 @@ func (m *mockEventUsecase) StartCleanupTask(ctx context.Context, interval time.D
 func (m *mockEventUsecase) GetPerformanceMetrics(ctx context.Context) (eventusecases.PerformanceMetrics, error) {
 	return eventusecases.PerformanceMetrics{}, nil
 }
-func (m *mockEventUsecase) ListArchives(ctx context.Context, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
+func (m *mockEventUsecase) ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
 	return nil, "", nil
 }
-func (m *mockEventUsecase) GetArchive(ctx context.Context, id string) ([]byte, string, error) {
+func (m *mockEventUsecase) GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error) {
 	return nil, "", nil
 }
 
@@ -226,16 +227,17 @@ func (m *mockSuppressionRepo) List(ctx context.Context, tenantID string, pageSiz
 }
 
 type mockFactory struct {
-	sender any
+	sender gsmail.Sender
 	err    error
 }
 
-func (m *mockFactory) CreateSender(p *providerEntities.EmailProvider) (any, error) {
+func (m *mockFactory) CreateSender(p *providerEntities.EmailProvider) (gsmail.Sender, error) {
 	return m.sender, m.err
 }
-func (m *mockFactory) CreateReceiver(p *providerEntities.EmailProvider) (any, error) {
+func (m *mockFactory) CreateReceiver(p *providerEntities.EmailProvider) (gsmail.Receiver, error) {
 	return nil, nil
 }
+func (m *mockFactory) Close() error { return nil }
 
 type mockSender struct {
 	err        error
@@ -358,7 +360,12 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 			wantErr: false, // Now returns res with PENDING status, not error
 		},
 		{
-			name: "Domain Mismatch",
+			// Once asserted the opposite. A From domain that differs from the
+			// SMTP host is how every hosted ESP works, and rejecting it made
+			// Panmail unusable with SendGrid, SES, Mailgun and Postmark. The
+			// control that decides who may send is the provider's
+			// AllowedDomains list, covered in send_email_domain_test.go.
+			name: "Sender domain need not match the provider host",
 			provider: &providerEntities.EmailProvider{
 				ID:   testProviderID,
 				Name: "SMTP Provider",
@@ -377,7 +384,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 				Subject:    "Hello",
 				Body:       "World",
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "Domain Match",
@@ -412,7 +419,17 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 			outboxRepo := &mockOutboxRepo{}
 			factory := &mockFactory{sender: tc.sender}
 			renderer := NewTemplateRenderer()
-			u := NewSendEmailUsecase(repo, templateRepo, suppressionRepo, outboxRepo, eventUsecase, factory, renderer, "http://localhost")
+			u := NewSendEmailUsecase(SendEmailDeps{
+				ProviderRepo:    repo,
+				TemplateRepo:    templateRepo,
+				SuppressionRepo: suppressionRepo,
+				OutboxRepo:      outboxRepo,
+				EventUsecase:    eventUsecase,
+				ProviderFactory: factory,
+				Renderer:        renderer,
+				BaseURL:         "http://localhost",
+				TrackingSigner:  tracking.NewSigner([]byte("test-tracking-key")),
+			})
 
 			res, err := u.SendEmail(context.Background(), testTenantID, tc.req)
 			if (err != nil) != tc.wantErr {
@@ -456,7 +473,14 @@ func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
 	sender := &mockSender{}
 	eventUsecase := &mockEventUsecase{}
 	factory := &mockFactory{sender: sender}
-	u := NewSendEmailUsecase(repo, nil, nil, nil, eventUsecase, factory, NewTemplateRenderer(), "http://localhost")
+	u := NewSendEmailUsecase(SendEmailDeps{
+		ProviderRepo:    repo,
+		EventUsecase:    eventUsecase,
+		ProviderFactory: factory,
+		Renderer:        NewTemplateRenderer(),
+		BaseURL:         "http://localhost",
+		TrackingSigner:  tracking.NewSigner([]byte("test-tracking-key")),
+	})
 
 	req := &panmailv1.SendEmailRequest{
 		ProviderId: testProviderID,
@@ -507,9 +531,12 @@ func TestSendEmailUsecase_doSend_MultiRecipient(t *testing.T) {
 	urlB := ""
 	for _, email := range sender.sentEmails {
 		body := string(email.HTMLBody)
-		if strings.Contains(string(email.To[0]), "a@example.com") {
+		// Envelope, not To: every copy now carries the full visible To and Cc
+		// in its headers, and the envelope is what names the one address this
+		// copy is delivered to.
+		if strings.Contains(envelopeOf(email), "a@example.com") {
 			urlA = body
-		} else if strings.Contains(string(email.To[0]), "b@example.com") {
+		} else if strings.Contains(envelopeOf(email), "b@example.com") {
 			urlB = body
 		}
 	}
@@ -538,7 +565,7 @@ func TestSendEmailUsecase_MultiRecipient_PartialFailure(t *testing.T) {
 	// Sender that fails for a specific recipient
 	sender := &mockSenderFunc{
 		sendFn: func(email gsmail.Email) error {
-			if email.To[0] == "fail@example.com" {
+			if envelopeOf(email) == "fail@example.com" {
 				return errors.New("delivery failed")
 			}
 			return nil
@@ -547,7 +574,14 @@ func TestSendEmailUsecase_MultiRecipient_PartialFailure(t *testing.T) {
 
 	eventUsecase := &mockEventUsecase{}
 	factory := &mockFactory{sender: sender}
-	u := NewSendEmailUsecase(repo, nil, nil, nil, eventUsecase, factory, NewTemplateRenderer(), "http://localhost")
+	u := NewSendEmailUsecase(SendEmailDeps{
+		ProviderRepo:    repo,
+		EventUsecase:    eventUsecase,
+		ProviderFactory: factory,
+		Renderer:        NewTemplateRenderer(),
+		BaseURL:         "http://localhost",
+		TrackingSigner:  tracking.NewSigner([]byte("test-tracking-key")),
+	})
 
 	req := &panmailv1.SendEmailRequest{
 		ProviderId: testProviderID,
@@ -601,3 +635,22 @@ func (m *mockSenderFunc) Send(ctx context.Context, email gsmail.Email) error {
 func (m *mockSenderFunc) Validate(ctx context.Context, email string) error { return nil }
 func (m *mockSenderFunc) Ping(ctx context.Context) error                   { return nil }
 func (m *mockSenderFunc) SetRetryConfig(config gsmail.RetryConfig)         {}
+
+func (m *mockOutboxRepo) ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error) {
+	return m.ListPending(ctx, limit)
+}
+
+// envelopeOf returns the single address a copy is delivered to.
+//
+// Each recipient gets its own copy so tracking stays personal, while the To and
+// Cc headers describe the whole visible audience — so the headers no longer
+// identify who a given copy is for. See gsmail.Email.Envelope.
+func envelopeOf(email gsmail.Email) string {
+	if len(email.Envelope) > 0 {
+		return email.Envelope[0]
+	}
+	if len(email.To) > 0 {
+		return email.To[0]
+	}
+	return ""
+}

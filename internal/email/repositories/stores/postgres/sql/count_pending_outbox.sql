@@ -1,1 +1,3 @@
-SELECT COUNT(*) FROM outbox WHERE tenant_id = $1 AND (status = 'PENDING' OR status = 'DEFERRED');
+SELECT COUNT(*) FROM outbox
+WHERE tenant_id = $1
+  AND (status = 'PENDING' OR status = 'DEFERRED' OR status = 'SENDING');

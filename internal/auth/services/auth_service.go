@@ -6,8 +6,14 @@ import (
 
 	"connectrpc.com/connect"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	"github.com/gsoultan/panmail/internal/auth/entities"
 	"github.com/gsoultan/panmail/internal/auth/middlewares"
 	"github.com/gsoultan/panmail/internal/auth/usecases"
+)
+
+const (
+	roleSuperAdmin = "USER_ROLE_SUPER_ADMIN"
+	roleAdmin      = "USER_ROLE_ADMIN"
 )
 
 type AuthService struct {
@@ -22,25 +28,24 @@ func (s *AuthService) SignIn(
 	ctx context.Context,
 	req *connect.Request[panmailv1.SignInRequest],
 ) (*connect.Response[panmailv1.SignInResponse], error) {
-	user, token, twoFactorRequired, twoFactorSetupRequired, twoFactorSecret, twoFactorQRCodeURL, err := s.usecase.SignIn(ctx, req.Msg.Email, req.Msg.Password)
+	result, err := s.usecase.SignIn(ctx, usecases.Credentials{
+		Email:    req.Msg.Email,
+		Password: req.Msg.Password,
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 
 	res := &panmailv1.SignInResponse{
-		Token: token,
-		User: &panmailv1.User{
-			Id:               user.ID,
-			Email:            user.Email,
-			Name:             user.Name,
-			TenantId:         user.TenantID,
-			Role:             panmailv1.UserRole(panmailv1.UserRole_value[user.Role]),
-			TwoFactorEnabled: user.TwoFactorEnabled,
-		},
-		TwoFactorRequired:      twoFactorRequired,
-		TwoFactorSetupRequired: twoFactorSetupRequired,
-		TwoFactorSecret:        twoFactorSecret,
-		TwoFactorQrCodeUrl:     twoFactorQRCodeURL,
+		Token:                  result.Token,
+		User:                   toProtoUser(result.User),
+		TwoFactorRequired:      result.TwoFactorRequired,
+		TwoFactorSetupRequired: result.TwoFactorSetupRequired,
+		ChallengeToken:         result.ChallengeToken,
+	}
+	if result.TwoFactorSetup != nil {
+		res.TwoFactorSecret = result.TwoFactorSetup.Secret
+		res.TwoFactorQrCodeUrl = result.TwoFactorSetup.QRCodeURL
 	}
 
 	return connect.NewResponse(res), nil
@@ -57,25 +62,18 @@ func (s *AuthService) GetCurrentUser(
 	ctx context.Context,
 	req *connect.Request[panmailv1.GetCurrentUserRequest],
 ) (*connect.Response[panmailv1.GetCurrentUserResponse], error) {
-	userID := ctx.Value(middlewares.UserIDKey)
-	if userID == nil {
+	userID, ok := middlewares.GetUserID(ctx)
+	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("not authenticated"))
 	}
 
-	user, err := s.usecase.GetCurrentUser(ctx, userID.(string))
+	user, err := s.usecase.GetCurrentUser(ctx, userID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 
 	return connect.NewResponse(&panmailv1.GetCurrentUserResponse{
-		User: &panmailv1.User{
-			Id:               user.ID,
-			Email:            user.Email,
-			Name:             user.Name,
-			TenantId:         user.TenantID,
-			Role:             panmailv1.UserRole(panmailv1.UserRole_value[user.Role]),
-			TwoFactorEnabled: user.TwoFactorEnabled,
-		},
+		User: toProtoUser(user),
 	}), nil
 }
 
@@ -83,52 +81,42 @@ func (s *AuthService) SetupTwoFactor(
 	ctx context.Context,
 	req *connect.Request[panmailv1.SetupTwoFactorRequest],
 ) (*connect.Response[panmailv1.SetupTwoFactorResponse], error) {
-	userID := ctx.Value(middlewares.UserIDKey)
-	if userID == nil {
+	userID, ok := middlewares.GetUserID(ctx)
+	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("not authenticated"))
 	}
 
-	secret, qrCodeURL, err := s.usecase.SetupTwoFactor(ctx, userID.(string))
+	setup, err := s.usecase.SetupTwoFactor(ctx, userID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
 	return connect.NewResponse(&panmailv1.SetupTwoFactorResponse{
-		Secret:    secret,
-		QrCodeUrl: qrCodeURL,
+		Secret:    setup.Secret,
+		QrCodeUrl: setup.QRCodeURL,
 	}), nil
 }
 
+// VerifyTwoFactor completes a sign-in that stopped at the second factor. The
+// account is identified only by the challenge token issued by SignIn, so this
+// endpoint cannot be pointed at an arbitrary user.
 func (s *AuthService) VerifyTwoFactor(
 	ctx context.Context,
 	req *connect.Request[panmailv1.VerifyTwoFactorRequest],
 ) (*connect.Response[panmailv1.VerifyTwoFactorResponse], error) {
-	userID := ""
-	if uid := ctx.Value(middlewares.UserIDKey); uid != nil {
-		userID = uid.(string)
+	if req.Msg.ChallengeToken == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("challenge token is required"))
 	}
 
-	token, user, verified, err := s.usecase.VerifyTwoFactor(ctx, userID, req.Msg.Email, req.Msg.Code, req.Msg.Secret)
+	result, err := s.usecase.VerifyTwoFactorLogin(ctx, req.Msg.ChallengeToken, req.Msg.Code)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-
-	var protoUser *panmailv1.User
-	if user != nil {
-		protoUser = &panmailv1.User{
-			Id:               user.ID,
-			Email:            user.Email,
-			Name:             user.Name,
-			TenantId:         user.TenantID,
-			Role:             panmailv1.UserRole(panmailv1.UserRole_value[user.Role]),
-			TwoFactorEnabled: user.TwoFactorEnabled,
-		}
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 
 	return connect.NewResponse(&panmailv1.VerifyTwoFactorResponse{
-		Verified: verified,
-		Token:    token,
-		User:     protoUser,
+		Verified: true,
+		Token:    result.Token,
+		User:     toProtoUser(result.User),
 	}), nil
 }
 
@@ -136,13 +124,12 @@ func (s *AuthService) EnableTwoFactor(
 	ctx context.Context,
 	req *connect.Request[panmailv1.EnableTwoFactorRequest],
 ) (*connect.Response[panmailv1.EnableTwoFactorResponse], error) {
-	userID := ctx.Value(middlewares.UserIDKey)
-	if userID == nil {
+	userID, ok := middlewares.GetUserID(ctx)
+	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("not authenticated"))
 	}
 
-	err := s.usecase.EnableTwoFactor(ctx, userID.(string), req.Msg.Code, req.Msg.Secret)
-	if err != nil {
+	if err := s.usecase.EnableTwoFactor(ctx, userID, req.Msg.Code); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
@@ -153,25 +140,38 @@ func (s *AuthService) DisableTwoFactor(
 	ctx context.Context,
 	req *connect.Request[panmailv1.DisableTwoFactorRequest],
 ) (*connect.Response[panmailv1.DisableTwoFactorResponse], error) {
-	targetUserID := req.Msg.UserId
-	currentUserID := ctx.Value(middlewares.UserIDKey).(string)
-	currentUserRole := ctx.Value(middlewares.RoleKey).(string)
+	currentUserID, ok := middlewares.GetUserID(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("not authenticated"))
+	}
+	currentUserRole := middlewares.GetRole(ctx)
 
+	targetUserID := req.Msg.UserId
 	if targetUserID == "" {
 		targetUserID = currentUserID
 	}
 
-	// Check permissions
-	if targetUserID != currentUserID {
-		if currentUserRole != "USER_ROLE_SUPER_ADMIN" && currentUserRole != "USER_ROLE_ADMIN" {
-			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
-		}
+	if targetUserID != currentUserID && currentUserRole != roleSuperAdmin && currentUserRole != roleAdmin {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 
-	err := s.usecase.DisableTwoFactor(ctx, targetUserID)
-	if err != nil {
+	if err := s.usecase.DisableTwoFactor(ctx, targetUserID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
 	return connect.NewResponse(&panmailv1.DisableTwoFactorResponse{Success: true}), nil
+}
+
+func toProtoUser(user *entities.User) *panmailv1.User {
+	if user == nil {
+		return nil
+	}
+	return &panmailv1.User{
+		Id:               user.ID,
+		Email:            user.Email,
+		Name:             user.Name,
+		TenantId:         user.TenantID,
+		Role:             panmailv1.UserRole(panmailv1.UserRole_value[user.Role]),
+		TwoFactorEnabled: user.TwoFactorEnabled,
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,9 +13,20 @@ import (
 	"github.com/gsoultan/panmail/internal/email/repositories/stores"
 	suppressionusecases "github.com/gsoultan/panmail/internal/suppression/usecases"
 	tenantusecases "github.com/gsoultan/panmail/internal/tenant/usecases"
+	"github.com/gsoultan/panmail/pkg/cache"
 	"github.com/gsoultan/panmail/pkg/emailutil"
 	"google.golang.org/protobuf/encoding/protojson"
 )
+
+const (
+	outboxBatchSize    = 500
+	outboxConcurrency  = 200
+	perEmailTimeout    = 30 * time.Second
+	bookkeepingTimeout = 10 * time.Second
+	retryPatternTTL    = time.Minute
+)
+
+var defaultRetryPattern = []string{"5m", "15m", "30m", "1h", "3h", "6h", "12h", "24h"}
 
 type QueueWorker interface {
 	Start(ctx context.Context)
@@ -31,7 +41,7 @@ type queueWorker struct {
 	interval           time.Duration
 	trigger            chan struct{}
 
-	retryPatternCache  sync.Map
+	retryPatterns      *cache.TTLCache[[]string]
 	globalRetryPattern []string
 }
 
@@ -49,14 +59,12 @@ func NewQueueWorker(
 		tenantUsecase:      tenantUsecase,
 		interval:           interval,
 		trigger:            make(chan struct{}, 1),
+		retryPatterns:      cache.New[[]string](retryPatternTTL),
+		globalRetryPattern: defaultRetryPattern,
 	}
 
-	// Pre-load global retry pattern
-	cfg, _ := config.Load()
-	if cfg != nil && len(cfg.App.RetryPattern) > 0 {
+	if cfg, _ := config.Load(); cfg != nil && len(cfg.App.RetryPattern) > 0 {
 		w.globalRetryPattern = cfg.App.RetryPattern
-	} else {
-		w.globalRetryPattern = []string{"5m", "15m", "30m", "1h", "3h", "6h", "12h", "24h"}
 	}
 
 	return w
@@ -71,16 +79,20 @@ func (w *queueWorker) Trigger() {
 
 func (w *queueWorker) Start(ctx context.Context) {
 	slog.Info("queue worker started", "interval", w.interval)
+	defer slog.Info("queue worker stopped")
 
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
 	for {
-		// Try to process a batch
+		if ctx.Err() != nil {
+			return
+		}
+
 		count := w.processPending(ctx)
 
-		// If we processed a full batch, don't wait, go again immediately
-		if count >= 500 {
+		// A full batch means more is waiting; go again without pausing.
+		if count >= outboxBatchSize {
 			continue
 		}
 
@@ -88,19 +100,15 @@ func (w *queueWorker) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Regular polling
 		case <-w.trigger:
-			// Immediate trigger from new email
 		}
 	}
 }
 
 func (w *queueWorker) processPending(ctx context.Context) int {
-	// Fetch a larger batch for parallel processing to reach 1000+ msgs/sec
-	batchSize := 500
-	emails, err := w.outboxRepo.ListPending(ctx, batchSize)
+	emails, err := w.outboxRepo.ClaimPending(ctx, outboxBatchSize, perEmailTimeout)
 	if err != nil {
-		slog.Error("failed to list pending outbox emails", "error", err)
+		slog.Error("failed to claim pending outbox emails", "error", err)
 		return 0
 	}
 
@@ -112,29 +120,37 @@ func (w *queueWorker) processPending(ctx context.Context) int {
 	slog.Info("queue worker processing batch", "count", count)
 
 	var wg sync.WaitGroup
-	// Limit concurrency to reach high throughput without resource exhaustion
-	sem := make(chan struct{}, 200)
+	sem := make(chan struct{}, outboxConcurrency)
 
 	for _, e := range emails {
 		wg.Add(1)
 		go func(email *entities.OutboxEmail) {
 			defer wg.Done()
+			defer recoverEmail(email.ID)
+
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
 				w.processEmail(ctx, email)
 			case <-ctx.Done():
-				return
 			}
 		}(e)
 	}
 	wg.Wait()
+
 	return count
 }
 
+// recoverEmail keeps one malformed message from taking the process down. An
+// unrecovered panic in any goroutine terminates the whole gateway.
+func recoverEmail(id string) {
+	if r := recover(); r != nil {
+		slog.Error("recovered from panic while processing outbox email", "id", id, "panic", r)
+	}
+}
+
 func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail) {
-	// Add per-request timeout to avoid worker hanging
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	sendCtx, cancel := context.WithTimeout(ctx, perEmailTimeout)
 	defer cancel()
 
 	slog.Info("worker processing email", "id", e.ID, "tenant_id", e.TenantID, "retry_count", e.RetryCount)
@@ -142,144 +158,141 @@ func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail)
 	var req panmailv1.SendEmailRequest
 	if err := protojson.Unmarshal(e.Request, &req); err != nil {
 		slog.Error("failed to unmarshal outbox email request", "error", err, "id", e.ID)
-		_ = w.outboxRepo.Delete(ctx, e.ID)
+		w.deleteOutbox(ctx, e.ID)
 		return
 	}
 
-	// We use the same message ID as stored in outbox
-	ctx = context.WithValue(ctx, SkipOutboxKey, true)
-	ctx = context.WithValue(ctx, MessageIDKey, e.ID)
+	sendCtx = context.WithValue(sendCtx, SkipOutboxKey, true)
+	sendCtx = context.WithValue(sendCtx, MessageIDKey, e.ID)
 
-	res, err := w.emailUsecase.SendEmail(ctx, e.TenantID, &req)
+	res, err := w.emailUsecase.SendEmail(sendCtx, e.TenantID, &req)
 	if err == nil && res != nil {
-		// Successfully sent
 		slog.Info("email sent successfully from worker", "id", e.ID)
-		if err := w.outboxRepo.Delete(ctx, e.ID); err != nil {
-			slog.Error("failed to delete outbox email after successful send", "error", err, "id", e.ID)
-		}
+		w.deleteOutbox(ctx, e.ID)
 		return
 	}
+	if err == nil {
+		err = fmt.Errorf("send returned no result")
+	}
 
-	// Failed again
-	slog.Warn("email delivery attempt failed", "id", e.ID, "error", err)
+	w.handleFailure(ctx, e, &req, err)
+}
+
+// handleFailure decides whether to retry, and records the outcome. Bookkeeping
+// runs on a context derived from the worker's, not from the send's — the send
+// context may already have timed out, and losing the status write would leave
+// the row claimed-then-abandoned and resent forever.
+func (w *queueWorker) handleFailure(ctx context.Context, e *entities.OutboxEmail, req *panmailv1.SendEmailRequest, sendErr error) {
+	bookCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bookkeepingTimeout)
+	defer cancel()
+
+	slog.Warn("email delivery attempt failed", "id", e.ID, "error", sendErr)
+
 	e.RetryCount++
 	e.UpdatedAt = time.Now()
-	e.LastError = err.Error()
+	e.LastError = sendErr.Error()
 
-	// Classify error
-	bounceType := emailutil.ClassifyError(err.Error())
+	classification := emailutil.ClassifyError(e.LastError)
+	recipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
+	retryPattern := w.getRetryPattern(bookCtx, e.TenantID)
 
-	// Use cached retry pattern
-	retryPattern := w.getRetryPattern(ctx, e.TenantID)
-
-	shouldRetry := false
-	var nextDelay time.Duration
-
-	if bounceType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SOFT_BOUNCE {
-		if e.RetryCount <= len(retryPattern) {
-			shouldRetry = true
-			patternIdx := e.RetryCount - 1
-			d, parseErr := time.ParseDuration(retryPattern[patternIdx])
-			if parseErr == nil {
-				nextDelay = d
-			} else {
-				// Fallback to simple backoff if pattern invalid
-				nextDelay = time.Duration(e.RetryCount*e.RetryCount) * time.Minute
-			}
-		}
-	}
-
-	if shouldRetry {
+	if delay, ok := nextRetryDelay(classification, e.RetryCount, retryPattern); ok {
 		e.Status = entities.OutboxStatusDeferred
-		e.NextRetryAt = time.Now().Add(nextDelay)
-		slog.Info("email delivery deferred for retry", "id", e.ID, "retry_count", e.RetryCount, "next_retry_at", e.NextRetryAt)
+		e.NextRetryAt = time.Now().Add(delay)
+		slog.Info("email delivery deferred for retry",
+			"id", e.ID, "retry_count", e.RetryCount, "next_retry_at", e.NextRetryAt)
 
-		// Record DEFERRED event
-		recipientSet := make(map[string]struct{})
-		var allRecipients []string
-		addRecipients := func(emails []string) {
-			for _, email := range emails {
-				email = strings.ToLower(strings.TrimSpace(email))
-				if email == "" {
-					continue
-				}
-				if _, ok := recipientSet[email]; !ok {
-					recipientSet[email] = struct{}{}
-					allRecipients = append(allRecipients, email)
-				}
-			}
-		}
-		addRecipients(req.To)
-		addRecipients(req.Cc)
-		addRecipients(req.Bcc)
-
-		for _, recipient := range allRecipients {
-			_ = w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED, recipient, req.Subject, e.LastError, nil)
-		}
-	} else {
-		e.Status = entities.OutboxStatusFailed
-		slog.Info("email delivery failed permanently", "id", e.ID, "bounce_type", bounceType.String(), "error", e.LastError)
-
-		// Record permanent failure event
-		recipientSet := make(map[string]struct{})
-		var allRecipients []string
-		addRecipients := func(emails []string) {
-			for _, email := range emails {
-				email = strings.ToLower(strings.TrimSpace(email))
-				if email == "" {
-					continue
-				}
-				if _, ok := recipientSet[email]; !ok {
-					recipientSet[email] = struct{}{}
-					allRecipients = append(allRecipients, email)
-				}
-			}
-		}
-		addRecipients(req.To)
-		addRecipients(req.Cc)
-		addRecipients(req.Bcc)
-
-		for _, recipient := range allRecipients {
-			_ = w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, bounceType, recipient, req.Subject, e.LastError, nil)
-		}
-
-		// Automatically suppress if hard bounce, spam report, etc.
-		if bounceType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE ||
-			bounceType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SPAM_REPORT ||
-			bounceType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSUBSCRIBED ||
-			bounceType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_REJECTED {
-
-			for _, recipient := range allRecipients {
-				reason := fmt.Sprintf("Automatic suppression due to %s: %s", bounceType.String(), e.LastError)
-				_, _ = w.suppressionUsecase.Add(ctx, e.TenantID, &panmailv1.AddSuppressionRequest{
-					Email:  recipient,
-					Reason: reason,
-				})
-			}
-		}
+		w.recordForEach(bookCtx, e, req, recipients, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED)
+		w.updateOutbox(bookCtx, e)
+		return
 	}
 
+	e.Status = entities.OutboxStatusFailed
+	slog.Info("email delivery failed permanently",
+		"id", e.ID, "type", classification.Type.String(),
+		"recipient_at_fault", classification.RecipientAtFault, "error", e.LastError)
+
+	w.recordForEach(bookCtx, e, req, recipients, classification.Type)
+
+	// Suppress only when the provider told us something about the address
+	// itself. A connection, credential or policy failure applies to the send,
+	// not to the people being written to, and suppressing them on that basis
+	// silently destroys a tenant's ability to reach their own customers.
+	if classification.RecipientAtFault {
+		w.suppress(bookCtx, e, recipients, classification)
+	}
+
+	w.updateOutbox(bookCtx, e)
+}
+
+// nextRetryDelay reports the delay before the next attempt, and whether to
+// retry at all.
+func nextRetryDelay(c emailutil.Classification, retryCount int, pattern []string) (time.Duration, bool) {
+	if !c.Retryable || retryCount > len(pattern) {
+		return 0, false
+	}
+
+	d, err := time.ParseDuration(pattern[retryCount-1])
+	if err != nil {
+		// Fall back to a quadratic backoff rather than dropping the message
+		// because an operator mistyped a duration.
+		return time.Duration(retryCount*retryCount) * time.Minute, true
+	}
+	return d, true
+}
+
+func (w *queueWorker) recordForEach(
+	ctx context.Context,
+	e *entities.OutboxEmail,
+	req *panmailv1.SendEmailRequest,
+	recipients []string,
+	eventType panmailv1.EmailEventType,
+) {
+	for _, recipient := range recipients {
+		if err := w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID, eventType, recipient, req.Subject, e.LastError, nil); err != nil {
+			slog.Error("failed to record delivery event", "error", err, "id", e.ID, "recipient", recipient)
+		}
+	}
+}
+
+func (w *queueWorker) suppress(ctx context.Context, e *entities.OutboxEmail, recipients []string, c emailutil.Classification) {
+	reason := fmt.Sprintf("Automatic suppression due to %s: %s", c.Type.String(), e.LastError)
+
+	for _, recipient := range recipients {
+		if _, err := w.suppressionUsecase.Add(ctx, e.TenantID, &panmailv1.AddSuppressionRequest{
+			Email:  recipient,
+			Reason: reason,
+		}); err != nil {
+			slog.Error("failed to suppress recipient", "error", err, "recipient", recipient, "id", e.ID)
+		}
+	}
+}
+
+func (w *queueWorker) updateOutbox(ctx context.Context, e *entities.OutboxEmail) {
 	if err := w.outboxRepo.Update(ctx, e); err != nil {
 		slog.Error("failed to update outbox email status", "error", err, "id", e.ID, "status", e.Status)
 	}
 }
 
+func (w *queueWorker) deleteOutbox(ctx context.Context, id string) {
+	delCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bookkeepingTimeout)
+	defer cancel()
+
+	if err := w.outboxRepo.Delete(delCtx, id); err != nil {
+		slog.Error("failed to delete outbox email", "error", err, "id", id)
+	}
+}
+
 func (w *queueWorker) getRetryPattern(ctx context.Context, tenantID string) []string {
-	if val, ok := w.retryPatternCache.Load(tenantID); ok {
-		return val.([]string)
+	if pattern, ok := w.retryPatterns.Get(tenantID); ok {
+		return pattern
 	}
 
-	// Fetch from DB if not in cache
 	pattern := w.globalRetryPattern
-	if tenant, err := w.tenantUsecase.GetTenantByID(ctx, tenantID); err == nil && len(tenant.RetryPattern) > 0 {
+	if tenant, err := w.tenantUsecase.GetTenantByID(ctx, tenantID); err == nil && tenant != nil && len(tenant.RetryPattern) > 0 {
 		pattern = tenant.RetryPattern
 	}
 
-	// Cache for 1 minute (simple cache strategy for now)
-	w.retryPatternCache.Store(tenantID, pattern)
-
-	// In a real high-load system, we might want to invalidate this cache when tenant settings change
-	// but 1 minute stale pattern is usually acceptable for email retries.
-
+	w.retryPatterns.Put(tenantID, pattern)
 	return pattern
 }

@@ -56,9 +56,10 @@ export const ProfilePage: React.FC = () => {
     if (!setupData) return;
     setVerifying(true);
     try {
+      // The secret is held server-side from setupTwoFactor; only the code is
+      // sent back, so a caller cannot enrol material they chose themselves.
       await authClient.enableTwoFactor({
         code: verificationCode,
-        secret: setupData.secret
       });
 
       notifications.show({

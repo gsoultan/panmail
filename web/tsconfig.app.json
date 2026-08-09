@@ -20,5 +20,8 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests are not part of the shipped app, and they import `bun:test`, whose
+  // types are not installed. `bun test` transpiles and runs them directly.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

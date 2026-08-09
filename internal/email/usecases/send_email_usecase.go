@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,9 +23,36 @@ import (
 	suppressionStores "github.com/gsoultan/panmail/internal/suppression/repositories/stores"
 	templateEntities "github.com/gsoultan/panmail/internal/template/repositories/entities"
 	templateStores "github.com/gsoultan/panmail/internal/template/repositories/stores"
-	"github.com/gsoultan/panmail/pkg/emailutil"
+	"github.com/gsoultan/panmail/pkg/cache"
+	"github.com/gsoultan/panmail/pkg/tracking"
 	"google.golang.org/protobuf/encoding/protojson"
 )
+
+const (
+	trackingKindOpen  = "open"
+	trackingKindClick = "click"
+	// Must match the value the unsubscribe handler verifies against. The kind
+	// is part of the signed payload, so a mismatch rejects every link.
+	trackingKindUnsubscribe = "unsubscribe"
+
+	providerCacheTTL      = time.Minute
+	templateCacheTTL      = time.Minute
+	maxProvidersPerTenant = 1000
+)
+
+// SendEmailDeps groups the collaborators a send needs. Passing them as one
+// value keeps the constructor readable as the pipeline grows.
+type SendEmailDeps struct {
+	ProviderRepo    providerStores.Repository
+	TemplateRepo    templateStores.TemplateRepository
+	SuppressionRepo suppressionStores.SuppressionRepository
+	OutboxRepo      stores.OutboxRepository
+	EventUsecase    eventusecases.ProcessEventUsecase
+	ProviderFactory providerEntities.ProviderFactory
+	Renderer        TemplateRenderer
+	BaseURL         string
+	TrackingSigner  *tracking.Signer
+}
 
 type sendEmailUsecase struct {
 	providerRepo    providerStores.Repository
@@ -37,31 +63,26 @@ type sendEmailUsecase struct {
 	providerFactory providerEntities.ProviderFactory
 	renderer        TemplateRenderer
 	baseURL         string
+	trackingSigner  *tracking.Signer
 	queueWorker     QueueWorker
 
-	providerCache sync.Map
-	templateCache sync.Map
+	providerCache *cache.TTLCache[[]*providerEntities.EmailProvider]
+	templateCache *cache.TTLCache[*templateEntities.Template]
 }
 
-func NewSendEmailUsecase(
-	repo providerStores.Repository,
-	templateRepo templateStores.TemplateRepository,
-	suppressionRepo suppressionStores.SuppressionRepository,
-	outboxRepo stores.OutboxRepository,
-	eventUsecase eventusecases.ProcessEventUsecase,
-	factory providerEntities.ProviderFactory,
-	renderer TemplateRenderer,
-	baseURL string,
-) SendEmailUsecase {
+func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 	return &sendEmailUsecase{
-		providerRepo:    repo,
-		templateRepo:    templateRepo,
-		suppressionRepo: suppressionRepo,
-		outboxRepo:      outboxRepo,
-		eventUsecase:    eventUsecase,
-		providerFactory: factory,
-		renderer:        renderer,
-		baseURL:         strings.TrimSuffix(baseURL, "/"),
+		providerRepo:    deps.ProviderRepo,
+		templateRepo:    deps.TemplateRepo,
+		suppressionRepo: deps.SuppressionRepo,
+		outboxRepo:      deps.OutboxRepo,
+		eventUsecase:    deps.EventUsecase,
+		providerFactory: deps.ProviderFactory,
+		renderer:        deps.Renderer,
+		baseURL:         strings.TrimSuffix(deps.BaseURL, "/"),
+		trackingSigner:  deps.TrackingSigner,
+		providerCache:   cache.New[[]*providerEntities.EmailProvider](providerCacheTTL),
+		templateCache:   cache.New[*templateEntities.Template](templateCacheTTL),
 	}
 }
 
@@ -106,10 +127,36 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, fmt.Errorf("at least one recipient is required")
 	}
 
-	// Extract domain from From address
-	fromDomain := emailutil.GetRootDomain(req.From)
+	// Reject malformed addresses here rather than letting the SMTP server do
+	// it. A rejected RCPT TO counts against the sending reputation, and enough
+	// of them get a sending domain throttled or blocked — so an address that
+	// cannot possibly be deliverable should never reach a provider at all.
+	//
+	// The From address is checked too: a malformed one fails every recipient of
+	// the message, which is worth catching before anything is queued.
+	// ParseEmailAddress rather than ValidateEmailSyntax, because the latter
+	// wants a bare addr-spec and callers legitimately send the display-name
+	// form, "Alice Smith <alice@example.com>". Rejecting that would make
+	// validation the thing blocking real mail.
+	if _, err := gsmail.ParseEmailAddress(req.From); err != nil {
+		return nil, fmt.Errorf("invalid from address %q: %w", req.From, err)
+	}
+	for _, list := range [][]string{req.To, req.Cc, req.Bcc} {
+		for _, addr := range list {
+			// Checked separately: an empty entry is a caller building the list
+			// wrongly rather than a malformed address, and the parser does not
+			// treat it as an error.
+			if strings.TrimSpace(addr) == "" {
+				return nil, fmt.Errorf("recipient list contains an empty address")
+			}
+			if _, err := gsmail.ParseEmailAddress(addr); err != nil {
+				return nil, fmt.Errorf("invalid recipient %q: %w", addr, err)
+			}
+		}
+	}
 
-	// Fetch provider to validate domain
+	// Fail fast on a provider that does not exist, rather than queueing a
+	// message that can never be delivered.
 	provider, err := u.getProvider(ctx, tenantID, req.ProviderId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provider: %w", err)
@@ -118,22 +165,16 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, fmt.Errorf("provider not found: %s", req.ProviderId)
 	}
 
-	// Extract domain from provider host
-	var host string
-	switch provider.Type {
-	case panmailv1.ProviderType_PROVIDER_TYPE_SMTP:
-		c := &panmailv1.SmtpConfig{}
-		if err := protojson.Unmarshal(provider.Config, c); err == nil {
-			host = c.Host
-		}
-	}
-
-	if host != "" {
-		hostDomain := emailutil.GetRootDomain(host)
-		if fromDomain != hostDomain {
-			return nil, fmt.Errorf("domain mismatch: from address domain (%s) does not match provider host domain (%s)", fromDomain, hostDomain)
-		}
-	}
+	// Anti-spoofing is enforced by the provider's AllowedDomains list in
+	// doSend, which checks the From address against the domains the operator
+	// authorised for that provider.
+	//
+	// There used to be a second check here comparing the From domain with the
+	// SMTP *host* domain. It rejected every hosted ESP — sending
+	// noreply@yourcompany.com through smtp.sendgrid.net is the normal case, not
+	// an attack — while adding nothing against a real spoofer, who controls the
+	// From address and the provider alike. Do not reintroduce it: relaying
+	// authority is a property of the account, not of the hostname's domain.
 
 	// 1. Worker mode (Actual Sending)
 	if skip, ok := ctx.Value(SkipOutboxKey).(bool); ok && skip {
@@ -150,24 +191,7 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, fmt.Errorf("invalid from address: %s", req.From)
 	}
 
-	// Collect unique recipients to avoid duplication
-	recipientSet := make(map[string]struct{})
-	var allRecipients []string
-	addRecipients := func(emails []string) {
-		for _, email := range emails {
-			email = strings.ToLower(strings.TrimSpace(email))
-			if email == "" {
-				continue
-			}
-			if _, ok := recipientSet[email]; !ok {
-				recipientSet[email] = struct{}{}
-				allRecipients = append(allRecipients, email)
-			}
-		}
-	}
-	addRecipients(req.To)
-	addRecipients(req.Cc)
-	addRecipients(req.Bcc)
+	allRecipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
 
 	// Check suppressions for each recipient
 	for _, recipient := range allRecipients {
@@ -254,6 +278,13 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		return nil, fmt.Errorf("invalid from address: %s", req.From)
 	}
 	fromDomain := strings.ToLower(fromParts[1])
+
+	// The address headers every copy carries, as opposed to the single address
+	// each copy is delivered to. Bcc is absent by design: it is the one list
+	// that must not appear in a header, and its members still receive their own
+	// copy because the send loop iterates over To, Cc and Bcc alike.
+	visibleTo := append([]string(nil), req.To...)
+	visibleCc := append([]string(nil), req.Cc...)
 
 	var providers []*providerEntities.EmailProvider
 	if req.ProviderId != "" {
@@ -346,30 +377,13 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		}
 	}
 
-	// Collect unique recipients to avoid duplication
-	recipientSet := make(map[string]struct{})
-	var uniqueRecipients []string
-	addRecipients := func(emails []string) {
-		for _, email := range emails {
-			email = strings.ToLower(strings.TrimSpace(email))
-			if email == "" {
-				continue
-			}
-			if _, ok := recipientSet[email]; !ok {
-				recipientSet[email] = struct{}{}
-				uniqueRecipients = append(uniqueRecipients, email)
-			}
-		}
-	}
-	addRecipients(req.To)
-	addRecipients(req.Cc)
-	addRecipients(req.Bcc)
+	recipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
 
-	slog.Info("starting actual delivery", "id", messageID, "recipient_count", len(uniqueRecipients), "provider_count", len(providers))
+	slog.Info("starting actual delivery", "id", messageID, "recipient_count", len(recipients), "provider_count", len(providers))
 
 	// We iterate through recipients to support individual tracking and status
 	var deliveryErrors []error
-	for _, recipient := range uniqueRecipients {
+	for _, recipient := range recipients {
 		if deliveredMap[recipient] {
 			slog.Info("email already delivered to recipient, skipping", "id", messageID, "recipient", recipient)
 			continue
@@ -387,15 +401,10 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 
 			slog.Info("trying provider", "id", messageID, "provider", p.Name, "type", p.Type.String())
 
-			senderObj, err := u.providerFactory.CreateSender(p)
+			sender, err := u.providerFactory.CreateSender(p)
 			if err != nil {
 				slog.Error("failed to create sender for provider", "error", err, "provider", p.Name)
 				recipientErr = err
-				continue
-			}
-
-			sender, ok := senderObj.(gsmail.Sender)
-			if !ok {
 				continue
 			}
 
@@ -405,12 +414,43 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 				currentBodyHTML = u.injectTracking(tenantID, messageID, recipient, currentBodyHTML)
 			}
 
+			// One copy per recipient, because the tracking pixel and the signed
+			// links above are personal to this address. The headers still name
+			// the whole visible audience, so a Cc recipient can see who else
+			// was copied, while Envelope keeps this copy going to one address.
+			//
+			// Without Envelope these two requirements are mutually exclusive:
+			// populating Cc would add every Cc address to RCPT TO on every
+			// iteration, so each of them would receive one copy per recipient.
+			// Leaving Cc empty was the previous behaviour, and it silently
+			// turned every Cc into a Bcc.
+			//
+			// Bcc is never set as a header — a blind address must not be
+			// disclosed — and reaches its own copy through Envelope when the
+			// loop gets to it.
 			msg := gsmail.Email{
 				From:     req.From,
-				To:       []string{recipient},
+				To:       visibleTo,
+				Cc:       visibleCc,
+				Envelope: []string{recipient},
 				Subject:  subject,
 				Body:     []byte(bodyText),
 				HTMLBody: []byte(currentBodyHTML),
+			}
+
+			// Gmail and Yahoo have required the RFC 8058 header pair from bulk
+			// senders since February 2024, and they measure compliance across a
+			// sending domain — one campaign without it degrades delivery for
+			// every other message from that domain.
+			//
+			// The link is per recipient and signed, so the endpoint cannot be
+			// used to suppress an address the caller was never sending to.
+			// A failure is logged rather than fatal: refusing to send would turn
+			// a missing base URL into a total outage, and the message is still
+			// deliverable without the header.
+			if err := u.setUnsubscribeHeaders(&msg, tenantID, messageID, recipient); err != nil {
+				slog.Warn("sending without one-click unsubscribe headers",
+					"error", err, "id", messageID, "recipient", recipient)
 			}
 
 			for _, a := range req.Attachments {
@@ -421,12 +461,13 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 				})
 			}
 
-			// Record SENT event (actually handing over to provider)
-			_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, recipient, subject, "", nil)
-
+			// SENT is recorded only once the provider has actually accepted the
+			// message. Recording it before the attempt counted failures as
+			// sends and inflated both the Sent metric and the msgs/sec gauge.
 			err = sender.Send(ctx, msg)
 			if err == nil {
 				slog.Info("email delivered successfully", "id", messageID, "provider", p.Name, "recipient", recipient)
+				_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, recipient, subject, "", nil)
 				_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, recipient, subject, "", nil)
 				sent = true
 				break
@@ -444,7 +485,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		}
 	}
 
-	if len(deliveryErrors) > 0 && len(deliveryErrors) == len(uniqueRecipients) {
+	if len(deliveryErrors) > 0 && len(deliveryErrors) == len(recipients) {
 		// All recipients failed
 		return nil, errors.Join(deliveryErrors...)
 	}
@@ -459,37 +500,96 @@ var (
 	hrefRegexp = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']+)["']`)
 )
 
+// injectTracking adds the open pixel and rewrites links to route through the
+// gateway. Every generated URL is signed, so the resulting events can be
+// trusted and the click endpoint cannot be turned into an open redirect.
 func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, htmlContent string) string {
-	if u.baseURL == "" {
+	if u.baseURL == "" || u.trackingSigner == nil {
 		return htmlContent
 	}
+
 	recipientEncoded := base64.RawURLEncoding.EncodeToString([]byte(recipient))
-	// 1. Add tracking pixel before </body>
-	pixel := fmt.Sprintf(`<img src="%s/track/open/%s/%s/%s" width="1" height="1" style="display:none">`, u.baseURL, tenantID, messageID, recipientEncoded)
-	if idx := strings.LastIndex(htmlContent, "</body>"); idx != -1 {
-		htmlContent = htmlContent[:idx] + pixel + htmlContent[idx:]
-	} else {
-		htmlContent = htmlContent + pixel
+
+	htmlContent = u.injectPixel(htmlContent, tenantID, messageID, recipient, recipientEncoded)
+	return u.rewriteLinks(htmlContent, tenantID, messageID, recipient, recipientEncoded)
+}
+
+// setUnsubscribeHeaders adds the RFC 8058 pair, List-Unsubscribe and
+// List-Unsubscribe-Post, pointing at this gateway's signed endpoint.
+//
+// gsmail requires at least one https target, because one-click unsubscribe
+// works by the mailbox provider POSTing to it — a mailto: target alone cannot
+// satisfy the requirement and would make the pair invalid.
+func (u *sendEmailUsecase) setUnsubscribeHeaders(msg *gsmail.Email, tenantID, messageID, recipient string) error {
+	if u.baseURL == "" {
+		return fmt.Errorf("no base URL is configured, so no unsubscribe link can be built")
+	}
+	if u.trackingSigner == nil {
+		return fmt.Errorf("no tracking signer is configured")
 	}
 
-	// 2. Wrap links
+	signature := u.trackingSigner.Sign(tracking.Link{
+		Kind:      trackingKindUnsubscribe,
+		TenantID:  tenantID,
+		MessageID: messageID,
+		Recipient: recipient,
+	})
+
+	url := fmt.Sprintf("%s/unsubscribe/%s/%s/%s?%s=%s",
+		u.baseURL, tenantID, messageID,
+		base64.RawURLEncoding.EncodeToString([]byte(recipient)),
+		tracking.SignatureParam, signature,
+	)
+
+	return msg.SetOneClickUnsubscribe(url)
+}
+
+func (u *sendEmailUsecase) injectPixel(htmlContent, tenantID, messageID, recipient, recipientEncoded string) string {
+	signature := u.trackingSigner.Sign(tracking.Link{
+		Kind:      trackingKindOpen,
+		TenantID:  tenantID,
+		MessageID: messageID,
+		Recipient: recipient,
+	})
+
+	pixel := fmt.Sprintf(
+		`<img src="%s/track/open/%s/%s/%s?%s=%s" width="1" height="1" style="display:none">`,
+		u.baseURL, tenantID, messageID, recipientEncoded, tracking.SignatureParam, signature,
+	)
+
+	if idx := strings.LastIndex(htmlContent, "</body>"); idx != -1 {
+		return htmlContent[:idx] + pixel + htmlContent[idx:]
+	}
+	return htmlContent + pixel
+}
+
+func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipient, recipientEncoded string) string {
 	return hrefRegexp.ReplaceAllStringFunc(htmlContent, func(match string) string {
 		submatch := hrefRegexp.FindStringSubmatch(match)
 		if len(submatch) < 2 {
 			return match
 		}
+
 		originalURL := html.UnescapeString(submatch[1])
-		lowerURL := strings.ToLower(originalURL)
-		if strings.HasPrefix(lowerURL, "mailto:") ||
-			strings.HasPrefix(lowerURL, "javascript:") ||
-			strings.HasPrefix(lowerURL, "tel:") ||
-			strings.HasPrefix(lowerURL, "#") {
+
+		// Anything that is not an ordinary web link is left alone: anchors and
+		// mailto: links have nothing to track, and other schemes must never be
+		// reachable through the gateway's own domain.
+		if tracking.ValidateTarget(originalURL) != nil {
 			return match
 		}
 
-		encodedURL := url.QueryEscape(originalURL)
-		trackingURL := fmt.Sprintf(`href="%s/track/click/%s/%s/%s?url=%s"`, u.baseURL, tenantID, messageID, recipientEncoded, encodedURL)
-		return trackingURL
+		signature := u.trackingSigner.Sign(tracking.Link{
+			Kind:      trackingKindClick,
+			TenantID:  tenantID,
+			MessageID: messageID,
+			Recipient: recipient,
+			TargetURL: originalURL,
+		})
+
+		return fmt.Sprintf(`href="%s/track/click/%s/%s/%s?url=%s&amp;%s=%s"`,
+			u.baseURL, tenantID, messageID, recipientEncoded,
+			url.QueryEscape(originalURL), tracking.SignatureParam, signature)
 	})
 }
 
@@ -547,20 +647,10 @@ func (u *sendEmailUsecase) renderTemplate(ctx context.Context, tenantID string, 
 	return subject, bodyHTML, bodyText, nil
 }
 
-type cacheEntry struct {
-	data      any
-	createdAt time.Time
-}
-
-const cacheTTL = 1 * time.Minute
-
 func (u *sendEmailUsecase) getTemplate(ctx context.Context, tenantID, templateID string) (*templateEntities.Template, error) {
 	cacheKey := tenantID + ":" + templateID
-	if val, ok := u.templateCache.Load(cacheKey); ok {
-		entry := val.(cacheEntry)
-		if time.Since(entry.createdAt) < cacheTTL {
-			return entry.data.(*templateEntities.Template), nil
-		}
+	if tpl, ok := u.templateCache.Get(cacheKey); ok {
+		return tpl, nil
 	}
 
 	tpl, err := u.templateRepo.GetByID(ctx, tenantID, templateID)
@@ -568,24 +658,21 @@ func (u *sendEmailUsecase) getTemplate(ctx context.Context, tenantID, templateID
 		return nil, err
 	}
 	if tpl != nil {
-		u.templateCache.Store(cacheKey, cacheEntry{data: tpl, createdAt: time.Now()})
+		u.templateCache.Put(cacheKey, tpl)
 	}
 	return tpl, nil
 }
 
 func (u *sendEmailUsecase) getProviders(ctx context.Context, tenantID string) ([]*providerEntities.EmailProvider, error) {
-	if val, ok := u.providerCache.Load(tenantID); ok {
-		entry := val.(cacheEntry)
-		if time.Since(entry.createdAt) < cacheTTL {
-			return entry.data.([]*providerEntities.EmailProvider), nil
-		}
+	if providers, ok := u.providerCache.Get(tenantID); ok {
+		return providers, nil
 	}
 
-	providers, _, err := u.providerRepo.List(ctx, tenantID, "", "", 1000, "")
+	providers, _, err := u.providerRepo.List(ctx, tenantID, "", "", maxProvidersPerTenant, "")
 	if err != nil {
 		return nil, err
 	}
-	u.providerCache.Store(tenantID, cacheEntry{data: providers, createdAt: time.Now()})
+	u.providerCache.Put(tenantID, providers)
 	return providers, nil
 }
 
@@ -604,8 +691,14 @@ func (u *sendEmailUsecase) getProvider(ctx context.Context, tenantID, providerID
 	return u.providerRepo.GetByID(ctx, tenantID, providerID)
 }
 
+// isSuppressed asks whether a mailbox is on the tenant's suppression list.
+//
+// The address is normalised first, for the same reason the suppression usecase
+// normalises on write: a bounce recorded for "Alice@Example.COM" has to stop
+// the next send to "alice@example.com". Reading with the raw address made the
+// list fail open on any difference of case or display name.
 func (u *sendEmailUsecase) isSuppressed(ctx context.Context, tenantID, email string) (bool, string, error) {
-	s, err := u.suppressionRepo.GetByEmail(ctx, tenantID, email)
+	s, err := u.suppressionRepo.GetByEmail(ctx, tenantID, gsmail.NormalizeAddress(email))
 	if err != nil {
 		return false, "", err
 	}

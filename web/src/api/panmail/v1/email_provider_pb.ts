@@ -47,6 +47,30 @@ export class EmailProvider extends Message<EmailProvider> {
      */
     value: Pop3Config;
     case: "pop3";
+  } | {
+    /**
+     * @generated from field: panmail.v1.SendGridConfig sendgrid = 16;
+     */
+    value: SendGridConfig;
+    case: "sendgrid";
+  } | {
+    /**
+     * @generated from field: panmail.v1.SesConfig ses = 17;
+     */
+    value: SesConfig;
+    case: "ses";
+  } | {
+    /**
+     * @generated from field: panmail.v1.PostmarkConfig postmark = 18;
+     */
+    value: PostmarkConfig;
+    case: "postmark";
+  } | {
+    /**
+     * @generated from field: panmail.v1.MailgunConfig mailgun = 19;
+     */
+    value: MailgunConfig;
+    case: "mailgun";
   } | { case: undefined; value?: undefined } = { case: undefined };
 
   /**
@@ -69,6 +93,15 @@ export class EmailProvider extends Message<EmailProvider> {
    */
   allowedDomains: string[] = [];
 
+  /**
+   * Verification material for this provider's delivery webhooks: SendGrid's
+   * base64 ECDSA public key, Mailgun's HTTP webhook signing key, or a shared
+   * secret for the generic HMAC format. Write-only; never returned.
+   *
+   * @generated from field: string webhook_secret = 15;
+   */
+  webhookSecret = "";
+
   constructor(data?: PartialMessage<EmailProvider>) {
     super();
     proto3.util.initPartial(data, this);
@@ -83,10 +116,15 @@ export class EmailProvider extends Message<EmailProvider> {
     { no: 4, name: "smtp", kind: "message", T: SmtpConfig, oneof: "config" },
     { no: 9, name: "imap", kind: "message", T: ImapConfig, oneof: "config" },
     { no: 10, name: "pop3", kind: "message", T: Pop3Config, oneof: "config" },
+    { no: 16, name: "sendgrid", kind: "message", T: SendGridConfig, oneof: "config" },
+    { no: 17, name: "ses", kind: "message", T: SesConfig, oneof: "config" },
+    { no: 18, name: "postmark", kind: "message", T: PostmarkConfig, oneof: "config" },
+    { no: 19, name: "mailgun", kind: "message", T: MailgunConfig, oneof: "config" },
     { no: 11, name: "create_time", kind: "message", T: Timestamp },
     { no: 12, name: "update_time", kind: "message", T: Timestamp },
     { no: 13, name: "tenant_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 14, name: "allowed_domains", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 15, name: "webhook_secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): EmailProvider {
@@ -140,6 +178,20 @@ export class SmtpConfig extends Message<SmtpConfig> {
    */
   useSsl = false;
 
+  /**
+   * DKIM signing. Unsigned mail is treated as suspicious by every major
+   * mailbox provider, and DMARC cannot pass on SPF alone once a message is
+   * forwarded, so this is the difference between the inbox and the spam folder.
+   *
+   * The private key lives in this message because the whole config blob is
+   * encrypted at rest with AES-256-GCM and redacted from every API response.
+   * Signing is off unless all three of domain, selector and private key are
+   * present.
+   *
+   * @generated from field: panmail.v1.DkimConfig dkim = 7;
+   */
+  dkim?: DkimConfig;
+
   constructor(data?: PartialMessage<SmtpConfig>) {
     super();
     proto3.util.initPartial(data, this);
@@ -154,6 +206,7 @@ export class SmtpConfig extends Message<SmtpConfig> {
     { no: 4, name: "password", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "skip_verify", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 6, name: "use_ssl", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 7, name: "dkim", kind: "message", T: DkimConfig },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SmtpConfig {
@@ -170,6 +223,64 @@ export class SmtpConfig extends Message<SmtpConfig> {
 
   static equals(a: SmtpConfig | PlainMessage<SmtpConfig> | undefined, b: SmtpConfig | PlainMessage<SmtpConfig> | undefined): boolean {
     return proto3.util.equals(SmtpConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.DkimConfig
+ */
+export class DkimConfig extends Message<DkimConfig> {
+  /**
+   * The domain being signed for. Should match the From domain, or DMARC
+   * alignment fails even though the signature itself verifies.
+   *
+   * @generated from field: string domain = 1;
+   */
+  domain = "";
+
+  /**
+   * The selector, which names which key to fetch: the receiver looks up
+   * <selector>._domainkey.<domain>.
+   *
+   * @generated from field: string selector = 2;
+   */
+  selector = "";
+
+  /**
+   * PEM-encoded RSA or Ed25519 private key. Write-only: it is redacted on read
+   * like every other stored credential.
+   *
+   * @generated from field: string private_key = 3;
+   */
+  privateKey = "";
+
+  constructor(data?: PartialMessage<DkimConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.DkimConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "domain", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "selector", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "private_key", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): DkimConfig {
+    return new DkimConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): DkimConfig {
+    return new DkimConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): DkimConfig {
+    return new DkimConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: DkimConfig | PlainMessage<DkimConfig> | undefined, b: DkimConfig | PlainMessage<DkimConfig> | undefined): boolean {
+    return proto3.util.equals(DkimConfig, a, b);
   }
 }
 
@@ -304,6 +415,213 @@ export class Pop3Config extends Message<Pop3Config> {
 
   static equals(a: Pop3Config | PlainMessage<Pop3Config> | undefined, b: Pop3Config | PlainMessage<Pop3Config> | undefined): boolean {
     return proto3.util.equals(Pop3Config, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.SendGridConfig
+ */
+export class SendGridConfig extends Message<SendGridConfig> {
+  /**
+   * @generated from field: string api_key = 1;
+   */
+  apiKey = "";
+
+  /**
+   * Overrides the API host. For a regional endpoint or a test double; leave
+   * empty for api.sendgrid.com.
+   *
+   * @generated from field: string base_url = 2;
+   */
+  baseUrl = "";
+
+  constructor(data?: PartialMessage<SendGridConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.SendGridConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "api_key", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "base_url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SendGridConfig {
+    return new SendGridConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SendGridConfig {
+    return new SendGridConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SendGridConfig {
+    return new SendGridConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SendGridConfig | PlainMessage<SendGridConfig> | undefined, b: SendGridConfig | PlainMessage<SendGridConfig> | undefined): boolean {
+    return proto3.util.equals(SendGridConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.SesConfig
+ */
+export class SesConfig extends Message<SesConfig> {
+  /**
+   * @generated from field: string region = 1;
+   */
+  region = "";
+
+  /**
+   * @generated from field: string access_key = 2;
+   */
+  accessKey = "";
+
+  /**
+   * @generated from field: string secret_key = 3;
+   */
+  secretKey = "";
+
+  /**
+   * Optional endpoint override, for a VPC endpoint or a local test double.
+   *
+   * @generated from field: string endpoint = 4;
+   */
+  endpoint = "";
+
+  constructor(data?: PartialMessage<SesConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.SesConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "region", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "access_key", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "secret_key", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "endpoint", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SesConfig {
+    return new SesConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SesConfig {
+    return new SesConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SesConfig {
+    return new SesConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SesConfig | PlainMessage<SesConfig> | undefined, b: SesConfig | PlainMessage<SesConfig> | undefined): boolean {
+    return proto3.util.equals(SesConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.PostmarkConfig
+ */
+export class PostmarkConfig extends Message<PostmarkConfig> {
+  /**
+   * @generated from field: string server_token = 1;
+   */
+  serverToken = "";
+
+  /**
+   * Postmark rejects bulk mail sent on a transactional stream, so a campaign
+   * needs this set to a broadcast stream. Empty uses the server default.
+   *
+   * @generated from field: string message_stream = 2;
+   */
+  messageStream = "";
+
+  /**
+   * @generated from field: string base_url = 3;
+   */
+  baseUrl = "";
+
+  constructor(data?: PartialMessage<PostmarkConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.PostmarkConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "server_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "message_stream", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "base_url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PostmarkConfig {
+    return new PostmarkConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PostmarkConfig {
+    return new PostmarkConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PostmarkConfig {
+    return new PostmarkConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: PostmarkConfig | PlainMessage<PostmarkConfig> | undefined, b: PostmarkConfig | PlainMessage<PostmarkConfig> | undefined): boolean {
+    return proto3.util.equals(PostmarkConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.MailgunConfig
+ */
+export class MailgunConfig extends Message<MailgunConfig> {
+  /**
+   * @generated from field: string domain = 1;
+   */
+  domain = "";
+
+  /**
+   * @generated from field: string api_key = 2;
+   */
+  apiKey = "";
+
+  /**
+   * Mailgun's EU region uses a different host, and sending to the wrong one
+   * fails authentication rather than falling back.
+   *
+   * @generated from field: string base_url = 3;
+   */
+  baseUrl = "";
+
+  constructor(data?: PartialMessage<MailgunConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.MailgunConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "domain", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "api_key", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "base_url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): MailgunConfig {
+    return new MailgunConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): MailgunConfig {
+    return new MailgunConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): MailgunConfig {
+    return new MailgunConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: MailgunConfig | PlainMessage<MailgunConfig> | undefined, b: MailgunConfig | PlainMessage<MailgunConfig> | undefined): boolean {
+    return proto3.util.equals(MailgunConfig, a, b);
   }
 }
 

@@ -56,8 +56,8 @@ type ProcessEventUsecase interface {
 
 	GetPerformanceMetrics(ctx context.Context) (PerformanceMetrics, error)
 
-	ListArchives(ctx context.Context, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error)
-	GetArchive(ctx context.Context, id string) ([]byte, string, error)
+	ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error)
+	GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error)
 }
 
 type WebhookTrigger interface {

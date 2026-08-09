@@ -3,34 +3,27 @@ package middlewares
 import (
 	"context"
 	"errors"
-	"strings"
+	"fmt"
 
 	"connectrpc.com/connect"
 )
 
+var (
+	errUnauthenticated  = errors.New("authentication required")
+	errUnknownProcedure = errors.New("procedure has no authorization rule")
+)
+
 type rbacInterceptor struct{}
+
+func NewRBACInterceptor() connect.Interceptor {
+	return &rbacInterceptor{}
+}
 
 func (i *rbacInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		procedure := req.Spec().Procedure
-
-		// Extract role from context
-		role := GetRole(ctx)
-
-		// Super Admin can do anything
-		if role == "USER_ROLE_SUPER_ADMIN" {
-			return next(ctx, req)
+		if err := authorize(ctx, req.Spec().Procedure); err != nil {
+			return nil, err
 		}
-
-		// Define required roles for procedures
-		if err := authorize(procedure, role); err != nil {
-			// Map common auth errors to correct Connect codes
-			if strings.Contains(err.Error(), "unauthenticated") {
-				return nil, connect.NewError(connect.CodeUnauthenticated, err)
-			}
-			return nil, connect.NewError(connect.CodePermissionDenied, err)
-		}
-
 		return next(ctx, req)
 	}
 }
@@ -41,77 +34,76 @@ func (i *rbacInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) 
 
 func (i *rbacInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		procedure := conn.Spec().Procedure
-		role := GetRole(ctx)
-
-		if role == "USER_ROLE_SUPER_ADMIN" {
-			return next(ctx, conn)
+		if err := authorize(ctx, conn.Spec().Procedure); err != nil {
+			return err
 		}
-
-		if err := authorize(procedure, role); err != nil {
-			if strings.Contains(err.Error(), "unauthenticated") {
-				return connect.NewError(connect.CodeUnauthenticated, err)
-			}
-			return connect.NewError(connect.CodePermissionDenied, err)
-		}
-
 		return next(ctx, conn)
 	}
 }
 
-func NewRBACInterceptor() connect.Interceptor {
-	return &rbacInterceptor{}
-}
+// authorize decides whether the caller may invoke the procedure. Every outcome
+// other than an explicit allow is a denial, including a procedure that has no
+// rule at all — a new RPC is unreachable until its authority is declared.
+func authorize(ctx context.Context, procedure string) error {
+	rule, ok := lookupPolicy(procedure)
+	if !ok {
+		return connect.NewError(connect.CodePermissionDenied, errUnknownProcedure)
+	}
 
-func authorize(procedure string, role string) error {
-	// Public procedures
-	if strings.Contains(procedure, "AuthService/SignIn") ||
-		strings.Contains(procedure, "AuthService/SignOut") ||
-		strings.Contains(procedure, "AuthService/VerifyTwoFactor") {
+	if rule.public {
 		return nil
 	}
 
-	// If it's not a public procedure, role must not be empty
-	if role == "" {
-		return errors.New("unauthenticated")
+	principal, ok := GetPrincipal(ctx)
+	if !ok {
+		return connect.NewError(connect.CodeUnauthenticated, errUnauthenticated)
 	}
 
-	// Procedures that require SUPER_ADMIN
-	if strings.Contains(procedure, "TenantService/") {
-		if role != "USER_ROLE_SUPER_ADMIN" {
-			return errors.New("insufficient permissions: requires Super Admin role")
-		}
+	switch principal.Kind {
+	case PrincipalAPIKey:
+		return authorizeAPIKey(principal, rule)
+	case PrincipalUser:
+		return authorizeUser(principal, rule)
+	default:
+		return connect.NewError(connect.CodeUnauthenticated, errUnauthenticated)
 	}
+}
 
-	// Procedures that require at least ADMINISTRATOR
-	if strings.Contains(procedure, "ApiKeyService/") ||
-		strings.Contains(procedure, "UserService/") ||
-		strings.Contains(procedure, "AuthService/RegisterUser") ||
-		strings.Contains(procedure, "SetupService/") ||
-		strings.Contains(procedure, "SystemSettingsService/UpdateSettings") {
-		if role != "USER_ROLE_ADMIN" && role != "USER_ROLE_SUPER_ADMIN" {
-			return errors.New("insufficient permissions: requires Administrator role")
-		}
+func authorizeAPIKey(principal *Principal, rule access) error {
+	if rule.scope == "" {
+		return connect.NewError(connect.CodePermissionDenied,
+			errors.New("this endpoint cannot be called with an API key"))
 	}
-
-	// Procedures that require at least EDITOR
-	if strings.Contains(procedure, "EmailProviderService/Create") ||
-		strings.Contains(procedure, "EmailProviderService/Update") ||
-		strings.Contains(procedure, "EmailProviderService/Delete") ||
-		strings.Contains(procedure, "TemplateService/Create") ||
-		strings.Contains(procedure, "TemplateService/Update") ||
-		strings.Contains(procedure, "TemplateService/Delete") ||
-		strings.Contains(procedure, "SuppressionService/Add") ||
-		strings.Contains(procedure, "SuppressionService/Remove") ||
-		strings.Contains(procedure, "WebhookService/Create") ||
-		strings.Contains(procedure, "WebhookService/Update") ||
-		strings.Contains(procedure, "WebhookService/Delete") {
-		if role == "USER_ROLE_VIEWER" {
-			return errors.New("insufficient permissions: requires Editor role")
-		}
+	if !principal.HasScope(rule.scope) {
+		return connect.NewError(connect.CodePermissionDenied,
+			fmt.Errorf("api key is missing the %q scope", rule.scope))
 	}
-
-	// VIEWERS can call anything else (List, Get, etc.)
-
 	return nil
+}
+
+func authorizeUser(principal *Principal, rule access) error {
+	// A super admin is above the tenant-scoped role ladder.
+	if principal.Role == RoleSuperAdmin {
+		return nil
+	}
+	if !roleSatisfies(principal.Role, rule.minRole) {
+		return connect.NewError(connect.CodePermissionDenied,
+			fmt.Errorf("insufficient permissions: requires %s or higher", humanRole(rule.minRole)))
+	}
+	return nil
+}
+
+func humanRole(role string) string {
+	switch role {
+	case RoleViewer:
+		return "Viewer"
+	case RoleEditor:
+		return "Editor"
+	case RoleAdmin:
+		return "Administrator"
+	case RoleSuperAdmin:
+		return "Super Admin"
+	default:
+		return role
+	}
 }

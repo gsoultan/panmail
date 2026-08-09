@@ -9,6 +9,7 @@ import (
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/auth/entities"
+	authusecases "github.com/gsoultan/panmail/internal/auth/usecases"
 )
 
 type mockAuthUsecase struct {
@@ -16,25 +17,25 @@ type mockAuthUsecase struct {
 	isFirstRunErr error
 }
 
-func (m *mockAuthUsecase) SignIn(ctx context.Context, email, password string) (*entities.User, string, bool, bool, string, string, error) {
-	return nil, "", false, false, "", "", nil
+func (m *mockAuthUsecase) SignIn(ctx context.Context, creds authusecases.Credentials) (*authusecases.SignInResult, error) {
+	return nil, nil
 }
 func (m *mockAuthUsecase) GetCurrentUser(ctx context.Context, userID string) (*entities.User, error) {
 	return nil, nil
 }
-func (m *mockAuthUsecase) CreateAdmin(ctx context.Context, email, password, name string) error {
+func (m *mockAuthUsecase) CreateAdmin(ctx context.Context, admin authusecases.NewAdmin) error {
 	return nil
 }
 func (m *mockAuthUsecase) IsFirstRun(ctx context.Context) (bool, error) {
 	return m.isFirstRun, m.isFirstRunErr
 }
-func (m *mockAuthUsecase) SetupTwoFactor(ctx context.Context, userID string) (string, string, error) {
-	return "", "", nil
+func (m *mockAuthUsecase) SetupTwoFactor(ctx context.Context, userID string) (*authusecases.TwoFactorSetup, error) {
+	return nil, nil
 }
-func (m *mockAuthUsecase) VerifyTwoFactor(ctx context.Context, userID, email, code, secret string) (string, *entities.User, bool, error) {
-	return "", nil, false, nil
+func (m *mockAuthUsecase) VerifyTwoFactorLogin(ctx context.Context, challengeToken, code string) (*authusecases.SignInResult, error) {
+	return nil, nil
 }
-func (m *mockAuthUsecase) EnableTwoFactor(ctx context.Context, userID, code, secret string) error {
+func (m *mockAuthUsecase) EnableTwoFactor(ctx context.Context, userID, code string) error {
 	return nil
 }
 func (m *mockAuthUsecase) DisableTwoFactor(ctx context.Context, userID string) error {

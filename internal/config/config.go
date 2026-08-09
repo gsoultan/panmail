@@ -17,13 +17,25 @@ import (
 )
 
 type Config struct {
-	Database db.Config  `yaml:"database"`
-	Auth     AuthConfig `yaml:"auth"`
-	App      AppConfig  `yaml:"app"`
+	Database db.Config     `yaml:"database"`
+	Auth     AuthConfig    `yaml:"auth"`
+	App      AppConfig     `yaml:"app"`
+	Secrets  SecretsConfig `yaml:"secrets"`
 }
 
 type AuthConfig struct {
 	SymmetricKey string `yaml:"symmetric_key"` // 32 bytes hex encoded for Paseto v2
+}
+
+// SecretsConfig holds the key used to encrypt stored credentials.
+//
+// It is deliberately separate from AuthConfig.SymmetricKey: reusing the token
+// signing key meant that rotating it would make every stored provider password
+// undecryptable, and that compromising either one compromised both. Prefer
+// supplying it through the PANMAIL_SECRET_KEY environment variable, which
+// keeps it out of the config file entirely.
+type SecretsConfig struct {
+	DataKey string `yaml:"data_key,omitempty"`
 }
 
 type AppConfig struct {
@@ -73,9 +85,12 @@ func Load() (*Config, error) {
 	if cfg.Auth.SymmetricKey != "" && strings.HasPrefix(cfg.Database.Password, "enc:") {
 		cipherText := strings.TrimPrefix(cfg.Database.Password, "enc:")
 		plainText, err := decrypt(cipherText, cfg.Auth.SymmetricKey)
-		if err == nil {
-			cfg.Database.Password = plainText
+		if err != nil {
+			// Leaving the "enc:" blob in place would surface later as a
+			// confusing database authentication failure.
+			return nil, fmt.Errorf("failed to decrypt database password: %w", err)
 		}
+		cfg.Database.Password = plainText
 	}
 
 	return &cfg, nil
@@ -88,7 +103,9 @@ func Save(cfg *Config) error {
 	}
 
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	// The directory holds the signing key and the encrypted database password,
+	// so it is owner-only.
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 
@@ -96,9 +113,12 @@ func Save(cfg *Config) error {
 	cfgCopy := *cfg
 	if cfgCopy.Auth.SymmetricKey != "" && cfgCopy.Database.Password != "" && !strings.HasPrefix(cfgCopy.Database.Password, "enc:") {
 		encrypted, err := encrypt(cfgCopy.Database.Password, cfgCopy.Auth.SymmetricKey)
-		if err == nil {
-			cfgCopy.Database.Password = "enc:" + encrypted
+		if err != nil {
+			// Writing the file anyway would silently store the password in
+			// clear text, which is worse than refusing to save.
+			return fmt.Errorf("failed to encrypt database password: %w", err)
 		}
+		cfgCopy.Database.Password = "enc:" + encrypted
 	}
 
 	data, err := yaml.Marshal(&cfgCopy)

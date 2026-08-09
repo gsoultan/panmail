@@ -1,0 +1,120 @@
+name: ci
+
+# release.yml only runs on a tag, so until now nothing verified a change before
+# it became a release. This runs the suite that already exists on every push and
+# pull request, so a regression is caught while it is still cheap to fix.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to the same branch makes the previous run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # -race is worth the wall-clock here. This is a concurrent mail gateway:
+      # the outbox hands claimed rows to parallel workers and the login limiter
+      # is shared mutable state, and a data race in either is the kind of fault
+      # that only shows up under production load.
+      - name: Test
+        run: go test -race ./...
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l . | grep -v '^web/' || true)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        working-directory: web
+        run: bun run lint
+
+      # bun's built-in runner, so this needs no test dependency. Covers the
+      # email HTML generator, where a regression ships silently: bad output
+      # renders fine in the builder's own preview and only breaks in the
+      # recipient's client.
+      - name: Test
+        working-directory: web
+        run: bun run test
+
+      # `bun run build` is `tsc -b && vite build`, so this type-checks as well
+      # as bundling.
+      - name: Build
+        working-directory: web
+        run: bun run build
+
+  release-build:
+    # The artifact goreleaser actually ships: the UI embedded into the binary
+    # via the builtui tag. Built separately because embedding is its own failure
+    # mode — web/dist missing or misnamed passes both jobs above and breaks only
+    # at tag time, which is the worst moment to find out.
+    name: release build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build UI
+        working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Build embedded binary
+        run: go build -tags builtui -o panmail ./cmd/api
+
+      - name: Smoke test the binary
+        run: ./panmail --version
+
+# Deliberately not checked here: whether `buf generate` output is committed and
+# current. The generated TypeScript client under web/src/api is presently behind
+# the .proto files, so a drift gate would fail on day one. Add one once the two
+# are back in sync — it is the check that would have caught that drift.

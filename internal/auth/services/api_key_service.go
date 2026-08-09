@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
+	"github.com/gsoultan/panmail/internal/auth/entities"
 	"github.com/gsoultan/panmail/internal/auth/middlewares"
 	"github.com/gsoultan/panmail/internal/auth/usecases"
 )
@@ -37,21 +38,18 @@ func (s *apiKeyService) CreateApiKey(ctx context.Context, req *connect.Request[p
 		expiresAt = &t
 	}
 
-	apiKey, plainKey, err := s.usecase.CreateApiKey(ctx, tenantID, req.Msg.Name, expiresAt)
+	apiKey, plainKey, err := s.usecase.CreateApiKey(ctx, usecases.NewApiKey{
+		TenantID:  tenantID,
+		Name:      req.Msg.Name,
+		Scopes:    toEntityScopes(req.Msg.Scopes),
+		ExpiresAt: expiresAt,
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
 	return connect.NewResponse(&panmailv1.CreateApiKeyResponse{
-		ApiKey: &panmailv1.ApiKey{
-			Id:         apiKey.ID,
-			Name:       apiKey.Name,
-			Prefix:     apiKey.Prefix,
-			CreatedAt:  apiKey.CreatedAt.Format(time.RFC3339),
-			LastUsedAt: formatTime(apiKey.LastUsedAt),
-			ExpiresAt:  formatTime(apiKey.ExpiresAt),
-			IsEnabled:  apiKey.IsEnabled,
-		},
+		ApiKey:       toProtoApiKey(apiKey),
 		PlainTextKey: plainKey,
 	}), nil
 }
@@ -67,17 +65,9 @@ func (s *apiKeyService) ListApiKeys(ctx context.Context, req *connect.Request[pa
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	var protoKeys []*panmailv1.ApiKey
+	protoKeys := make([]*panmailv1.ApiKey, 0, len(keys))
 	for _, k := range keys {
-		protoKeys = append(protoKeys, &panmailv1.ApiKey{
-			Id:         k.ID,
-			Name:       k.Name,
-			Prefix:     k.Prefix,
-			CreatedAt:  k.CreatedAt.Format(time.RFC3339),
-			LastUsedAt: formatTime(k.LastUsedAt),
-			ExpiresAt:  formatTime(k.ExpiresAt),
-			IsEnabled:  k.IsEnabled,
-		})
+		protoKeys = append(protoKeys, toProtoApiKey(k))
 	}
 
 	return connect.NewResponse(&panmailv1.ListApiKeysResponse{
@@ -130,4 +120,34 @@ func formatTime(t *time.Time) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
+}
+
+func toProtoApiKey(k *entities.ApiKey) *panmailv1.ApiKey {
+	if k == nil {
+		return nil
+	}
+
+	scopes := make([]string, 0, len(k.Scopes))
+	for _, s := range k.Scopes {
+		scopes = append(scopes, string(s))
+	}
+
+	return &panmailv1.ApiKey{
+		Id:         k.ID,
+		Name:       k.Name,
+		Prefix:     k.Prefix,
+		CreatedAt:  k.CreatedAt.Format(time.RFC3339),
+		LastUsedAt: formatTime(k.LastUsedAt),
+		ExpiresAt:  formatTime(k.ExpiresAt),
+		IsEnabled:  k.IsEnabled,
+		Scopes:     scopes,
+	}
+}
+
+func toEntityScopes(scopes []string) []entities.Scope {
+	out := make([]entities.Scope, 0, len(scopes))
+	for _, s := range scopes {
+		out = append(out, entities.Scope(s))
+	}
+	return out
 }

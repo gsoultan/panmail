@@ -28,28 +28,31 @@ func NewPasetoMaker(symmetricKeyHex string) (*PasetoMaker, error) {
 	}, nil
 }
 
-func (maker *PasetoMaker) CreateToken(userID string, tenantID string, role string, duration time.Duration) (string, error) {
+func (maker *PasetoMaker) CreateToken(req TokenRequest) (string, error) {
+	if req.Purpose == "" {
+		return "", errors.New("token purpose is mandatory")
+	}
+
 	payload := &TokenPayload{
-		UserID:    userID,
-		TenantID:  tenantID,
-		Role:      role,
+		UserID:    req.UserID,
+		TenantID:  req.TenantID,
+		Role:      req.Role,
+		Purpose:   req.Purpose,
 		IssuedAt:  time.Now(),
-		ExpiredAt: time.Now().Add(duration),
+		ExpiredAt: time.Now().Add(req.Duration),
 	}
 
 	return maker.paseto.Encrypt(maker.symmetricKey, payload, nil)
 }
 
-func (maker *PasetoMaker) VerifyToken(token string) (*TokenPayload, error) {
+func (maker *PasetoMaker) VerifyToken(token string, purpose TokenPurpose) (*TokenPayload, error) {
 	payload := &TokenPayload{}
 
-	err := maker.paseto.Decrypt(token, maker.symmetricKey, payload, nil)
-	if err != nil {
+	if err := maker.paseto.Decrypt(token, maker.symmetricKey, payload, nil); err != nil {
 		return nil, ErrInvalidToken
 	}
 
-	err = payload.Valid()
-	if err != nil {
+	if err := payload.Valid(purpose); err != nil {
 		return nil, err
 	}
 

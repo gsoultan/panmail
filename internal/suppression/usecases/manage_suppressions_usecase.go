@@ -5,11 +5,25 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/suppression/repositories/entities"
 	"github.com/gsoultan/panmail/internal/suppression/repositories/stores"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// A suppression list only works if the same mailbox always produces the same
+// key. "Alice <Alice@Example.COM>" and "alice@example.com" are one mailbox, and
+// storing them as two entries means a bounce recorded under one spelling does
+// not stop the next send to the other — the list silently fails open, which is
+// the one way it must never fail.
+//
+// gsmail.NormalizeAddress reduces an address to the bare lowercased addr-spec,
+// which is exactly the key a suppression list should use. Every write and every
+// read goes through here.
+func suppressionKey(email string) string {
+	return gsmail.NormalizeAddress(email)
+}
 
 type manageSuppressionsUsecase struct {
 	repo stores.SuppressionRepository
@@ -25,7 +39,7 @@ func (u *manageSuppressionsUsecase) Add(ctx context.Context, tenantID string, re
 	s := &entities.Suppression{
 		ID:        uuid.New().String(),
 		TenantID:  tenantID,
-		Email:     req.Email,
+		Email:     suppressionKey(req.Email),
 		Reason:    req.Reason,
 		CreatedAt: time.Now(),
 	}
@@ -38,6 +52,7 @@ func (u *manageSuppressionsUsecase) Add(ctx context.Context, tenantID string, re
 }
 
 func (u *manageSuppressionsUsecase) Remove(ctx context.Context, tenantID, email string) error {
+	email = suppressionKey(email)
 	return u.repo.Delete(ctx, tenantID, email)
 }
 
@@ -55,7 +70,7 @@ func (u *manageSuppressionsUsecase) List(ctx context.Context, tenantID string, p
 }
 
 func (u *manageSuppressionsUsecase) Check(ctx context.Context, tenantID, email string) (bool, string, error) {
-	s, err := u.repo.GetByEmail(ctx, tenantID, email)
+	s, err := u.repo.GetByEmail(ctx, tenantID, suppressionKey(email))
 	if err != nil {
 		return false, "", err
 	}

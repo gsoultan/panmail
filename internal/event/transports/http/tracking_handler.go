@@ -2,48 +2,108 @@ package http
 
 import (
 	"encoding/base64"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/event/usecases"
+	"github.com/gsoultan/panmail/pkg/tracking"
 )
+
+// transparentPixel is a 1x1 GIF served for every open request, valid or not:
+// the response must not tell a prober whether a link was genuine.
+var transparentPixel = []byte{
+	0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x21, 0xf9, 0x04, 0x01, 0x00,
+	0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+	0x00, 0x02, 0x01, 0x44, 0x00, 0x3b,
+}
 
 type TrackingHandler struct {
 	usecase usecases.ProcessEventUsecase
+	signer  *tracking.Signer
 }
 
-func NewTrackingHandler(u usecases.ProcessEventUsecase) *TrackingHandler {
-	return &TrackingHandler{usecase: u}
+func NewTrackingHandler(u usecases.ProcessEventUsecase, signer *tracking.Signer) *TrackingHandler {
+	return &TrackingHandler{usecase: u, signer: signer}
+}
+
+// trackingRequest is the parsed form of a tracking URL.
+type trackingRequest struct {
+	tenantID  string
+	messageID string
+	recipient string
+	signature string
+}
+
+// parse reads /track/{kind}/{tenant_id}/{message_id}/{recipient_base64}.
+// parseTrackingRequest reads /track/{kind}/{tenant}/{message}/{recipient}.
+func parseTrackingRequest(r *http.Request) (trackingRequest, bool) {
+	return parseSignedRequest(r, 2)
+}
+
+// parseSignedRequest reads {tenant}/{message}/{recipient} from a path, after
+// skipping prefixSegments leading segments.
+//
+// The prefix length is a parameter because the endpoints differ: tracking links
+// are /track/open/... (two segments) while unsubscribe is /unsubscribe/...
+// (one). It used to be hardcoded to two, so a handler mounted on a shorter path
+// silently read the message id as the tenant and rejected every valid link.
+func parseSignedRequest(r *http.Request, prefixSegments int) (trackingRequest, bool) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	// tenant and message are required; recipient is optional.
+	if len(parts) < prefixSegments+2 {
+		return trackingRequest{}, false
+	}
+
+	req := trackingRequest{
+		tenantID:  parts[prefixSegments],
+		messageID: parts[prefixSegments+1],
+		signature: r.URL.Query().Get(tracking.SignatureParam),
+	}
+
+	if len(parts) >= prefixSegments+3 {
+		decoded, err := base64.RawURLEncoding.DecodeString(parts[prefixSegments+2])
+		if err != nil {
+			return trackingRequest{}, false
+		}
+		req.recipient = string(decoded)
+	}
+
+	return req, true
 }
 
 func (h *TrackingHandler) HandleOpen(w http.ResponseWriter, r *http.Request) {
-	// Path: /track/open/{tenant_id}/{message_id}/{recipient_base64}
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 4 {
-		h.servePixel(w)
+	defer h.servePixel(w)
+
+	req, ok := parseTrackingRequest(r)
+	if !ok {
 		return
 	}
 
-	tenantID := parts[2]
-	messageID := parts[3]
-	recipient := ""
-
-	if len(parts) >= 5 {
-		if decoded, err := base64.RawURLEncoding.DecodeString(parts[4]); err == nil {
-			recipient = string(decoded)
-		}
+	link := tracking.Link{
+		Kind:      trackingKindOpen,
+		TenantID:  req.tenantID,
+		MessageID: req.messageID,
+		Recipient: req.recipient,
 	}
 
-	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, recipient, "", "", nil)
+	if err := h.signer.Verify(link, req.signature); err != nil {
+		slog.Warn("rejecting unsigned or altered open tracking request",
+			"tenant_id", req.tenantID, "message_id", req.messageID, "error", err)
+		return
+	}
 
-	h.servePixel(w)
+	if err := h.usecase.RecordEvent(r.Context(), req.tenantID, "", req.messageID,
+		panmailv1.EmailEventType_EMAIL_EVENT_TYPE_OPENED, req.recipient, "", "", nil); err != nil {
+		slog.Error("failed to record open event", "error", err, "message_id", req.messageID)
+	}
 }
 
 func (h *TrackingHandler) HandleClick(w http.ResponseWriter, r *http.Request) {
-	// Path: /track/click/{tenant_id}/{message_id}/{recipient_base64}?url=...
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 4 {
+	req, ok := parseTrackingRequest(r)
+	if !ok {
 		http.Error(w, "Invalid tracking URL", http.StatusBadRequest)
 		return
 	}
@@ -54,24 +114,44 @@ func (h *TrackingHandler) HandleClick(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := parts[2]
-	messageID := parts[3]
-	recipient := ""
-
-	if len(parts) >= 5 {
-		if decoded, err := base64.RawURLEncoding.DecodeString(parts[4]); err == nil {
-			recipient = string(decoded)
-		}
+	link := tracking.Link{
+		Kind:      trackingKindClick,
+		TenantID:  req.tenantID,
+		MessageID: req.messageID,
+		Recipient: req.recipient,
+		TargetURL: targetURL,
 	}
 
-	_ = h.usecase.RecordEvent(r.Context(), tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED, recipient, "", "", map[string]any{"url": targetURL})
+	// The signature covers the destination, so this endpoint can only forward
+	// to a URL this server put in a message. Without that check it is an open
+	// redirect on the domain recipients are taught to trust.
+	if err := h.signer.Verify(link, req.signature); err != nil {
+		slog.Warn("rejecting unsigned or altered click tracking request",
+			"tenant_id", req.tenantID, "message_id", req.messageID, "error", err)
+		http.Error(w, "Invalid tracking link", http.StatusForbidden)
+		return
+	}
+
+	// Defence in depth: a signature proves we generated the link, not that the
+	// destination is a safe kind of URL.
+	if err := tracking.ValidateTarget(targetURL); err != nil {
+		http.Error(w, "Unsupported redirect target", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.usecase.RecordEvent(r.Context(), req.tenantID, "", req.messageID,
+		panmailv1.EmailEventType_EMAIL_EVENT_TYPE_CLICKED, req.recipient, "", "",
+		map[string]any{"url": targetURL}); err != nil {
+		slog.Error("failed to record click event", "error", err, "message_id", req.messageID)
+	}
 
 	http.Redirect(w, r, targetURL, http.StatusFound)
 }
 
 func (h *TrackingHandler) servePixel(w http.ResponseWriter) {
-	pixel, _ := base64.StdEncoding.DecodeString("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
 	w.Header().Set("Content-Type", "image/gif")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Write(pixel)
+	if _, err := w.Write(transparentPixel); err != nil {
+		slog.Debug("failed to write tracking pixel", "error", err)
+	}
 }

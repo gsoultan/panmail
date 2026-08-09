@@ -6,6 +6,8 @@ interface TemplateEditorProps {
   initialDesign?: string;
   onReady?: () => void;
   minHeight?: string | number;
+  /** Fires on every design change, for autosave or dirty tracking. */
+  onChange?: (design: any) => void;
 }
 
 export interface TemplateEditorHandle {
@@ -15,7 +17,8 @@ export interface TemplateEditorHandle {
 export const TemplateEditor = forwardRef<TemplateEditorHandle, TemplateEditorProps>(({
   initialDesign,
   onReady,
-  minHeight = '80vh'
+  minHeight = '80vh',
+  onChange
 }, ref) => {
   const builderRef = useRef<CustomEmailBuilderHandle>(null);
 
@@ -34,6 +37,7 @@ export const TemplateEditor = forwardRef<TemplateEditorHandle, TemplateEditorPro
       <CustomEmailBuilder
         ref={builderRef}
         initialDesign={initialDesign}
+        onChange={onChange}
       />
     </Box>
   );

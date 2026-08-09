@@ -138,11 +138,16 @@ message ApiKey {
   string last_used_at = 5;
   string expires_at = 6;
   bool is_enabled = 7;
+  // Capabilities this key carries, e.g. "email:send".
+  repeated string scopes = 8;
 }
 
 message CreateApiKeyRequest {
   string name = 1;
   string expires_at = 2;
+  // Capabilities to grant. Unknown values are dropped; an empty list yields
+  // the least-privilege default of "email:send".
+  repeated string scopes = 3;
 }
 
 message CreateApiKeyResponse {
@@ -190,6 +195,10 @@ message SignInResponse {
   bool two_factor_setup_required = 4;
   string two_factor_secret = 5;
   string two_factor_qr_code_url = 6;
+  // Short-lived credential proving the password step passed. It is the only
+  // way to identify the account during VerifyTwoFactor and grants no API
+  // access on its own.
+  string challenge_token = 7;
 }
 
 message SignOutRequest {}
@@ -219,9 +228,15 @@ message SetupTwoFactorResponse {
 }
 
 message VerifyTwoFactorRequest {
+  // Tags 2 and 3 held a caller-supplied secret and email. Accepting either let
+  // a caller verify against material they controlled, for an account they
+  // merely named. The secret now comes from the server and the account from
+  // challenge_token.
+  reserved 2, 3;
+  reserved "secret", "email";
+
   string code = 1;
-  string secret = 2; // Used during setup only
-  string email = 3;  // Used during SignIn only
+  string challenge_token = 4;
 }
 
 message VerifyTwoFactorResponse {
@@ -231,8 +246,12 @@ message VerifyTwoFactorResponse {
 }
 
 message EnableTwoFactorRequest {
+  // Tag 2 held a caller-supplied secret; the secret is now read from the
+  // pending enrolment this server issued.
+  reserved 2;
+  reserved "secret";
+
   string code = 1;
-  string secret = 2;
 }
 
 message EnableTwoFactorResponse {

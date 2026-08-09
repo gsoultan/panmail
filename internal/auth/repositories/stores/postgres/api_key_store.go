@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -50,7 +51,15 @@ func (s *apiKeyStore) Create(ctx context.Context, key *entities.ApiKey) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.ExecContext(ctx, createApiKeyQuery, key.ID, key.TenantID, key.Name, key.KeyHash, key.Prefix, key.ExpiresAt, key.IsEnabled, key.CreatedAt, key.UpdatedAt)
+
+	scopes, err := encodeScopes(key.Scopes)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.ExecContext(ctx, createApiKeyQuery,
+		key.ID, key.TenantID, key.Name, key.KeyHash, key.Prefix, scopes,
+		key.ExpiresAt, key.IsEnabled, key.CreatedAt, key.UpdatedAt)
 	return err
 }
 
@@ -76,19 +85,14 @@ func (s *apiKeyStore) ListByTenantID(ctx context.Context, tenantID string, pageS
 
 	var keys []*entities.ApiKey
 	for rows.Next() {
-		k := &entities.ApiKey{}
-		var lastUsedAt, expiresAt sql.NullTime
-		err := rows.Scan(&k.ID, &k.TenantID, &k.Name, &k.KeyHash, &k.Prefix, &lastUsedAt, &expiresAt, &k.IsEnabled, &k.CreatedAt, &k.UpdatedAt)
+		k, err := scanApiKey(rows.Scan)
 		if err != nil {
 			return nil, "", err
 		}
-		if lastUsedAt.Valid {
-			k.LastUsedAt = &lastUsedAt.Time
-		}
-		if expiresAt.Valid {
-			k.ExpiresAt = &expiresAt.Time
-		}
 		keys = append(keys, k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
 	}
 
 	nextPageToken := ""
@@ -113,19 +117,7 @@ func (s *apiKeyStore) GetByHash(ctx context.Context, hash string) (*entities.Api
 	if err != nil {
 		return nil, err
 	}
-	k := &entities.ApiKey{}
-	var lastUsedAt, expiresAt sql.NullTime
-	err = db.QueryRowContext(ctx, getApiKeyByHashQuery, hash).Scan(&k.ID, &k.TenantID, &k.Name, &k.KeyHash, &k.Prefix, &lastUsedAt, &expiresAt, &k.IsEnabled, &k.CreatedAt, &k.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	if lastUsedAt.Valid {
-		k.LastUsedAt = &lastUsedAt.Time
-	}
-	if expiresAt.Valid {
-		k.ExpiresAt = &expiresAt.Time
-	}
-	return k, nil
+	return scanApiKey(db.QueryRowContext(ctx, getApiKeyByHashQuery, hash).Scan)
 }
 
 func (s *apiKeyStore) GetByID(ctx context.Context, id string, tenantID string) (*entities.ApiKey, error) {
@@ -133,19 +125,7 @@ func (s *apiKeyStore) GetByID(ctx context.Context, id string, tenantID string) (
 	if err != nil {
 		return nil, err
 	}
-	k := &entities.ApiKey{}
-	var lastUsedAt, expiresAt sql.NullTime
-	err = db.QueryRowContext(ctx, getApiKeyByIDQuery, id, tenantID).Scan(&k.ID, &k.TenantID, &k.Name, &k.KeyHash, &k.Prefix, &lastUsedAt, &expiresAt, &k.IsEnabled, &k.CreatedAt, &k.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	if lastUsedAt.Valid {
-		k.LastUsedAt = &lastUsedAt.Time
-	}
-	if expiresAt.Valid {
-		k.ExpiresAt = &expiresAt.Time
-	}
-	return k, nil
+	return scanApiKey(db.QueryRowContext(ctx, getApiKeyByIDQuery, id, tenantID).Scan)
 }
 
 func (s *apiKeyStore) UpdateStatus(ctx context.Context, id string, tenantID string, isEnabled bool) error {
@@ -165,4 +145,51 @@ func (s *apiKeyStore) UpdateLastUsed(ctx context.Context, id string) error {
 	now := time.Now()
 	_, err = db.ExecContext(ctx, updateApiKeyLastUsedQuery, id, now)
 	return err
+}
+
+// scanApiKey reads one row in the column order shared by every api_keys query.
+func scanApiKey(scan func(...any) error) (*entities.ApiKey, error) {
+	k := &entities.ApiKey{}
+	var lastUsedAt, expiresAt sql.NullTime
+	var scopes sql.NullString
+
+	err := scan(&k.ID, &k.TenantID, &k.Name, &k.KeyHash, &k.Prefix, &scopes,
+		&lastUsedAt, &expiresAt, &k.IsEnabled, &k.CreatedAt, &k.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	if lastUsedAt.Valid {
+		k.LastUsedAt = &lastUsedAt.Time
+	}
+	if expiresAt.Valid {
+		k.ExpiresAt = &expiresAt.Time
+	}
+	k.Scopes = decodeScopes(scopes)
+
+	return k, nil
+}
+
+func encodeScopes(scopes []entities.Scope) (string, error) {
+	normalized := entities.NormalizeScopes(scopes)
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+// decodeScopes reads the stored scope list. Keys created before scopes existed
+// have no value; they fall back to the default set rather than to the broad
+// authority they previously enjoyed.
+func decodeScopes(stored sql.NullString) []entities.Scope {
+	if !stored.Valid || strings.TrimSpace(stored.String) == "" {
+		return entities.NormalizeScopes(nil)
+	}
+
+	var scopes []entities.Scope
+	if err := json.Unmarshal([]byte(stored.String), &scopes); err != nil {
+		return entities.NormalizeScopes(nil)
+	}
+	return entities.NormalizeScopes(scopes)
 }
