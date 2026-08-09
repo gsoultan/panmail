@@ -17,10 +17,11 @@ import (
 func preserveStoredPassword(providerType panmailv1.ProviderType, stored, incoming []byte) ([]byte, error) {
 	switch providerType {
 	case panmailv1.ProviderType_PROVIDER_TYPE_SMTP:
-		// SMTP carries two secrets, so both have to survive a round trip. An
-		// edit that only changed the host would otherwise blank the DKIM key
-		// and silently stop signing — mail would keep flowing while its
-		// deliverability quietly collapsed.
+		// SMTP carries four secrets — password, DKIM key, OAuth client secret
+		// and OAuth refresh token — and every one has to survive a round trip.
+		// An edit that only changed the host would otherwise blank whichever
+		// was forgotten: signing would stop silently, or authentication would
+		// start failing, with nothing failing loudly at the moment of the edit.
 		merged, err := mergePassword(stored, incoming,
 			&panmailv1.SmtpConfig{}, &panmailv1.SmtpConfig{},
 			func(c *panmailv1.SmtpConfig) string { return c.Password },
@@ -28,7 +29,7 @@ func preserveStoredPassword(providerType panmailv1.ProviderType, stored, incomin
 		if err != nil {
 			return nil, err
 		}
-		return mergePassword(stored, merged,
+		merged, err = mergePassword(stored, merged,
 			&panmailv1.SmtpConfig{}, &panmailv1.SmtpConfig{},
 			func(c *panmailv1.SmtpConfig) string { return c.GetDkim().GetPrivateKey() },
 			func(c *panmailv1.SmtpConfig, v string) {
@@ -39,6 +40,36 @@ func preserveStoredPassword(providerType panmailv1.ProviderType, stored, incomin
 					c.Dkim = &panmailv1.DkimConfig{}
 				}
 				c.Dkim.PrivateKey = v
+			})
+		if err != nil {
+			return nil, err
+		}
+		merged, err = mergePassword(stored, merged,
+			&panmailv1.SmtpConfig{}, &panmailv1.SmtpConfig{},
+			func(c *panmailv1.SmtpConfig) string { return c.GetOauth2().GetClientSecret() },
+			func(c *panmailv1.SmtpConfig, v string) {
+				if v == "" {
+					return
+				}
+				if c.Oauth2 == nil {
+					c.Oauth2 = &panmailv1.OAuth2Config{}
+				}
+				c.Oauth2.ClientSecret = v
+			})
+		if err != nil {
+			return nil, err
+		}
+		return mergePassword(stored, merged,
+			&panmailv1.SmtpConfig{}, &panmailv1.SmtpConfig{},
+			func(c *panmailv1.SmtpConfig) string { return c.GetOauth2().GetRefreshToken() },
+			func(c *panmailv1.SmtpConfig, v string) {
+				if v == "" {
+					return
+				}
+				if c.Oauth2 == nil {
+					c.Oauth2 = &panmailv1.OAuth2Config{}
+				}
+				c.Oauth2.RefreshToken = v
 			})
 	case panmailv1.ProviderType_PROVIDER_TYPE_IMAP:
 		return mergePassword(stored, incoming,

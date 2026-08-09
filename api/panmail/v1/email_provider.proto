@@ -47,6 +47,28 @@ message SmtpConfig {
   // Signing is off unless all three of domain, selector and private key are
   // present.
   DkimConfig dkim = 7;
+
+  // OAuth2 instead of a password. Gmail and Office 365 are retiring password
+  // authentication for SMTP, so a provider pointed at either will eventually
+  // need this. Absent means password authentication.
+  OAuth2Config oauth2 = 8;
+}
+
+message OAuth2Config {
+  // XOAUTH2 is what Gmail and Office 365 accept. OAUTHBEARER is the RFC 7628
+  // mechanism, offered by fewer servers.
+  string mechanism = 1;
+  string client_id = 2;
+  // Write-only, like every other stored credential.
+  string client_secret = 3;
+  // The long-lived grant exchanged for short-lived access tokens. Write-only.
+  string refresh_token = 4;
+  // Where to exchange it. Google uses https://oauth2.googleapis.com/token;
+  // Microsoft's is tenant-specific.
+  string token_endpoint = 5;
+  // Optional. Google ignores it on a refresh; some providers require it to
+  // narrow the resulting token.
+  string scope = 6;
 }
 
 message DkimConfig {

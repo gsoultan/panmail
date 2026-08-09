@@ -180,3 +180,102 @@ func TestTheKeyIsRedactedOnRead(t *testing.T) {
 		t.Error("the domain should remain visible; it is published in DNS")
 	}
 }
+
+// SMTP now carries four secrets: the password, the DKIM private key, and the
+// OAuth client secret and refresh token. Every one has to survive an edit that
+// does not resend it — the DKIM case already proved that forgetting one blanks
+// it silently, and OAuth fails differently but just as quietly: the next token
+// refresh is rejected and every send stops authenticating.
+func TestAllFourSmtpSecretsSurviveAnEditThatOmitsThem(t *testing.T) {
+	stored, err := protojson.Marshal(&panmailv1.SmtpConfig{
+		Host: "smtp.example.com", Port: 587, Username: "user", Password: "s3cret",
+		Dkim: &panmailv1.DkimConfig{Domain: "example.com", Selector: "mail", PrivateKey: testDKIMKey},
+		Oauth2: &panmailv1.OAuth2Config{
+			Mechanism: "XOAUTH2", ClientId: "cid", ClientSecret: "csecret",
+			RefreshToken: "rtoken", TokenEndpoint: "https://oauth2.googleapis.com/token",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// What a client sends back after editing only the host: every secret blank,
+	// because reads redact all of them.
+	incoming, err := protojson.Marshal(&panmailv1.SmtpConfig{
+		Host: "smtp2.example.com", Port: 587, Username: "user", Password: "",
+		Dkim: &panmailv1.DkimConfig{Domain: "example.com", Selector: "mail", PrivateKey: ""},
+		Oauth2: &panmailv1.OAuth2Config{
+			Mechanism: "XOAUTH2", ClientId: "cid", ClientSecret: "",
+			RefreshToken: "", TokenEndpoint: "https://oauth2.googleapis.com/token",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	merged, err := preserveStoredPassword(panmailv1.ProviderType_PROVIDER_TYPE_SMTP, stored, incoming)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+
+	got := parseSMTP(t, merged)
+	if got.Password != "s3cret" {
+		t.Errorf("password lost: %q", got.Password)
+	}
+	if got.GetDkim().GetPrivateKey() != testDKIMKey {
+		t.Error("DKIM private key lost; signing would have stopped silently")
+	}
+	if got.GetOauth2().GetClientSecret() != "csecret" {
+		t.Error("OAuth client secret lost; the next token refresh would be rejected")
+	}
+	if got.GetOauth2().GetRefreshToken() != "rtoken" {
+		t.Error("OAuth refresh token lost; the provider would need reauthorising")
+	}
+	// The edit itself must still apply.
+	if got.Host != "smtp2.example.com" {
+		t.Errorf("the edited host was not kept: %q", got.Host)
+	}
+}
+
+// A newly supplied OAuth secret must replace the stored one.
+func TestSubmittedOauthSecretsReplaceTheStoredOnes(t *testing.T) {
+	stored, _ := protojson.Marshal(&panmailv1.SmtpConfig{
+		Oauth2: &panmailv1.OAuth2Config{ClientSecret: "old", RefreshToken: "old-r"},
+	})
+	incoming, _ := protojson.Marshal(&panmailv1.SmtpConfig{
+		Oauth2: &panmailv1.OAuth2Config{ClientSecret: "new", RefreshToken: "new-r"},
+	})
+
+	merged, err := preserveStoredPassword(panmailv1.ProviderType_PROVIDER_TYPE_SMTP, stored, incoming)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	got := parseSMTP(t, merged)
+	if got.GetOauth2().GetClientSecret() != "new" || got.GetOauth2().GetRefreshToken() != "new-r" {
+		t.Errorf("secrets not replaced: %+v", got.GetOauth2())
+	}
+}
+
+// Neither OAuth secret may come back out of the API; the client id, endpoint and
+// mechanism must stay visible so the provider can be edited.
+func TestOauthSecretsAreRedactedOnRead(t *testing.T) {
+	c := &panmailv1.SmtpConfig{
+		Oauth2: &panmailv1.OAuth2Config{
+			Mechanism: "XOAUTH2", ClientId: "cid", ClientSecret: "csecret",
+			RefreshToken: "rtoken", TokenEndpoint: "https://oauth2.googleapis.com/token",
+		},
+	}
+	c.Oauth2.ClientSecret = redactedPassword
+	c.Oauth2.RefreshToken = redactedPassword
+
+	out, err := protojson.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "csecret") || strings.Contains(string(out), "rtoken") {
+		t.Error("an OAuth credential was returned to the caller")
+	}
+	if !strings.Contains(string(out), "cid") {
+		t.Error("the client id should stay visible; it is not secret and is needed to edit")
+	}
+}
