@@ -77,6 +77,8 @@ import { PropertyEditor } from './PropertyEditor';
 import { sanitizeHtml } from './sanitize';
 import { useDesignHistory } from './useDesignHistory';
 import { reorderTopLevel, reorderWithinColumn, findContainer, sameContainer } from './reorder';
+import { lintDesign } from './lint';
+import { LintPanel } from './LintPanel';
 
 export interface CustomEmailBuilderHandle {
   exportHtml: () => { design: EmailDesign; html: string; text: string };
@@ -262,6 +264,10 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
 
   // Regenerating on every keystroke would re-parse a whole document into the
   // preview iframe; only do it when the preview is actually on screen.
+  // Recomputed only when the design changes, not per render: the walk is cheap
+  // but it runs over every block including nested ones.
+  const findings = useMemo(() => lintDesign(design), [design]);
+
   const previewHtml = useMemo(
     () => (mode === 'preview' || codeOpened ? generateHTML(design) : ''),
     [design, mode, codeOpened],
@@ -632,6 +638,7 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
               { value: 'preview', label: (<Center style={{ gap: 6 }}><IconEye size={14} /><Box visibleFrom="sm">Preview</Box></Center>) as any },
             ]}
           />
+          <LintPanel findings={findings} onSelectBlock={selectBlock} />
           <Tooltip label="View HTML source">
             <ActionIcon variant="light" onClick={openCode} color="brand" aria-label="View HTML source">
               <IconCode size={18} />
