@@ -375,6 +375,15 @@ func main() {
 	poller := inboundworker.NewPoller(tenantRepo, providerRepo, inboundUsecase, providerFactory, 30*time.Second)
 	runWorker(&workers, "inbound-poller", func() { poller.Start(workerCtx) })
 
+	// IDLE alongside the poll, not instead of it. A hung IDLE is silent — the
+	// connection looks open, the server has nothing to say, and inbound stops
+	// with nothing in the logs — so the poll stays as the floor under it.
+	// Delivering the same message twice is harmless: inbound processing
+	// identifies a message by its own Message-ID, so whichever path sees it
+	// first wins and the other is a no-op.
+	idleSupervisor := inboundworker.NewIdleSupervisor(poller)
+	runWorker(&workers, "inbound-idle", func() { idleSupervisor.Start(workerCtx) })
+
 	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, swappableTokenMaker)
 	authService := authservices.NewAuthService(authUsecase)
 
