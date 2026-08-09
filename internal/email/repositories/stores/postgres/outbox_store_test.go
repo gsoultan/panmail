@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -229,5 +230,86 @@ func TestUpdateReleasesTheClaim(t *testing.T) {
 	}
 	if token.Valid && token.String != "" {
 		t.Errorf("expected the claim to be released, still held by %q", token.String)
+	}
+}
+
+// Failures are the only outbox rows that accumulate: a delivered message is
+// deleted outright, so without a cutoff this table grows for the life of the
+// deployment, and each row carries the whole serialised request including the
+// body.
+func TestPruneTerminalRemovesOnlyOldFailures(t *testing.T) {
+	repo, sqlDB := newOutboxTestStore(t)
+	ctx := context.Background()
+
+	now := time.Now()
+	old := now.Add(-48 * time.Hour)
+	recent := now.Add(-time.Hour)
+
+	seed := func(id string, status entities.OutboxStatus, updated time.Time) {
+		t.Helper()
+		err := repo.Create(ctx, &entities.OutboxEmail{
+			ID: id, TenantID: "tenant-1", Request: []byte(`{}`),
+			Status: status, NextRetryAt: updated, CreatedAt: updated, UpdatedAt: updated,
+		})
+		if err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+		// Create stamps its own timestamps, so the age has to be forced.
+		if _, err := sqlDB.Exec(`UPDATE outbox SET status = ?, updated_at = ? WHERE id = ?`, string(status), updated, id); err != nil {
+			t.Fatalf("age %s: %v", id, err)
+		}
+	}
+
+	seed("old-failed", entities.OutboxStatusFailed, old)
+	seed("recent-failed", entities.OutboxStatusFailed, recent)
+	seed("old-pending", entities.OutboxStatusPending, old)
+	seed("old-deferred", entities.OutboxStatusDeferred, old)
+	seed("old-sending", entities.OutboxStatusSending, old)
+
+	removed, err := repo.PruneTerminal(ctx, now.Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if removed != 1 {
+		t.Errorf("removed %d rows, want 1", removed)
+	}
+
+	survives := func(id string) bool {
+		e, err := repo.GetByID(ctx, id)
+		// The store reports a missing row as sql.ErrNoRows rather than a nil
+		// result, so absence is an error here and not a nil check.
+		if errors.Is(err, sql.ErrNoRows) {
+			return false
+		}
+		if err != nil {
+			t.Fatalf("get %s: %v", id, err)
+		}
+		return e != nil
+	}
+
+	if survives("old-failed") {
+		t.Error("an old failure should have been pruned")
+	}
+	// The recent one is the record an operator consults when asking why
+	// something never arrived.
+	if !survives("recent-failed") {
+		t.Error("a recent failure was pruned; it is still worth reading")
+	}
+	// These are all still live work. Deleting any of them loses mail.
+	for _, id := range []string{"old-pending", "old-deferred", "old-sending"} {
+		if !survives(id) {
+			t.Errorf("%s was pruned, which loses a message that was never delivered", id)
+		}
+	}
+}
+
+func TestPruneTerminalOnAnEmptyTableIsHarmless(t *testing.T) {
+	repo, _ := newOutboxTestStore(t)
+	removed, err := repo.PruneTerminal(context.Background(), time.Now())
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if removed != 0 {
+		t.Errorf("removed %d from an empty table", removed)
 	}
 }

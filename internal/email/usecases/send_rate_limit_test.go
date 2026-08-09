@@ -8,8 +8,10 @@ import (
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
+	"github.com/gsoultan/panmail/internal/email/repositories/stores"
 	"github.com/gsoultan/panmail/internal/ratelimit"
 	tenantEntities "github.com/gsoultan/panmail/internal/tenant/entities"
+	"github.com/gsoultan/panmail/pkg/cache"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -202,5 +204,107 @@ func TestTheWorkerStillCountsRealFailures(t *testing.T) {
 
 	if outboxRepo.lastUpdate.RetryCount != 1 {
 		t.Errorf("retry count = %d, want 1 for a real delivery failure", outboxRepo.lastUpdate.RetryCount)
+	}
+}
+
+// --- the backlog ceiling ---
+
+type stubOutbox struct {
+	stores.OutboxRepository
+	pending int64
+	counts  int
+}
+
+func (s *stubOutbox) CountPending(context.Context, string) (int64, error) {
+	s.counts++
+	return s.pending, nil
+}
+
+type erroringOutbox struct{ stores.OutboxRepository }
+
+func (erroringOutbox) CountPending(context.Context, string) (int64, error) {
+	return 0, errors.New("database is unreachable")
+}
+
+func usecaseWithBacklog(limit ratelimit.Limit, outbox stores.OutboxRepository) *sendEmailUsecase {
+	return &sendEmailUsecase{
+		limiter:       ratelimit.New(),
+		sendLimits:    &stubLimits{limit: limit},
+		outboxRepo:    outbox,
+		backlogCounts: cache.New[int64](backlogCountTTL),
+	}
+}
+
+// The ceiling is an hour of the tenant's own work: 60 a minute means 3600.
+func TestABacklogWithinTheCeilingIsAccepted(t *testing.T) {
+	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 60, Burst: 10}, &stubOutbox{pending: 3599})
+
+	if err := u.checkSendRate(context.Background(), rateTenant, 1); err != nil {
+		t.Errorf("refused just inside the ceiling: %v", err)
+	}
+}
+
+func TestABacklogAtTheCeilingIsRefused(t *testing.T) {
+	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 60, Burst: 10}, &stubOutbox{pending: 3600})
+
+	err := u.checkSendRate(context.Background(), rateTenant, 1)
+	var full *BacklogFullError
+	if !errors.As(err, &full) {
+		t.Fatalf("error = %v, want a BacklogFullError", err)
+	}
+	if full.Pending != 3600 || full.Ceiling != 3600 {
+		t.Errorf("reported %d against %d, want the real numbers so an operator can act", full.Pending, full.Ceiling)
+	}
+}
+
+// Depth is checked before the rate: a queue hours deep should be refused even
+// in a quiet second when a token happens to be free, because accepting makes
+// the wait longer for everything already waiting.
+func TestDepthIsRefusedEvenWithTokensAvailable(t *testing.T) {
+	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 60, Burst: 100}, &stubOutbox{pending: 10_000})
+
+	err := u.checkSendRate(context.Background(), rateTenant, 1)
+	var full *BacklogFullError
+	if !errors.As(err, &full) {
+		t.Errorf("error = %v, want the depth refusal rather than a rate refusal", err)
+	}
+}
+
+// Without a rate there is no basis for a ceiling, and inventing a default
+// would refuse a legitimate large campaign from someone who never asked to be
+// limited.
+func TestAnUnlimitedTenantHasNoBacklogCeiling(t *testing.T) {
+	outbox := &stubOutbox{pending: 1_000_000}
+	u := usecaseWithBacklog(ratelimit.Limit{}, outbox)
+
+	if err := u.checkSendRate(context.Background(), rateTenant, 1); err != nil {
+		t.Errorf("an unlimited tenant was refused on depth: %v", err)
+	}
+	if outbox.counts != 0 {
+		t.Error("counted the queue for a tenant that has no ceiling, which is a query for nothing")
+	}
+}
+
+func TestAnUncountableBacklogFailsOpen(t *testing.T) {
+	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 60, Burst: 10}, erroringOutbox{})
+
+	// Same reasoning as an unreadable limit: a database hiccup must not
+	// silently stop outbound mail.
+	if err := u.checkSendRate(context.Background(), rateTenant, 1); err != nil {
+		t.Errorf("a send was refused because the queue could not be counted: %v", err)
+	}
+}
+
+func TestTheBacklogCountIsNotQueriedPerSend(t *testing.T) {
+	outbox := &stubOutbox{pending: 10}
+	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 6000, Burst: 1000}, outbox)
+
+	for range 100 {
+		u.checkSendRate(context.Background(), rateTenant, 1)
+	}
+	// A COUNT on the hot path of every send would be the most expensive thing
+	// in the send.
+	if outbox.counts != 1 {
+		t.Errorf("counted the queue %d times for 100 sends, want 1", outbox.counts)
 	}
 }

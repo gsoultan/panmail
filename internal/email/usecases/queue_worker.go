@@ -31,9 +31,20 @@ var defaultRetryPattern = []string{"5m", "15m", "30m", "1h", "3h", "6h", "12h", 
 type QueueWorker interface {
 	Start(ctx context.Context)
 	Trigger()
+
+	// SetRetention configures how long a permanently failed message is kept
+	// before the worker prunes it. Zero, the default, disables pruning.
+	SetRetention(d time.Duration)
 }
 
 type queueWorker struct {
+	// How long a permanently failed message is kept. Zero disables pruning,
+	// which is what a deployment that has not configured it gets — deleting
+	// someone's delivery history because a default said so would be worse
+	// than the table growing.
+	retention time.Duration
+	lastPrune time.Time
+
 	outboxRepo         stores.OutboxRepository
 	emailUsecase       SendEmailUsecase
 	suppressionUsecase suppressionusecases.ManageSuppressionsUsecase
@@ -95,6 +106,12 @@ func (w *queueWorker) Start(ctx context.Context) {
 		if count >= outboxBatchSize {
 			continue
 		}
+
+		// Only once the queue is drained, and at most hourly. Pruning is
+		// housekeeping: it must never delay a message, and running it on the
+		// send tick would issue a delete scan every few seconds for a table
+		// that changes by the day.
+		w.pruneIfDue(ctx)
 
 		select {
 		case <-ctx.Done():
@@ -296,3 +313,39 @@ func (w *queueWorker) getRetryPattern(ctx context.Context, tenantID string) []st
 	w.retryPatterns.Put(tenantID, pattern)
 	return pattern
 }
+
+// How often the terminal-row sweep runs, at most.
+const prunePeriod = time.Hour
+
+// pruneIfDue removes failed messages older than the configured retention.
+//
+// Runs on the worker rather than as its own goroutine so it cannot overlap a
+// send batch, and only when the queue is already drained: housekeeping must
+// never be the reason mail is late.
+func (w *queueWorker) pruneIfDue(ctx context.Context) {
+	if w.retention <= 0 {
+		return
+	}
+	if !w.lastPrune.IsZero() && time.Since(w.lastPrune) < prunePeriod {
+		return
+	}
+	w.lastPrune = time.Now()
+
+	pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bookkeepingTimeout)
+	defer cancel()
+
+	cutoff := time.Now().Add(-w.retention)
+	removed, err := w.outboxRepo.PruneTerminal(pruneCtx, cutoff)
+	if err != nil {
+		// Housekeeping failing is not a reason to stop sending; it will be
+		// retried on the next period.
+		slog.Warn("failed to prune terminal outbox rows", "error", err, "cutoff", cutoff)
+		return
+	}
+	if removed > 0 {
+		slog.Info("pruned terminal outbox rows", "removed", removed, "older_than", cutoff)
+	}
+}
+
+// SetRetention configures how long a permanently failed message is kept.
+func (w *queueWorker) SetRetention(d time.Duration) { w.retention = d }

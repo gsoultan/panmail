@@ -39,9 +39,16 @@ type SecretsConfig struct {
 }
 
 type AppConfig struct {
-	BaseURL          string   `yaml:"base_url"`
-	LogRetentionDays int      `yaml:"log_retention_days"`
-	RetryPattern     []string `yaml:"retry_pattern"`
+	BaseURL          string `yaml:"base_url"`
+	LogRetentionDays int    `yaml:"log_retention_days"`
+
+	// How long a permanently failed message is kept before being pruned.
+	// Failures are the only outbox rows that accumulate — a delivered message
+	// is deleted outright — and each carries the whole serialised request,
+	// body included, so without a cutoff this becomes the largest table in the
+	// database holding nothing anyone will read. Zero disables pruning.
+	OutboxRetentionDays int      `yaml:"outbox_retention_days"`
+	RetryPattern        []string `yaml:"retry_pattern"`
 }
 
 var explicitConfigPath string

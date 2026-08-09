@@ -102,18 +102,18 @@ var procedurePolicy = map[string]access{
 	// key to derive the matching public half, but returns neither the key nor
 	// anything derived from it beyond a yes/no, so it stays a read.
 	panmailv1connect.EmailProviderServiceCheckDomainHealthProcedure: {minRole: RoleViewer, scope: entities.ScopeProvidersRead},
-	panmailv1connect.TemplateServiceGetTemplateProcedure:             {minRole: RoleViewer, scope: entities.ScopeTemplatesRead},
-	panmailv1connect.TemplateServiceListTemplatesProcedure:           {minRole: RoleViewer, scope: entities.ScopeTemplatesRead},
-	panmailv1connect.SuppressionServiceListSuppressionsProcedure:     {minRole: RoleViewer, scope: entities.ScopeSuppressionsRead},
-	panmailv1connect.SuppressionServiceCheckSuppressionProcedure:     {minRole: RoleViewer, scope: entities.ScopeSuppressionsRead},
-	panmailv1connect.WebhookServiceListWebhooksProcedure:             {minRole: RoleViewer, scope: entities.ScopeWebhooksRead},
-	panmailv1connect.EventServiceListEventsProcedure:                 {minRole: RoleViewer, scope: entities.ScopeEventsRead},
-	panmailv1connect.EventServiceGetEventProcedure:                   {minRole: RoleViewer, scope: entities.ScopeEventsRead},
-	panmailv1connect.EventServiceGetMetricsProcedure:                 {minRole: RoleViewer, scope: entities.ScopeEventsRead},
-	panmailv1connect.EventServiceGetTimeSeriesMetricsProcedure:       {minRole: RoleViewer, scope: entities.ScopeEventsRead},
-	panmailv1connect.InboundServiceListInboundEmailsProcedure:        {minRole: RoleViewer, scope: entities.ScopeInboundRead},
-	panmailv1connect.InboundServiceGetInboundEmailProcedure:          {minRole: RoleViewer, scope: entities.ScopeInboundRead},
-	panmailv1connect.SystemSettingsServiceGetSettingsProcedure:       {minRole: RoleViewer},
+	panmailv1connect.TemplateServiceGetTemplateProcedure:            {minRole: RoleViewer, scope: entities.ScopeTemplatesRead},
+	panmailv1connect.TemplateServiceListTemplatesProcedure:          {minRole: RoleViewer, scope: entities.ScopeTemplatesRead},
+	panmailv1connect.SuppressionServiceListSuppressionsProcedure:    {minRole: RoleViewer, scope: entities.ScopeSuppressionsRead},
+	panmailv1connect.SuppressionServiceCheckSuppressionProcedure:    {minRole: RoleViewer, scope: entities.ScopeSuppressionsRead},
+	panmailv1connect.WebhookServiceListWebhooksProcedure:            {minRole: RoleViewer, scope: entities.ScopeWebhooksRead},
+	panmailv1connect.EventServiceListEventsProcedure:                {minRole: RoleViewer, scope: entities.ScopeEventsRead},
+	panmailv1connect.EventServiceGetEventProcedure:                  {minRole: RoleViewer, scope: entities.ScopeEventsRead},
+	panmailv1connect.EventServiceGetMetricsProcedure:                {minRole: RoleViewer, scope: entities.ScopeEventsRead},
+	panmailv1connect.EventServiceGetTimeSeriesMetricsProcedure:      {minRole: RoleViewer, scope: entities.ScopeEventsRead},
+	panmailv1connect.InboundServiceListInboundEmailsProcedure:       {minRole: RoleViewer, scope: entities.ScopeInboundRead},
+	panmailv1connect.InboundServiceGetInboundEmailProcedure:         {minRole: RoleViewer, scope: entities.ScopeInboundRead},
+	panmailv1connect.SystemSettingsServiceGetSettingsProcedure:      {minRole: RoleViewer},
 
 	// Archives and host metrics describe the deployment rather than one
 	// tenant's mail, so they stay with signed-in operators only.

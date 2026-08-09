@@ -335,6 +335,13 @@ func main() {
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
 	queueWorker := emailusecases.NewQueueWorker(outboxRepo, sendEmailUsecase, manageSuppressionsUsecase, tenantUsecase, 5*time.Second)
+	if days := cfg.App.OutboxRetentionDays; days > 0 {
+		// Failures are the only outbox rows that accumulate, and each carries
+		// the whole serialised request. Without a cutoff this becomes the
+		// largest table in the database holding nothing anyone will read.
+		queueWorker.SetRetention(time.Duration(days) * 24 * time.Hour)
+		slog.Info("outbox retention configured", "days", days)
+	}
 	sendEmailUsecase.RegisterQueueWorker(queueWorker)
 	runWorker(&workers, "outbox-queue", func() { queueWorker.Start(workerCtx) })
 

@@ -203,3 +203,17 @@ func TestQueueWorker_ProcessEmail(t *testing.T) {
 func (m *workerMockOutboxRepo) ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error) {
 	return m.ListPending(ctx, limit)
 }
+
+func (m *workerMockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time.Time) (int64, error) {
+	var removed int64
+	kept := m.emails[:0]
+	for _, e := range m.emails {
+		if e.Status == entities.OutboxStatusFailed && e.UpdatedAt.Before(olderThan) {
+			removed++
+			continue
+		}
+		kept = append(kept, e)
+	}
+	m.emails = kept
+	return removed, nil
+}

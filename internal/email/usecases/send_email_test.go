@@ -654,3 +654,17 @@ func envelopeOf(email gsmail.Email) string {
 	}
 	return ""
 }
+
+func (m *mockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time.Time) (int64, error) {
+	var removed int64
+	kept := m.emails[:0]
+	for _, e := range m.emails {
+		if e.Status == entities.OutboxStatusFailed && e.UpdatedAt.Before(olderThan) {
+			removed++
+			continue
+		}
+		kept = append(kept, e)
+	}
+	m.emails = kept
+	return removed, nil
+}

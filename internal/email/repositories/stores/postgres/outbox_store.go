@@ -14,6 +14,9 @@ import (
 )
 
 var (
+	//go:embed sql/prune_terminal_outbox.sql
+	pruneTerminalOutboxQuery string
+
 	//go:embed sql/create_outbox.sql
 	createOutboxQuery string
 	//go:embed sql/get_outbox_by_id.sql
@@ -144,4 +147,22 @@ func (s *outboxStore) CountPending(ctx context.Context, tenantID string) (int64,
 	var count int64
 	err = db.QueryRowContext(ctx, countPendingOutboxQuery, tenantID).Scan(&count)
 	return count, err
+}
+
+func (s *outboxStore) PruneTerminal(ctx context.Context, olderThan time.Time) (int64, error) {
+	db, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+	res, err := db.ExecContext(ctx, pruneTerminalOutboxQuery, olderThan)
+	if err != nil {
+		return 0, err
+	}
+	// Not every driver reports affected rows, and the count is only for the
+	// log line, so a driver that declines to say is not an error.
+	removed, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return removed, nil
 }

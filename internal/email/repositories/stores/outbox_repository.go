@@ -22,4 +22,13 @@ type OutboxRepository interface {
 	Update(ctx context.Context, email *entities.OutboxEmail) error
 	Delete(ctx context.Context, id string) error
 	CountPending(ctx context.Context, tenantID string) (int64, error)
+
+	// PruneTerminal removes messages in a terminal state last touched before
+	// the cutoff, and reports how many went.
+	//
+	// Only failures accumulate — a delivered message is deleted outright — but
+	// they accumulate forever, and each row carries the whole serialised
+	// request including the body. Over the life of a deployment that is the
+	// largest table in the database, holding nothing anyone will read.
+	PruneTerminal(ctx context.Context, olderThan time.Time) (int64, error)
 }

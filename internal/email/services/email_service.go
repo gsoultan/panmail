@@ -33,6 +33,15 @@ func (s *emailService) SendEmail(ctx context.Context, req *connect.Request[panma
 		// again" into something a caller can schedule against instead of
 		// guessing — clients that guess tend to retry immediately and make the
 		// overload worse.
+		// A backlog beyond what the tenant's rate can drain. Same code as the
+		// rate refusal because it is the same answer to the client — you are
+		// asking for more than you may have — but without a Retry-After, since
+		// the queue clearing is not something a caller can schedule against.
+		var full *usecases.BacklogFullError
+		if errors.As(err, &full) {
+			return nil, connect.NewError(connect.CodeResourceExhausted, full)
+		}
+
 		var limited *usecases.RateLimitedError
 		if errors.As(err, &limited) {
 			connectErr := connect.NewError(connect.CodeResourceExhausted, limited)

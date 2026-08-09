@@ -64,6 +64,7 @@ type SendEmailDeps struct {
 type sendEmailUsecase struct {
 	limiter         *ratelimit.Limiter
 	sendLimits      SendLimits
+	backlogCounts   *cache.TTLCache[int64]
 	providerRepo    providerStores.Repository
 	templateRepo    templateStores.TemplateRepository
 	suppressionRepo suppressionStores.SuppressionRepository
@@ -83,6 +84,7 @@ func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 	return &sendEmailUsecase{
 		limiter:         deps.Limiter,
 		sendLimits:      deps.SendLimits,
+		backlogCounts:   cache.New[int64](backlogCountTTL),
 		providerRepo:    deps.ProviderRepo,
 		templateRepo:    deps.TemplateRepo,
 		suppressionRepo: deps.SuppressionRepo,

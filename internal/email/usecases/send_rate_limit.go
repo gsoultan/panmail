@@ -69,6 +69,13 @@ func (u *sendEmailUsecase) checkSendRate(ctx context.Context, tenantID string, c
 		return nil
 	}
 
+	// Depth before rate: a queue that is hours deep should be refused even in
+	// a quiet second when a token happens to be available, because accepting
+	// makes the wait longer for everything already waiting.
+	if err := u.checkBacklog(ctx, tenantID, limit); err != nil {
+		return err
+	}
+
 	if allowed, retryAfter := u.limiter.Allow(tenantID, limit, cost); !allowed {
 		return &RateLimitedError{TenantID: tenantID, RetryAfter: retryAfter}
 	}
@@ -125,4 +132,80 @@ func (t *tenantSendLimits) SendLimitFor(ctx context.Context, tenantID string) (r
 	}
 	t.cache.Put(tenantID, limit)
 	return limit, nil
+}
+
+// BacklogFullError reports that a tenant has more queued than its own send
+// rate can work through in a reasonable time.
+//
+// Separate from RateLimitedError because it means something different and
+// wants a different response. Over the rate is momentary — wait a second and
+// the same request succeeds. A full backlog is not: the queue is hours deep,
+// and adding to it makes the wait longer for everything already in it.
+type BacklogFullError struct {
+	TenantID string
+	Pending  int64
+	Ceiling  int64
+}
+
+func (e *BacklogFullError) Error() string {
+	return fmt.Sprintf(
+		"tenant %s has %d messages queued, above the ceiling of %d for its send rate",
+		e.TenantID, e.Pending, e.Ceiling,
+	)
+}
+
+// How much queued work a tenant may hold, expressed as time at its own rate.
+//
+// An hour is long enough that an ordinary campaign queued in one go is never
+// refused, and short enough that a runaway loop is stopped while the queue is
+// still something an operator can reason about rather than a million rows.
+const backlogMinutes = 60
+
+// The count only matters at the margin, so a little staleness is worth not
+// putting a COUNT on the hot path of every send. At 60 a minute this lets
+// through about five extra messages against a ceiling of 3600.
+const backlogCountTTL = 5 * time.Second
+
+// checkBacklog refuses admission when the queue is already deeper than the
+// tenant's rate can drain.
+//
+// Only for tenants with a rate configured. Without one there is no basis for a
+// ceiling, and inventing a default would refuse a legitimate large campaign
+// from someone who never asked to be limited.
+//
+// This is what stops the outbox growing without bound, and what stops a
+// backlog accumulated during an outage from leaving faster than it arrived —
+// the rate paces admission, but nothing paces a drain, so the only lever is to
+// not let the backlog get that deep.
+func (u *sendEmailUsecase) checkBacklog(ctx context.Context, tenantID string, limit ratelimit.Limit) error {
+	if limit.Unlimited() || u.outboxRepo == nil {
+		return nil
+	}
+
+	ceiling := int64(limit.PerMinute) * backlogMinutes
+
+	var pending int64
+	cached := false
+	// The struct is built directly in places, so the cache is not guaranteed;
+	// without it the count is simply read every time rather than skipped.
+	if u.backlogCounts != nil {
+		pending, cached = u.backlogCounts.Get(tenantID)
+	}
+	if !cached {
+		counted, err := u.outboxRepo.CountPending(ctx, tenantID)
+		if err != nil {
+			// Same reasoning as an unreadable limit: a database hiccup must not
+			// silently stop outbound mail.
+			return nil
+		}
+		pending = counted
+		if u.backlogCounts != nil {
+			u.backlogCounts.Put(tenantID, pending)
+		}
+	}
+
+	if pending >= ceiling {
+		return &BacklogFullError{TenantID: tenantID, Pending: pending, Ceiling: ceiling}
+	}
+	return nil
 }
