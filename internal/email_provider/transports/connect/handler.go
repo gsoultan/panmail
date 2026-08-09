@@ -74,3 +74,11 @@ func (h *handler) TestEmailProviderConfig(ctx context.Context, req *connect.Requ
 	}
 	return connect.NewResponse(res), nil
 }
+
+func (h *handler) CheckDomainHealth(ctx context.Context, req *connect.Request[panmailv1.CheckDomainHealthRequest]) (*connect.Response[panmailv1.CheckDomainHealthResponse], error) {
+	res, err := h.service.CheckDomainHealth(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(res), nil
+}

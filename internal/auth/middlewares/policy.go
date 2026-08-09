@@ -98,6 +98,10 @@ var procedurePolicy = map[string]access{
 	// --- Viewer: read-only --------------------------------------------------
 	panmailv1connect.EmailProviderServiceGetEmailProviderProcedure:   {minRole: RoleViewer, scope: entities.ScopeProvidersRead},
 	panmailv1connect.EmailProviderServiceListEmailProvidersProcedure: {minRole: RoleViewer, scope: entities.ScopeProvidersRead},
+	// Reads public DNS and reports on it. It touches the stored DKIM private
+	// key to derive the matching public half, but returns neither the key nor
+	// anything derived from it beyond a yes/no, so it stays a read.
+	panmailv1connect.EmailProviderServiceCheckDomainHealthProcedure: {minRole: RoleViewer, scope: entities.ScopeProvidersRead},
 	panmailv1connect.TemplateServiceGetTemplateProcedure:             {minRole: RoleViewer, scope: entities.ScopeTemplatesRead},
 	panmailv1connect.TemplateServiceListTemplatesProcedure:           {minRole: RoleViewer, scope: entities.ScopeTemplatesRead},
 	panmailv1connect.SuppressionServiceListSuppressionsProcedure:     {minRole: RoleViewer, scope: entities.ScopeSuppressionsRead},

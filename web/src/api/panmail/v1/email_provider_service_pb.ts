@@ -9,6 +9,53 @@ import { ProviderType } from "./provider_type_pb.js";
 import { EmailProvider, ImapConfig, MailgunConfig, Pop3Config, PostmarkConfig, SendGridConfig, SesConfig, SmtpConfig } from "./email_provider_pb.js";
 
 /**
+ * Whether the key published for a selector is the one being signed with.
+ *
+ * Its own field rather than folded into DnsCheck.valid, because a published
+ * record that parses correctly but belongs to a different key pair is valid
+ * DNS and a total delivery failure, and conflating them would report the
+ * worst case as healthy.
+ *
+ * @generated from enum panmail.v1.DkimKeyMatch
+ */
+export enum DkimKeyMatch {
+  /**
+   * Not checked: the provider's private key was unavailable, which is the
+   * case when checking a domain before saving.
+   *
+   * @generated from enum value: DKIM_KEY_MATCH_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DKIM_KEY_MATCH_MATCHES = 1;
+   */
+  MATCHES = 1,
+
+  /**
+   * Published, parseable, and derived from a different private key. Every
+   * signature this provider sends will fail verification.
+   *
+   * @generated from enum value: DKIM_KEY_MATCH_MISMATCH = 2;
+   */
+  MISMATCH = 2,
+
+  /**
+   * One side could not be parsed, so no comparison was possible.
+   *
+   * @generated from enum value: DKIM_KEY_MATCH_UNKNOWN = 3;
+   */
+  UNKNOWN = 3,
+}
+// Retrieve enum metadata with: proto3.getEnumType(DkimKeyMatch)
+proto3.util.setEnumType(DkimKeyMatch, "panmail.v1.DkimKeyMatch", [
+  { no: 0, name: "DKIM_KEY_MATCH_UNSPECIFIED" },
+  { no: 1, name: "DKIM_KEY_MATCH_MATCHES" },
+  { no: 2, name: "DKIM_KEY_MATCH_MISMATCH" },
+  { no: 3, name: "DKIM_KEY_MATCH_UNKNOWN" },
+]);
+
+/**
  * @generated from message panmail.v1.CreateEmailProviderRequest
  */
 export class CreateEmailProviderRequest extends Message<CreateEmailProviderRequest> {
@@ -622,6 +669,253 @@ export class TestEmailProviderResponse extends Message<TestEmailProviderResponse
 
   static equals(a: TestEmailProviderResponse | PlainMessage<TestEmailProviderResponse> | undefined, b: TestEmailProviderResponse | PlainMessage<TestEmailProviderResponse> | undefined): boolean {
     return proto3.util.equals(TestEmailProviderResponse, a, b);
+  }
+}
+
+/**
+ * The result of one DNS lookup.
+ *
+ * `found` and `valid` are separate because they fail differently and want
+ * different advice: nothing published at all is a setup step that was never
+ * done, whereas a record that exists but does not parse is usually a typo in
+ * something that was working.
+ *
+ * @generated from message panmail.v1.DnsCheck
+ */
+export class DnsCheck extends Message<DnsCheck> {
+  /**
+   * @generated from field: bool found = 1;
+   */
+  found = false;
+
+  /**
+   * @generated from field: bool valid = 2;
+   */
+  valid = false;
+
+  /**
+   * The record as published, so an operator can compare it against what they
+   * meant to publish without leaving the page.
+   *
+   * @generated from field: string record = 3;
+   */
+  record = "";
+
+  /**
+   * @generated from field: string details = 4;
+   */
+  details = "";
+
+  /**
+   * Set when the lookup itself failed — a timeout or a broken resolver, which
+   * is not the same as the record being absent.
+   *
+   * @generated from field: string error = 5;
+   */
+  error = "";
+
+  constructor(data?: PartialMessage<DnsCheck>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.DnsCheck";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "found", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 2, name: "valid", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 3, name: "record", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "details", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): DnsCheck {
+    return new DnsCheck().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): DnsCheck {
+    return new DnsCheck().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): DnsCheck {
+    return new DnsCheck().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: DnsCheck | PlainMessage<DnsCheck> | undefined, b: DnsCheck | PlainMessage<DnsCheck> | undefined): boolean {
+    return proto3.util.equals(DnsCheck, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.DkimSelectorCheck
+ */
+export class DkimSelectorCheck extends Message<DkimSelectorCheck> {
+  /**
+   * @generated from field: string selector = 1;
+   */
+  selector = "";
+
+  /**
+   * @generated from field: panmail.v1.DnsCheck dns = 2;
+   */
+  dns?: DnsCheck;
+
+  /**
+   * @generated from field: panmail.v1.DkimKeyMatch key_match = 3;
+   */
+  keyMatch = DkimKeyMatch.UNSPECIFIED;
+
+  /**
+   * Why the comparison could not be made, when key_match is UNKNOWN.
+   *
+   * @generated from field: string key_match_details = 4;
+   */
+  keyMatchDetails = "";
+
+  constructor(data?: PartialMessage<DkimSelectorCheck>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.DkimSelectorCheck";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "selector", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "dns", kind: "message", T: DnsCheck },
+    { no: 3, name: "key_match", kind: "enum", T: proto3.getEnumType(DkimKeyMatch) },
+    { no: 4, name: "key_match_details", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): DkimSelectorCheck {
+    return new DkimSelectorCheck().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): DkimSelectorCheck {
+    return new DkimSelectorCheck().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): DkimSelectorCheck {
+    return new DkimSelectorCheck().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: DkimSelectorCheck | PlainMessage<DkimSelectorCheck> | undefined, b: DkimSelectorCheck | PlainMessage<DkimSelectorCheck> | undefined): boolean {
+    return proto3.util.equals(DkimSelectorCheck, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.CheckDomainHealthRequest
+ */
+export class CheckDomainHealthRequest extends Message<CheckDomainHealthRequest> {
+  /**
+   * Checks the DKIM domain and selector saved on this provider, and compares
+   * the published key against the private key it signs with.
+   *
+   * @generated from field: string provider_id = 1;
+   */
+  providerId = "";
+
+  /**
+   * Checks an arbitrary domain instead, for looking before a provider is
+   * saved. No key comparison is possible in that case.
+   *
+   * @generated from field: string domain = 2;
+   */
+  domain = "";
+
+  /**
+   * @generated from field: repeated string selectors = 3;
+   */
+  selectors: string[] = [];
+
+  constructor(data?: PartialMessage<CheckDomainHealthRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.CheckDomainHealthRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "provider_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "domain", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "selectors", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CheckDomainHealthRequest {
+    return new CheckDomainHealthRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): CheckDomainHealthRequest {
+    return new CheckDomainHealthRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): CheckDomainHealthRequest {
+    return new CheckDomainHealthRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: CheckDomainHealthRequest | PlainMessage<CheckDomainHealthRequest> | undefined, b: CheckDomainHealthRequest | PlainMessage<CheckDomainHealthRequest> | undefined): boolean {
+    return proto3.util.equals(CheckDomainHealthRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.CheckDomainHealthResponse
+ */
+export class CheckDomainHealthResponse extends Message<CheckDomainHealthResponse> {
+  /**
+   * @generated from field: string domain = 1;
+   */
+  domain = "";
+
+  /**
+   * @generated from field: panmail.v1.DnsCheck spf = 2;
+   */
+  spf?: DnsCheck;
+
+  /**
+   * @generated from field: panmail.v1.DnsCheck dmarc = 3;
+   */
+  dmarc?: DnsCheck;
+
+  /**
+   * @generated from field: panmail.v1.DnsCheck mx = 4;
+   */
+  mx?: DnsCheck;
+
+  /**
+   * @generated from field: repeated panmail.v1.DkimSelectorCheck dkim = 5;
+   */
+  dkim: DkimSelectorCheck[] = [];
+
+  constructor(data?: PartialMessage<CheckDomainHealthResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.CheckDomainHealthResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "domain", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "spf", kind: "message", T: DnsCheck },
+    { no: 3, name: "dmarc", kind: "message", T: DnsCheck },
+    { no: 4, name: "mx", kind: "message", T: DnsCheck },
+    { no: 5, name: "dkim", kind: "message", T: DkimSelectorCheck, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): CheckDomainHealthResponse {
+    return new CheckDomainHealthResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): CheckDomainHealthResponse {
+    return new CheckDomainHealthResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): CheckDomainHealthResponse {
+    return new CheckDomainHealthResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: CheckDomainHealthResponse | PlainMessage<CheckDomainHealthResponse> | undefined, b: CheckDomainHealthResponse | PlainMessage<CheckDomainHealthResponse> | undefined): boolean {
+    return proto3.util.equals(CheckDomainHealthResponse, a, b);
   }
 }
 

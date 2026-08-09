@@ -11,11 +11,16 @@ import (
 
 type emailProviderService struct {
 	manageProvidersUsecase usecases.ManageProvidersUsecase
+	domainHealthUsecase    usecases.DomainHealthUsecase
 }
 
-func NewEmailProviderService(manageProvidersUsecase usecases.ManageProvidersUsecase) EmailProviderService {
+func NewEmailProviderService(
+	manageProvidersUsecase usecases.ManageProvidersUsecase,
+	domainHealthUsecase usecases.DomainHealthUsecase,
+) EmailProviderService {
 	return &emailProviderService{
 		manageProvidersUsecase: manageProvidersUsecase,
+		domainHealthUsecase:    domainHealthUsecase,
 	}
 }
 
@@ -87,4 +92,13 @@ func (s *emailProviderService) TestEmailProviderConfig(ctx context.Context, req 
 		}, nil
 	}
 	return &panmailv1.TestEmailProviderResponse{Success: true}, nil
+}
+
+func (s *emailProviderService) CheckDomainHealth(ctx context.Context, req *panmailv1.CheckDomainHealthRequest) (*panmailv1.CheckDomainHealthResponse, error) {
+	tenantID := middlewares.GetTenantID(ctx)
+	res, err := s.domainHealthUsecase.Check(ctx, tenantID, req)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return res, nil
 }

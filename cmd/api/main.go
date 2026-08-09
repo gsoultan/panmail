@@ -266,7 +266,8 @@ func main() {
 	providerFactory := providerusecases.NewProviderFactory()
 
 	manageProvidersUsecase := providerusecases.NewManageProvidersUsecase(providerRepo, providerFactory)
-	emailProviderService := providerservices.NewEmailProviderService(manageProvidersUsecase)
+	domainHealthUsecase := providerusecases.NewDomainHealthUsecase(providerRepo)
+	emailProviderService := providerservices.NewEmailProviderService(manageProvidersUsecase, domainHealthUsecase)
 
 	manageTemplatesUsecase := templateusecases.NewManageTemplatesUsecase(templateRepo)
 	templateService := templateservices.NewTemplateService(manageTemplatesUsecase)

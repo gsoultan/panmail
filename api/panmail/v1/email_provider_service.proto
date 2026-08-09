@@ -15,6 +15,11 @@ service EmailProviderService {
   rpc DeleteEmailProvider(DeleteEmailProviderRequest) returns (DeleteEmailProviderResponse);
   rpc TestEmailProvider(TestEmailProviderRequest) returns (TestEmailProviderResponse);
   rpc TestEmailProviderConfig(CreateEmailProviderRequest) returns (TestEmailProviderResponse);
+
+  // Reports the DNS posture of a sending domain: SPF, DMARC, MX and each DKIM
+  // selector. TestEmailProvider opens a socket to the server; this asks whether
+  // the rest of the world will accept what that server sends.
+  rpc CheckDomainHealth(CheckDomainHealthRequest) returns (CheckDomainHealthResponse);
 }
 
 message CreateEmailProviderRequest {
@@ -93,4 +98,66 @@ message TestEmailProviderRequest {
 message TestEmailProviderResponse {
   bool success = 1;
   string error_message = 2;
+}
+
+// The result of one DNS lookup.
+//
+// `found` and `valid` are separate because they fail differently and want
+// different advice: nothing published at all is a setup step that was never
+// done, whereas a record that exists but does not parse is usually a typo in
+// something that was working.
+message DnsCheck {
+  bool found = 1;
+  bool valid = 2;
+  // The record as published, so an operator can compare it against what they
+  // meant to publish without leaving the page.
+  string record = 3;
+  string details = 4;
+  // Set when the lookup itself failed — a timeout or a broken resolver, which
+  // is not the same as the record being absent.
+  string error = 5;
+}
+
+// Whether the key published for a selector is the one being signed with.
+//
+// Its own field rather than folded into DnsCheck.valid, because a published
+// record that parses correctly but belongs to a different key pair is valid
+// DNS and a total delivery failure, and conflating them would report the
+// worst case as healthy.
+enum DkimKeyMatch {
+  // Not checked: the provider's private key was unavailable, which is the
+  // case when checking a domain before saving.
+  DKIM_KEY_MATCH_UNSPECIFIED = 0;
+  DKIM_KEY_MATCH_MATCHES = 1;
+  // Published, parseable, and derived from a different private key. Every
+  // signature this provider sends will fail verification.
+  DKIM_KEY_MATCH_MISMATCH = 2;
+  // One side could not be parsed, so no comparison was possible.
+  DKIM_KEY_MATCH_UNKNOWN = 3;
+}
+
+message DkimSelectorCheck {
+  string selector = 1;
+  DnsCheck dns = 2;
+  DkimKeyMatch key_match = 3;
+  // Why the comparison could not be made, when key_match is UNKNOWN.
+  string key_match_details = 4;
+}
+
+message CheckDomainHealthRequest {
+  // Checks the DKIM domain and selector saved on this provider, and compares
+  // the published key against the private key it signs with.
+  string provider_id = 1;
+  // Checks an arbitrary domain instead, for looking before a provider is
+  // saved. No key comparison is possible in that case.
+  string domain = 2;
+  repeated string selectors = 3;
+}
+
+message CheckDomainHealthResponse {
+  string domain = 1;
+  DnsCheck spf = 2;
+  DnsCheck dmarc = 3;
+  DnsCheck mx = 4;
+  repeated DkimSelectorCheck dkim = 5;
 }

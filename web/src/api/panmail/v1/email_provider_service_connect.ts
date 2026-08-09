@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { CreateEmailProviderRequest, CreateEmailProviderResponse, DeleteEmailProviderRequest, DeleteEmailProviderResponse, GetEmailProviderRequest, GetEmailProviderResponse, ListEmailProvidersRequest, ListEmailProvidersResponse, TestEmailProviderRequest, TestEmailProviderResponse, UpdateEmailProviderRequest, UpdateEmailProviderResponse } from "./email_provider_service_pb.js";
+import { CheckDomainHealthRequest, CheckDomainHealthResponse, CreateEmailProviderRequest, CreateEmailProviderResponse, DeleteEmailProviderRequest, DeleteEmailProviderResponse, GetEmailProviderRequest, GetEmailProviderResponse, ListEmailProvidersRequest, ListEmailProvidersResponse, TestEmailProviderRequest, TestEmailProviderResponse, UpdateEmailProviderRequest, UpdateEmailProviderResponse } from "./email_provider_service_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -73,6 +73,19 @@ export const EmailProviderService = {
       name: "TestEmailProviderConfig",
       I: CreateEmailProviderRequest,
       O: TestEmailProviderResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * Reports the DNS posture of a sending domain: SPF, DMARC, MX and each DKIM
+     * selector. TestEmailProvider opens a socket to the server; this asks whether
+     * the rest of the world will accept what that server sends.
+     *
+     * @generated from rpc panmail.v1.EmailProviderService.CheckDomainHealth
+     */
+    checkDomainHealth: {
+      name: "CheckDomainHealth",
+      I: CheckDomainHealthRequest,
+      O: CheckDomainHealthResponse,
       kind: MethodKind.Unary,
     },
   }

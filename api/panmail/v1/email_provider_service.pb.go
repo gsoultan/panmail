@@ -21,6 +21,69 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Whether the key published for a selector is the one being signed with.
+//
+// Its own field rather than folded into DnsCheck.valid, because a published
+// record that parses correctly but belongs to a different key pair is valid
+// DNS and a total delivery failure, and conflating them would report the
+// worst case as healthy.
+type DkimKeyMatch int32
+
+const (
+	// Not checked: the provider's private key was unavailable, which is the
+	// case when checking a domain before saving.
+	DkimKeyMatch_DKIM_KEY_MATCH_UNSPECIFIED DkimKeyMatch = 0
+	DkimKeyMatch_DKIM_KEY_MATCH_MATCHES     DkimKeyMatch = 1
+	// Published, parseable, and derived from a different private key. Every
+	// signature this provider sends will fail verification.
+	DkimKeyMatch_DKIM_KEY_MATCH_MISMATCH DkimKeyMatch = 2
+	// One side could not be parsed, so no comparison was possible.
+	DkimKeyMatch_DKIM_KEY_MATCH_UNKNOWN DkimKeyMatch = 3
+)
+
+// Enum value maps for DkimKeyMatch.
+var (
+	DkimKeyMatch_name = map[int32]string{
+		0: "DKIM_KEY_MATCH_UNSPECIFIED",
+		1: "DKIM_KEY_MATCH_MATCHES",
+		2: "DKIM_KEY_MATCH_MISMATCH",
+		3: "DKIM_KEY_MATCH_UNKNOWN",
+	}
+	DkimKeyMatch_value = map[string]int32{
+		"DKIM_KEY_MATCH_UNSPECIFIED": 0,
+		"DKIM_KEY_MATCH_MATCHES":     1,
+		"DKIM_KEY_MATCH_MISMATCH":    2,
+		"DKIM_KEY_MATCH_UNKNOWN":     3,
+	}
+)
+
+func (x DkimKeyMatch) Enum() *DkimKeyMatch {
+	p := new(DkimKeyMatch)
+	*p = x
+	return p
+}
+
+func (x DkimKeyMatch) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DkimKeyMatch) Descriptor() protoreflect.EnumDescriptor {
+	return file_panmail_v1_email_provider_service_proto_enumTypes[0].Descriptor()
+}
+
+func (DkimKeyMatch) Type() protoreflect.EnumType {
+	return &file_panmail_v1_email_provider_service_proto_enumTypes[0]
+}
+
+func (x DkimKeyMatch) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DkimKeyMatch.Descriptor instead.
+func (DkimKeyMatch) EnumDescriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_service_proto_rawDescGZIP(), []int{0}
+}
+
 type CreateEmailProviderRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -884,6 +947,301 @@ func (x *TestEmailProviderResponse) GetErrorMessage() string {
 	return ""
 }
 
+// The result of one DNS lookup.
+//
+// `found` and `valid` are separate because they fail differently and want
+// different advice: nothing published at all is a setup step that was never
+// done, whereas a record that exists but does not parse is usually a typo in
+// something that was working.
+type DnsCheck struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Found bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	Valid bool                   `protobuf:"varint,2,opt,name=valid,proto3" json:"valid,omitempty"`
+	// The record as published, so an operator can compare it against what they
+	// meant to publish without leaving the page.
+	Record  string `protobuf:"bytes,3,opt,name=record,proto3" json:"record,omitempty"`
+	Details string `protobuf:"bytes,4,opt,name=details,proto3" json:"details,omitempty"`
+	// Set when the lookup itself failed — a timeout or a broken resolver, which
+	// is not the same as the record being absent.
+	Error         string `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DnsCheck) Reset() {
+	*x = DnsCheck{}
+	mi := &file_panmail_v1_email_provider_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DnsCheck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DnsCheck) ProtoMessage() {}
+
+func (x *DnsCheck) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DnsCheck.ProtoReflect.Descriptor instead.
+func (*DnsCheck) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_service_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *DnsCheck) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *DnsCheck) GetValid() bool {
+	if x != nil {
+		return x.Valid
+	}
+	return false
+}
+
+func (x *DnsCheck) GetRecord() string {
+	if x != nil {
+		return x.Record
+	}
+	return ""
+}
+
+func (x *DnsCheck) GetDetails() string {
+	if x != nil {
+		return x.Details
+	}
+	return ""
+}
+
+func (x *DnsCheck) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type DkimSelectorCheck struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Selector string                 `protobuf:"bytes,1,opt,name=selector,proto3" json:"selector,omitempty"`
+	Dns      *DnsCheck              `protobuf:"bytes,2,opt,name=dns,proto3" json:"dns,omitempty"`
+	KeyMatch DkimKeyMatch           `protobuf:"varint,3,opt,name=key_match,json=keyMatch,proto3,enum=panmail.v1.DkimKeyMatch" json:"key_match,omitempty"`
+	// Why the comparison could not be made, when key_match is UNKNOWN.
+	KeyMatchDetails string `protobuf:"bytes,4,opt,name=key_match_details,json=keyMatchDetails,proto3" json:"key_match_details,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DkimSelectorCheck) Reset() {
+	*x = DkimSelectorCheck{}
+	mi := &file_panmail_v1_email_provider_service_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DkimSelectorCheck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DkimSelectorCheck) ProtoMessage() {}
+
+func (x *DkimSelectorCheck) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_service_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DkimSelectorCheck.ProtoReflect.Descriptor instead.
+func (*DkimSelectorCheck) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_service_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *DkimSelectorCheck) GetSelector() string {
+	if x != nil {
+		return x.Selector
+	}
+	return ""
+}
+
+func (x *DkimSelectorCheck) GetDns() *DnsCheck {
+	if x != nil {
+		return x.Dns
+	}
+	return nil
+}
+
+func (x *DkimSelectorCheck) GetKeyMatch() DkimKeyMatch {
+	if x != nil {
+		return x.KeyMatch
+	}
+	return DkimKeyMatch_DKIM_KEY_MATCH_UNSPECIFIED
+}
+
+func (x *DkimSelectorCheck) GetKeyMatchDetails() string {
+	if x != nil {
+		return x.KeyMatchDetails
+	}
+	return ""
+}
+
+type CheckDomainHealthRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Checks the DKIM domain and selector saved on this provider, and compares
+	// the published key against the private key it signs with.
+	ProviderId string `protobuf:"bytes,1,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	// Checks an arbitrary domain instead, for looking before a provider is
+	// saved. No key comparison is possible in that case.
+	Domain        string   `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"`
+	Selectors     []string `protobuf:"bytes,3,rep,name=selectors,proto3" json:"selectors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckDomainHealthRequest) Reset() {
+	*x = CheckDomainHealthRequest{}
+	mi := &file_panmail_v1_email_provider_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckDomainHealthRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckDomainHealthRequest) ProtoMessage() {}
+
+func (x *CheckDomainHealthRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckDomainHealthRequest.ProtoReflect.Descriptor instead.
+func (*CheckDomainHealthRequest) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CheckDomainHealthRequest) GetProviderId() string {
+	if x != nil {
+		return x.ProviderId
+	}
+	return ""
+}
+
+func (x *CheckDomainHealthRequest) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
+func (x *CheckDomainHealthRequest) GetSelectors() []string {
+	if x != nil {
+		return x.Selectors
+	}
+	return nil
+}
+
+type CheckDomainHealthResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Domain        string                 `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	Spf           *DnsCheck              `protobuf:"bytes,2,opt,name=spf,proto3" json:"spf,omitempty"`
+	Dmarc         *DnsCheck              `protobuf:"bytes,3,opt,name=dmarc,proto3" json:"dmarc,omitempty"`
+	Mx            *DnsCheck              `protobuf:"bytes,4,opt,name=mx,proto3" json:"mx,omitempty"`
+	Dkim          []*DkimSelectorCheck   `protobuf:"bytes,5,rep,name=dkim,proto3" json:"dkim,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckDomainHealthResponse) Reset() {
+	*x = CheckDomainHealthResponse{}
+	mi := &file_panmail_v1_email_provider_service_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckDomainHealthResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckDomainHealthResponse) ProtoMessage() {}
+
+func (x *CheckDomainHealthResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_service_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckDomainHealthResponse.ProtoReflect.Descriptor instead.
+func (*CheckDomainHealthResponse) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_service_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CheckDomainHealthResponse) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
+func (x *CheckDomainHealthResponse) GetSpf() *DnsCheck {
+	if x != nil {
+		return x.Spf
+	}
+	return nil
+}
+
+func (x *CheckDomainHealthResponse) GetDmarc() *DnsCheck {
+	if x != nil {
+		return x.Dmarc
+	}
+	return nil
+}
+
+func (x *CheckDomainHealthResponse) GetMx() *DnsCheck {
+	if x != nil {
+		return x.Mx
+	}
+	return nil
+}
+
+func (x *CheckDomainHealthResponse) GetDkim() []*DkimSelectorCheck {
+	if x != nil {
+		return x.Dkim
+	}
+	return nil
+}
+
 var File_panmail_v1_email_provider_service_proto protoreflect.FileDescriptor
 
 const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
@@ -942,7 +1300,34 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"Z\n" +
 	"\x19TestEmailProviderResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage2\xde\x05\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"~\n" +
+	"\bDnsCheck\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x14\n" +
+	"\x05valid\x18\x02 \x01(\bR\x05valid\x12\x16\n" +
+	"\x06record\x18\x03 \x01(\tR\x06record\x12\x18\n" +
+	"\adetails\x18\x04 \x01(\tR\adetails\x12\x14\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\"\xba\x01\n" +
+	"\x11DkimSelectorCheck\x12\x1a\n" +
+	"\bselector\x18\x01 \x01(\tR\bselector\x12&\n" +
+	"\x03dns\x18\x02 \x01(\v2\x14.panmail.v1.DnsCheckR\x03dns\x125\n" +
+	"\tkey_match\x18\x03 \x01(\x0e2\x18.panmail.v1.DkimKeyMatchR\bkeyMatch\x12*\n" +
+	"\x11key_match_details\x18\x04 \x01(\tR\x0fkeyMatchDetails\"q\n" +
+	"\x18CheckDomainHealthRequest\x12\x1f\n" +
+	"\vprovider_id\x18\x01 \x01(\tR\n" +
+	"providerId\x12\x16\n" +
+	"\x06domain\x18\x02 \x01(\tR\x06domain\x12\x1c\n" +
+	"\tselectors\x18\x03 \x03(\tR\tselectors\"\xe0\x01\n" +
+	"\x19CheckDomainHealthResponse\x12\x16\n" +
+	"\x06domain\x18\x01 \x01(\tR\x06domain\x12&\n" +
+	"\x03spf\x18\x02 \x01(\v2\x14.panmail.v1.DnsCheckR\x03spf\x12*\n" +
+	"\x05dmarc\x18\x03 \x01(\v2\x14.panmail.v1.DnsCheckR\x05dmarc\x12$\n" +
+	"\x02mx\x18\x04 \x01(\v2\x14.panmail.v1.DnsCheckR\x02mx\x121\n" +
+	"\x04dkim\x18\x05 \x03(\v2\x1d.panmail.v1.DkimSelectorCheckR\x04dkim*\x83\x01\n" +
+	"\fDkimKeyMatch\x12\x1e\n" +
+	"\x1aDKIM_KEY_MATCH_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16DKIM_KEY_MATCH_MATCHES\x10\x01\x12\x1b\n" +
+	"\x17DKIM_KEY_MATCH_MISMATCH\x10\x02\x12\x1a\n" +
+	"\x16DKIM_KEY_MATCH_UNKNOWN\x10\x032\xc0\x06\n" +
 	"\x14EmailProviderService\x12f\n" +
 	"\x13CreateEmailProvider\x12&.panmail.v1.CreateEmailProviderRequest\x1a'.panmail.v1.CreateEmailProviderResponse\x12]\n" +
 	"\x10GetEmailProvider\x12#.panmail.v1.GetEmailProviderRequest\x1a$.panmail.v1.GetEmailProviderResponse\x12c\n" +
@@ -950,7 +1335,8 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\x13UpdateEmailProvider\x12&.panmail.v1.UpdateEmailProviderRequest\x1a'.panmail.v1.UpdateEmailProviderResponse\x12f\n" +
 	"\x13DeleteEmailProvider\x12&.panmail.v1.DeleteEmailProviderRequest\x1a'.panmail.v1.DeleteEmailProviderResponse\x12`\n" +
 	"\x11TestEmailProvider\x12$.panmail.v1.TestEmailProviderRequest\x1a%.panmail.v1.TestEmailProviderResponse\x12h\n" +
-	"\x17TestEmailProviderConfig\x12&.panmail.v1.CreateEmailProviderRequest\x1a%.panmail.v1.TestEmailProviderResponseB\xaa\x01\n" +
+	"\x17TestEmailProviderConfig\x12&.panmail.v1.CreateEmailProviderRequest\x1a%.panmail.v1.TestEmailProviderResponse\x12`\n" +
+	"\x11CheckDomainHealth\x12$.panmail.v1.CheckDomainHealthRequest\x1a%.panmail.v1.CheckDomainHealthResponseB\xaa\x01\n" +
 	"\x0ecom.panmail.v1B\x19EmailProviderServiceProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"
@@ -967,70 +1353,84 @@ func file_panmail_v1_email_provider_service_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_email_provider_service_proto_rawDescData
 }
 
-var file_panmail_v1_email_provider_service_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_panmail_v1_email_provider_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_panmail_v1_email_provider_service_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_panmail_v1_email_provider_service_proto_goTypes = []any{
-	(*CreateEmailProviderRequest)(nil),  // 0: panmail.v1.CreateEmailProviderRequest
-	(*CreateEmailProviderResponse)(nil), // 1: panmail.v1.CreateEmailProviderResponse
-	(*GetEmailProviderRequest)(nil),     // 2: panmail.v1.GetEmailProviderRequest
-	(*GetEmailProviderResponse)(nil),    // 3: panmail.v1.GetEmailProviderResponse
-	(*ListEmailProvidersRequest)(nil),   // 4: panmail.v1.ListEmailProvidersRequest
-	(*ListEmailProvidersResponse)(nil),  // 5: panmail.v1.ListEmailProvidersResponse
-	(*UpdateEmailProviderRequest)(nil),  // 6: panmail.v1.UpdateEmailProviderRequest
-	(*UpdateEmailProviderResponse)(nil), // 7: panmail.v1.UpdateEmailProviderResponse
-	(*DeleteEmailProviderRequest)(nil),  // 8: panmail.v1.DeleteEmailProviderRequest
-	(*DeleteEmailProviderResponse)(nil), // 9: panmail.v1.DeleteEmailProviderResponse
-	(*TestEmailProviderRequest)(nil),    // 10: panmail.v1.TestEmailProviderRequest
-	(*TestEmailProviderResponse)(nil),   // 11: panmail.v1.TestEmailProviderResponse
-	(ProviderType)(0),                   // 12: panmail.v1.ProviderType
-	(*SmtpConfig)(nil),                  // 13: panmail.v1.SmtpConfig
-	(*ImapConfig)(nil),                  // 14: panmail.v1.ImapConfig
-	(*Pop3Config)(nil),                  // 15: panmail.v1.Pop3Config
-	(*SendGridConfig)(nil),              // 16: panmail.v1.SendGridConfig
-	(*SesConfig)(nil),                   // 17: panmail.v1.SesConfig
-	(*PostmarkConfig)(nil),              // 18: panmail.v1.PostmarkConfig
-	(*MailgunConfig)(nil),               // 19: panmail.v1.MailgunConfig
-	(*EmailProvider)(nil),               // 20: panmail.v1.EmailProvider
+	(DkimKeyMatch)(0),                   // 0: panmail.v1.DkimKeyMatch
+	(*CreateEmailProviderRequest)(nil),  // 1: panmail.v1.CreateEmailProviderRequest
+	(*CreateEmailProviderResponse)(nil), // 2: panmail.v1.CreateEmailProviderResponse
+	(*GetEmailProviderRequest)(nil),     // 3: panmail.v1.GetEmailProviderRequest
+	(*GetEmailProviderResponse)(nil),    // 4: panmail.v1.GetEmailProviderResponse
+	(*ListEmailProvidersRequest)(nil),   // 5: panmail.v1.ListEmailProvidersRequest
+	(*ListEmailProvidersResponse)(nil),  // 6: panmail.v1.ListEmailProvidersResponse
+	(*UpdateEmailProviderRequest)(nil),  // 7: panmail.v1.UpdateEmailProviderRequest
+	(*UpdateEmailProviderResponse)(nil), // 8: panmail.v1.UpdateEmailProviderResponse
+	(*DeleteEmailProviderRequest)(nil),  // 9: panmail.v1.DeleteEmailProviderRequest
+	(*DeleteEmailProviderResponse)(nil), // 10: panmail.v1.DeleteEmailProviderResponse
+	(*TestEmailProviderRequest)(nil),    // 11: panmail.v1.TestEmailProviderRequest
+	(*TestEmailProviderResponse)(nil),   // 12: panmail.v1.TestEmailProviderResponse
+	(*DnsCheck)(nil),                    // 13: panmail.v1.DnsCheck
+	(*DkimSelectorCheck)(nil),           // 14: panmail.v1.DkimSelectorCheck
+	(*CheckDomainHealthRequest)(nil),    // 15: panmail.v1.CheckDomainHealthRequest
+	(*CheckDomainHealthResponse)(nil),   // 16: panmail.v1.CheckDomainHealthResponse
+	(ProviderType)(0),                   // 17: panmail.v1.ProviderType
+	(*SmtpConfig)(nil),                  // 18: panmail.v1.SmtpConfig
+	(*ImapConfig)(nil),                  // 19: panmail.v1.ImapConfig
+	(*Pop3Config)(nil),                  // 20: panmail.v1.Pop3Config
+	(*SendGridConfig)(nil),              // 21: panmail.v1.SendGridConfig
+	(*SesConfig)(nil),                   // 22: panmail.v1.SesConfig
+	(*PostmarkConfig)(nil),              // 23: panmail.v1.PostmarkConfig
+	(*MailgunConfig)(nil),               // 24: panmail.v1.MailgunConfig
+	(*EmailProvider)(nil),               // 25: panmail.v1.EmailProvider
 }
 var file_panmail_v1_email_provider_service_proto_depIdxs = []int32{
-	12, // 0: panmail.v1.CreateEmailProviderRequest.type:type_name -> panmail.v1.ProviderType
-	13, // 1: panmail.v1.CreateEmailProviderRequest.smtp:type_name -> panmail.v1.SmtpConfig
-	14, // 2: panmail.v1.CreateEmailProviderRequest.imap:type_name -> panmail.v1.ImapConfig
-	15, // 3: panmail.v1.CreateEmailProviderRequest.pop3:type_name -> panmail.v1.Pop3Config
-	16, // 4: panmail.v1.CreateEmailProviderRequest.sendgrid:type_name -> panmail.v1.SendGridConfig
-	17, // 5: panmail.v1.CreateEmailProviderRequest.ses:type_name -> panmail.v1.SesConfig
-	18, // 6: panmail.v1.CreateEmailProviderRequest.postmark:type_name -> panmail.v1.PostmarkConfig
-	19, // 7: panmail.v1.CreateEmailProviderRequest.mailgun:type_name -> panmail.v1.MailgunConfig
-	20, // 8: panmail.v1.CreateEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
-	20, // 9: panmail.v1.GetEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
-	12, // 10: panmail.v1.ListEmailProvidersRequest.type:type_name -> panmail.v1.ProviderType
-	20, // 11: panmail.v1.ListEmailProvidersResponse.providers:type_name -> panmail.v1.EmailProvider
-	13, // 12: panmail.v1.UpdateEmailProviderRequest.smtp:type_name -> panmail.v1.SmtpConfig
-	14, // 13: panmail.v1.UpdateEmailProviderRequest.imap:type_name -> panmail.v1.ImapConfig
-	15, // 14: panmail.v1.UpdateEmailProviderRequest.pop3:type_name -> panmail.v1.Pop3Config
-	16, // 15: panmail.v1.UpdateEmailProviderRequest.sendgrid:type_name -> panmail.v1.SendGridConfig
-	17, // 16: panmail.v1.UpdateEmailProviderRequest.ses:type_name -> panmail.v1.SesConfig
-	18, // 17: panmail.v1.UpdateEmailProviderRequest.postmark:type_name -> panmail.v1.PostmarkConfig
-	19, // 18: panmail.v1.UpdateEmailProviderRequest.mailgun:type_name -> panmail.v1.MailgunConfig
-	20, // 19: panmail.v1.UpdateEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
-	0,  // 20: panmail.v1.EmailProviderService.CreateEmailProvider:input_type -> panmail.v1.CreateEmailProviderRequest
-	2,  // 21: panmail.v1.EmailProviderService.GetEmailProvider:input_type -> panmail.v1.GetEmailProviderRequest
-	4,  // 22: panmail.v1.EmailProviderService.ListEmailProviders:input_type -> panmail.v1.ListEmailProvidersRequest
-	6,  // 23: panmail.v1.EmailProviderService.UpdateEmailProvider:input_type -> panmail.v1.UpdateEmailProviderRequest
-	8,  // 24: panmail.v1.EmailProviderService.DeleteEmailProvider:input_type -> panmail.v1.DeleteEmailProviderRequest
-	10, // 25: panmail.v1.EmailProviderService.TestEmailProvider:input_type -> panmail.v1.TestEmailProviderRequest
-	0,  // 26: panmail.v1.EmailProviderService.TestEmailProviderConfig:input_type -> panmail.v1.CreateEmailProviderRequest
-	1,  // 27: panmail.v1.EmailProviderService.CreateEmailProvider:output_type -> panmail.v1.CreateEmailProviderResponse
-	3,  // 28: panmail.v1.EmailProviderService.GetEmailProvider:output_type -> panmail.v1.GetEmailProviderResponse
-	5,  // 29: panmail.v1.EmailProviderService.ListEmailProviders:output_type -> panmail.v1.ListEmailProvidersResponse
-	7,  // 30: panmail.v1.EmailProviderService.UpdateEmailProvider:output_type -> panmail.v1.UpdateEmailProviderResponse
-	9,  // 31: panmail.v1.EmailProviderService.DeleteEmailProvider:output_type -> panmail.v1.DeleteEmailProviderResponse
-	11, // 32: panmail.v1.EmailProviderService.TestEmailProvider:output_type -> panmail.v1.TestEmailProviderResponse
-	11, // 33: panmail.v1.EmailProviderService.TestEmailProviderConfig:output_type -> panmail.v1.TestEmailProviderResponse
-	27, // [27:34] is the sub-list for method output_type
-	20, // [20:27] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	17, // 0: panmail.v1.CreateEmailProviderRequest.type:type_name -> panmail.v1.ProviderType
+	18, // 1: panmail.v1.CreateEmailProviderRequest.smtp:type_name -> panmail.v1.SmtpConfig
+	19, // 2: panmail.v1.CreateEmailProviderRequest.imap:type_name -> panmail.v1.ImapConfig
+	20, // 3: panmail.v1.CreateEmailProviderRequest.pop3:type_name -> panmail.v1.Pop3Config
+	21, // 4: panmail.v1.CreateEmailProviderRequest.sendgrid:type_name -> panmail.v1.SendGridConfig
+	22, // 5: panmail.v1.CreateEmailProviderRequest.ses:type_name -> panmail.v1.SesConfig
+	23, // 6: panmail.v1.CreateEmailProviderRequest.postmark:type_name -> panmail.v1.PostmarkConfig
+	24, // 7: panmail.v1.CreateEmailProviderRequest.mailgun:type_name -> panmail.v1.MailgunConfig
+	25, // 8: panmail.v1.CreateEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
+	25, // 9: panmail.v1.GetEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
+	17, // 10: panmail.v1.ListEmailProvidersRequest.type:type_name -> panmail.v1.ProviderType
+	25, // 11: panmail.v1.ListEmailProvidersResponse.providers:type_name -> panmail.v1.EmailProvider
+	18, // 12: panmail.v1.UpdateEmailProviderRequest.smtp:type_name -> panmail.v1.SmtpConfig
+	19, // 13: panmail.v1.UpdateEmailProviderRequest.imap:type_name -> panmail.v1.ImapConfig
+	20, // 14: panmail.v1.UpdateEmailProviderRequest.pop3:type_name -> panmail.v1.Pop3Config
+	21, // 15: panmail.v1.UpdateEmailProviderRequest.sendgrid:type_name -> panmail.v1.SendGridConfig
+	22, // 16: panmail.v1.UpdateEmailProviderRequest.ses:type_name -> panmail.v1.SesConfig
+	23, // 17: panmail.v1.UpdateEmailProviderRequest.postmark:type_name -> panmail.v1.PostmarkConfig
+	24, // 18: panmail.v1.UpdateEmailProviderRequest.mailgun:type_name -> panmail.v1.MailgunConfig
+	25, // 19: panmail.v1.UpdateEmailProviderResponse.provider:type_name -> panmail.v1.EmailProvider
+	13, // 20: panmail.v1.DkimSelectorCheck.dns:type_name -> panmail.v1.DnsCheck
+	0,  // 21: panmail.v1.DkimSelectorCheck.key_match:type_name -> panmail.v1.DkimKeyMatch
+	13, // 22: panmail.v1.CheckDomainHealthResponse.spf:type_name -> panmail.v1.DnsCheck
+	13, // 23: panmail.v1.CheckDomainHealthResponse.dmarc:type_name -> panmail.v1.DnsCheck
+	13, // 24: panmail.v1.CheckDomainHealthResponse.mx:type_name -> panmail.v1.DnsCheck
+	14, // 25: panmail.v1.CheckDomainHealthResponse.dkim:type_name -> panmail.v1.DkimSelectorCheck
+	1,  // 26: panmail.v1.EmailProviderService.CreateEmailProvider:input_type -> panmail.v1.CreateEmailProviderRequest
+	3,  // 27: panmail.v1.EmailProviderService.GetEmailProvider:input_type -> panmail.v1.GetEmailProviderRequest
+	5,  // 28: panmail.v1.EmailProviderService.ListEmailProviders:input_type -> panmail.v1.ListEmailProvidersRequest
+	7,  // 29: panmail.v1.EmailProviderService.UpdateEmailProvider:input_type -> panmail.v1.UpdateEmailProviderRequest
+	9,  // 30: panmail.v1.EmailProviderService.DeleteEmailProvider:input_type -> panmail.v1.DeleteEmailProviderRequest
+	11, // 31: panmail.v1.EmailProviderService.TestEmailProvider:input_type -> panmail.v1.TestEmailProviderRequest
+	1,  // 32: panmail.v1.EmailProviderService.TestEmailProviderConfig:input_type -> panmail.v1.CreateEmailProviderRequest
+	15, // 33: panmail.v1.EmailProviderService.CheckDomainHealth:input_type -> panmail.v1.CheckDomainHealthRequest
+	2,  // 34: panmail.v1.EmailProviderService.CreateEmailProvider:output_type -> panmail.v1.CreateEmailProviderResponse
+	4,  // 35: panmail.v1.EmailProviderService.GetEmailProvider:output_type -> panmail.v1.GetEmailProviderResponse
+	6,  // 36: panmail.v1.EmailProviderService.ListEmailProviders:output_type -> panmail.v1.ListEmailProvidersResponse
+	8,  // 37: panmail.v1.EmailProviderService.UpdateEmailProvider:output_type -> panmail.v1.UpdateEmailProviderResponse
+	10, // 38: panmail.v1.EmailProviderService.DeleteEmailProvider:output_type -> panmail.v1.DeleteEmailProviderResponse
+	12, // 39: panmail.v1.EmailProviderService.TestEmailProvider:output_type -> panmail.v1.TestEmailProviderResponse
+	12, // 40: panmail.v1.EmailProviderService.TestEmailProviderConfig:output_type -> panmail.v1.TestEmailProviderResponse
+	16, // 41: panmail.v1.EmailProviderService.CheckDomainHealth:output_type -> panmail.v1.CheckDomainHealthResponse
+	34, // [34:42] is the sub-list for method output_type
+	26, // [26:34] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_email_provider_service_proto_init() }
@@ -1063,13 +1463,14 @@ func file_panmail_v1_email_provider_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_email_provider_service_proto_rawDesc), len(file_panmail_v1_email_provider_service_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   12,
+			NumEnums:      1,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_panmail_v1_email_provider_service_proto_goTypes,
 		DependencyIndexes: file_panmail_v1_email_provider_service_proto_depIdxs,
+		EnumInfos:         file_panmail_v1_email_provider_service_proto_enumTypes,
 		MessageInfos:      file_panmail_v1_email_provider_service_proto_msgTypes,
 	}.Build()
 	File_panmail_v1_email_provider_service_proto = out.File

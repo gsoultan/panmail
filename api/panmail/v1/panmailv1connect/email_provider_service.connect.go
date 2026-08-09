@@ -54,6 +54,9 @@ const (
 	// EmailProviderServiceTestEmailProviderConfigProcedure is the fully-qualified name of the
 	// EmailProviderService's TestEmailProviderConfig RPC.
 	EmailProviderServiceTestEmailProviderConfigProcedure = "/panmail.v1.EmailProviderService/TestEmailProviderConfig"
+	// EmailProviderServiceCheckDomainHealthProcedure is the fully-qualified name of the
+	// EmailProviderService's CheckDomainHealth RPC.
+	EmailProviderServiceCheckDomainHealthProcedure = "/panmail.v1.EmailProviderService/CheckDomainHealth"
 )
 
 // EmailProviderServiceClient is a client for the panmail.v1.EmailProviderService service.
@@ -65,6 +68,10 @@ type EmailProviderServiceClient interface {
 	DeleteEmailProvider(context.Context, *connect.Request[v1.DeleteEmailProviderRequest]) (*connect.Response[v1.DeleteEmailProviderResponse], error)
 	TestEmailProvider(context.Context, *connect.Request[v1.TestEmailProviderRequest]) (*connect.Response[v1.TestEmailProviderResponse], error)
 	TestEmailProviderConfig(context.Context, *connect.Request[v1.CreateEmailProviderRequest]) (*connect.Response[v1.TestEmailProviderResponse], error)
+	// Reports the DNS posture of a sending domain: SPF, DMARC, MX and each DKIM
+	// selector. TestEmailProvider opens a socket to the server; this asks whether
+	// the rest of the world will accept what that server sends.
+	CheckDomainHealth(context.Context, *connect.Request[v1.CheckDomainHealthRequest]) (*connect.Response[v1.CheckDomainHealthResponse], error)
 }
 
 // NewEmailProviderServiceClient constructs a client for the panmail.v1.EmailProviderService
@@ -120,6 +127,12 @@ func NewEmailProviderServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(emailProviderServiceMethods.ByName("TestEmailProviderConfig")),
 			connect.WithClientOptions(opts...),
 		),
+		checkDomainHealth: connect.NewClient[v1.CheckDomainHealthRequest, v1.CheckDomainHealthResponse](
+			httpClient,
+			baseURL+EmailProviderServiceCheckDomainHealthProcedure,
+			connect.WithSchema(emailProviderServiceMethods.ByName("CheckDomainHealth")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -132,6 +145,7 @@ type emailProviderServiceClient struct {
 	deleteEmailProvider     *connect.Client[v1.DeleteEmailProviderRequest, v1.DeleteEmailProviderResponse]
 	testEmailProvider       *connect.Client[v1.TestEmailProviderRequest, v1.TestEmailProviderResponse]
 	testEmailProviderConfig *connect.Client[v1.CreateEmailProviderRequest, v1.TestEmailProviderResponse]
+	checkDomainHealth       *connect.Client[v1.CheckDomainHealthRequest, v1.CheckDomainHealthResponse]
 }
 
 // CreateEmailProvider calls panmail.v1.EmailProviderService.CreateEmailProvider.
@@ -169,6 +183,11 @@ func (c *emailProviderServiceClient) TestEmailProviderConfig(ctx context.Context
 	return c.testEmailProviderConfig.CallUnary(ctx, req)
 }
 
+// CheckDomainHealth calls panmail.v1.EmailProviderService.CheckDomainHealth.
+func (c *emailProviderServiceClient) CheckDomainHealth(ctx context.Context, req *connect.Request[v1.CheckDomainHealthRequest]) (*connect.Response[v1.CheckDomainHealthResponse], error) {
+	return c.checkDomainHealth.CallUnary(ctx, req)
+}
+
 // EmailProviderServiceHandler is an implementation of the panmail.v1.EmailProviderService service.
 type EmailProviderServiceHandler interface {
 	CreateEmailProvider(context.Context, *connect.Request[v1.CreateEmailProviderRequest]) (*connect.Response[v1.CreateEmailProviderResponse], error)
@@ -178,6 +197,10 @@ type EmailProviderServiceHandler interface {
 	DeleteEmailProvider(context.Context, *connect.Request[v1.DeleteEmailProviderRequest]) (*connect.Response[v1.DeleteEmailProviderResponse], error)
 	TestEmailProvider(context.Context, *connect.Request[v1.TestEmailProviderRequest]) (*connect.Response[v1.TestEmailProviderResponse], error)
 	TestEmailProviderConfig(context.Context, *connect.Request[v1.CreateEmailProviderRequest]) (*connect.Response[v1.TestEmailProviderResponse], error)
+	// Reports the DNS posture of a sending domain: SPF, DMARC, MX and each DKIM
+	// selector. TestEmailProvider opens a socket to the server; this asks whether
+	// the rest of the world will accept what that server sends.
+	CheckDomainHealth(context.Context, *connect.Request[v1.CheckDomainHealthRequest]) (*connect.Response[v1.CheckDomainHealthResponse], error)
 }
 
 // NewEmailProviderServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -229,6 +252,12 @@ func NewEmailProviderServiceHandler(svc EmailProviderServiceHandler, opts ...con
 		connect.WithSchema(emailProviderServiceMethods.ByName("TestEmailProviderConfig")),
 		connect.WithHandlerOptions(opts...),
 	)
+	emailProviderServiceCheckDomainHealthHandler := connect.NewUnaryHandler(
+		EmailProviderServiceCheckDomainHealthProcedure,
+		svc.CheckDomainHealth,
+		connect.WithSchema(emailProviderServiceMethods.ByName("CheckDomainHealth")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/panmail.v1.EmailProviderService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case EmailProviderServiceCreateEmailProviderProcedure:
@@ -245,6 +274,8 @@ func NewEmailProviderServiceHandler(svc EmailProviderServiceHandler, opts ...con
 			emailProviderServiceTestEmailProviderHandler.ServeHTTP(w, r)
 		case EmailProviderServiceTestEmailProviderConfigProcedure:
 			emailProviderServiceTestEmailProviderConfigHandler.ServeHTTP(w, r)
+		case EmailProviderServiceCheckDomainHealthProcedure:
+			emailProviderServiceCheckDomainHealthHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -280,4 +311,8 @@ func (UnimplementedEmailProviderServiceHandler) TestEmailProvider(context.Contex
 
 func (UnimplementedEmailProviderServiceHandler) TestEmailProviderConfig(context.Context, *connect.Request[v1.CreateEmailProviderRequest]) (*connect.Response[v1.TestEmailProviderResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.EmailProviderService.TestEmailProviderConfig is not implemented"))
+}
+
+func (UnimplementedEmailProviderServiceHandler) CheckDomainHealth(context.Context, *connect.Request[v1.CheckDomainHealthRequest]) (*connect.Response[v1.CheckDomainHealthResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.EmailProviderService.CheckDomainHealth is not implemented"))
 }

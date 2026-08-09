@@ -2,10 +2,14 @@ package middlewares
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
 	"github.com/gsoultan/panmail/internal/auth/entities"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
 func userContext(role string) context.Context {
@@ -148,68 +152,31 @@ func TestAuthorizeAPIKeyScopes(t *testing.T) {
 	}
 }
 
-// allServedProcedures lists every procedure registered by the generated
-// handlers, taken from the policy's own key space plus the constants below so
-// that a missing rule is visible.
+// allServedProcedures lists every procedure the generated handlers register.
+//
+// Derived from the compiled descriptors rather than written out by hand. The
+// hand-written list this replaces had to be extended by whoever added an RPC,
+// and nothing enforced that: a new procedure was simply absent from the list,
+// so TestEveryProcedureHasAPolicy passed without ever having looked at it.
+// A test that silently stops covering the thing it was written for is worse
+// than no test, and this one guards deny-by-default.
 func allServedProcedures() []string {
-	return []string{
-		panmailv1connect.ApiKeyServiceCreateApiKeyProcedure,
-		panmailv1connect.ApiKeyServiceDeleteApiKeyProcedure,
-		panmailv1connect.ApiKeyServiceDisableApiKeyProcedure,
-		panmailv1connect.ApiKeyServiceEnableApiKeyProcedure,
-		panmailv1connect.ApiKeyServiceListApiKeysProcedure,
-		panmailv1connect.AuthServiceDisableTwoFactorProcedure,
-		panmailv1connect.AuthServiceEnableTwoFactorProcedure,
-		panmailv1connect.AuthServiceGetCurrentUserProcedure,
-		panmailv1connect.AuthServiceSetupTwoFactorProcedure,
-		panmailv1connect.AuthServiceSignInProcedure,
-		panmailv1connect.AuthServiceSignOutProcedure,
-		panmailv1connect.AuthServiceVerifyTwoFactorProcedure,
-		panmailv1connect.EmailProviderServiceCreateEmailProviderProcedure,
-		panmailv1connect.EmailProviderServiceDeleteEmailProviderProcedure,
-		panmailv1connect.EmailProviderServiceGetEmailProviderProcedure,
-		panmailv1connect.EmailProviderServiceListEmailProvidersProcedure,
-		panmailv1connect.EmailProviderServiceTestEmailProviderConfigProcedure,
-		panmailv1connect.EmailProviderServiceTestEmailProviderProcedure,
-		panmailv1connect.EmailProviderServiceUpdateEmailProviderProcedure,
-		panmailv1connect.EmailServiceSendEmailProcedure,
-		panmailv1connect.EventServiceDownloadArchiveProcedure,
-		panmailv1connect.EventServiceGetEventProcedure,
-		panmailv1connect.EventServiceGetMetricsProcedure,
-		panmailv1connect.EventServiceGetPerformanceMetricsProcedure,
-		panmailv1connect.EventServiceGetTimeSeriesMetricsProcedure,
-		panmailv1connect.EventServiceListArchivesProcedure,
-		panmailv1connect.EventServiceListEventsProcedure,
-		panmailv1connect.InboundServiceGetInboundEmailProcedure,
-		panmailv1connect.InboundServiceListInboundEmailsProcedure,
-		panmailv1connect.LogServiceListLogsProcedure,
-		panmailv1connect.LogServiceStreamLogsProcedure,
-		panmailv1connect.SetupServiceGetSetupStatusProcedure,
-		panmailv1connect.SetupServiceSetupProcedure,
-		panmailv1connect.SetupServiceTestDatabaseConnectionProcedure,
-		panmailv1connect.SuppressionServiceAddSuppressionProcedure,
-		panmailv1connect.SuppressionServiceCheckSuppressionProcedure,
-		panmailv1connect.SuppressionServiceListSuppressionsProcedure,
-		panmailv1connect.SuppressionServiceRemoveSuppressionProcedure,
-		panmailv1connect.SystemSettingsServiceGetSettingsProcedure,
-		panmailv1connect.SystemSettingsServiceUpdateSettingsProcedure,
-		panmailv1connect.TemplateServiceCreateTemplateProcedure,
-		panmailv1connect.TemplateServiceDeleteTemplateProcedure,
-		panmailv1connect.TemplateServiceGetTemplateProcedure,
-		panmailv1connect.TemplateServiceListTemplatesProcedure,
-		panmailv1connect.TemplateServiceUpdateTemplateProcedure,
-		panmailv1connect.TenantServiceCreateTenantProcedure,
-		panmailv1connect.TenantServiceDeleteTenantProcedure,
-		panmailv1connect.TenantServiceListTenantsProcedure,
-		panmailv1connect.TenantServiceUpdateTenantProcedure,
-		panmailv1connect.UserServiceCreateUserProcedure,
-		panmailv1connect.UserServiceDeleteUserProcedure,
-		panmailv1connect.UserServiceListUsersProcedure,
-		panmailv1connect.UserServiceUpdateUserRoleProcedure,
-		panmailv1connect.UserServiceUpdateUserTwoFactorProcedure,
-		panmailv1connect.WebhookServiceCreateWebhookProcedure,
-		panmailv1connect.WebhookServiceDeleteWebhookProcedure,
-		panmailv1connect.WebhookServiceListWebhooksProcedure,
-		panmailv1connect.WebhookServiceUpdateWebhookProcedure,
-	}
+	var procedures []string
+	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		if fd.Package() != "panmail.v1" {
+			return true
+		}
+		services := fd.Services()
+		for i := range services.Len() {
+			service := services.Get(i)
+			methods := service.Methods()
+			for j := range methods.Len() {
+				procedures = append(procedures,
+					fmt.Sprintf("/%s/%s", service.FullName(), methods.Get(j).Name()))
+			}
+		}
+		return true
+	})
+	sort.Strings(procedures)
+	return procedures
 }

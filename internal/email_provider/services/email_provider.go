@@ -14,4 +14,5 @@ type EmailProviderService interface {
 	DeleteEmailProvider(ctx context.Context, req *panmailv1.DeleteEmailProviderRequest) (*panmailv1.DeleteEmailProviderResponse, error)
 	TestEmailProvider(ctx context.Context, req *panmailv1.TestEmailProviderRequest) (*panmailv1.TestEmailProviderResponse, error)
 	TestEmailProviderConfig(ctx context.Context, req *panmailv1.CreateEmailProviderRequest) (*panmailv1.TestEmailProviderResponse, error)
+	CheckDomainHealth(ctx context.Context, req *panmailv1.CheckDomainHealthRequest) (*panmailv1.CheckDomainHealthResponse, error)
 }
