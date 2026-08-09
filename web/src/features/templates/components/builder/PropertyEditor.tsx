@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   Stack, 
   Text, 
@@ -19,10 +19,17 @@ import {
 } from '@mantine/core';
 import { IconPlus, IconTrash, IconVariable, IconSettings, IconPalette, IconForms, IconRefresh } from '@tabler/icons-react';
 import { Block } from './types';
+import { VariableInput } from './VariableInput';
 
 interface PropertyEditorProps {
   block: Block;
   onChange: (updates: Partial<Block>) => void;
+  /**
+   * Every variable the design already refers to, so the second use of a
+   * project's own name is offered rather than retyped from memory — which is
+   * how {{order_id}} and {{orderId}} end up in the same template.
+   */
+  designVariables?: string[];
 }
 
 const BUILTIN_VARS = [
@@ -58,12 +65,18 @@ const loadCustomVars = (): string[] => {
   }
 };
 
-export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange }) => {
+export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange, designVariables = [] }) => {
   const [varAssistantOpened, setVarAssistantOpened] = useState(false);
   const [userVars, setUserVars] = useState<string[]>(loadCustomVars);
   const [newVar, setNewVar] = useState('');
 
   const customVars = [...BUILTIN_VARS, ...userVars.filter((v) => !BUILTIN_VARS.includes(v))];
+
+  // The autocomplete offers bare names; the assistant list above is braced.
+  const suggestions = useMemo(() => {
+    const bare = customVars.map((v) => v.replace(/^\{\{|\}\}$/g, ''));
+    return [...new Set([...designVariables, ...bare])];
+  }, [customVars, designVariables]);
 
   const updateContent = (key: string, value: any) => {
     onChange({ content: { ...block.content, [key]: value } });
@@ -202,10 +215,12 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
 
           {block.type === 'heading' && (
             <>
-              <TextInput
+              <VariableInput
                 label="Heading Text"
-                value={block.content.text}
-                onChange={(e) => updateContent('text', e.currentTarget.value)}
+                size="sm"
+                value={block.content.text || ''}
+                onChange={(v) => updateContent('text', v)}
+                variables={suggestions}
               />
               <Select
                 label="Level"
@@ -217,26 +232,35 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
           )}
 
           {block.type === 'text' && (
-            <Textarea
+            <VariableInput
                 label="Text (HTML)"
-                value={block.content.text}
-                onChange={(e) => updateContent('text', e.currentTarget.value)}
+                multiline
                 minRows={8}
                 autosize
+                size="sm"
+                value={block.content.text || ''}
+                onChange={(v) => updateContent('text', v)}
+                variables={suggestions}
             />
           )}
 
           {block.type === 'button' && (
             <>
-              <TextInput
+              <VariableInput
                 label="Label"
-                value={block.content.label}
-                onChange={(e) => updateContent('label', e.currentTarget.value)}
+                size="sm"
+                value={block.content.label || ''}
+                onChange={(v) => updateContent('label', v)}
+                variables={suggestions}
               />
-              <TextInput
+              {/* URLs carry variables too — a per-recipient tracking or
+                  verification link is the usual case. */}
+              <VariableInput
                 label="URL"
-                value={block.content.url}
-                onChange={(e) => updateContent('url', e.currentTarget.value)}
+                size="sm"
+                value={block.content.url || ''}
+                onChange={(v) => updateContent('url', v)}
+                variables={suggestions}
               />
             </>
           )}
@@ -657,55 +681,75 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange 
           <Text fw={700} size="sm" tt="uppercase">Advanced Settings</Text>
           <Divider />
 
-          {['list', 'table', 'text', 'columns', 'image', 'button'].includes(block.type) && (
-              <Paper withBorder p="md" bg="light-dark(var(--mantine-color-blue-0), var(--mantine-color-blue-9))" radius="md">
-                <Stack gap="xs">
-                  <Group gap="xs">
-                    <IconSettings size={16} />
-                    <Text size="sm" fw={700}>Dynamic Visibility (If)</Text>
-                  </Group>
-                  <TextInput
-                    label="Show only if variable exists"
-                    placeholder="e.g. has_discount"
-                    description="Condition variable name"
-                    value={block.content.ifVariable || ''}
-                    onChange={(e) => updateContent('ifVariable', e.currentTarget.value)}
-                    size="xs"
-                  />
-                  <Text size="xs" c="dimmed">
-                    The block will be wrapped in <code>{"{{#if variable}}...{{/if}}"}</code> or <code>{"{{if .variable}}...{{/if}}"}</code> (Go-style).
-                  </Text>
-                </Stack>
-              </Paper>
-          )}
+          {/* Offered on every block. The old list left out heading, divider,
+              spacer, social and video for no reason anyone recorded, so a
+              whole discount section could be conditional except its heading. */}
+          <Paper withBorder p="md" bg="light-dark(var(--mantine-color-blue-0), var(--mantine-color-blue-9))" radius="md">
+            <Stack gap="xs">
+              <Group gap="xs">
+                <IconSettings size={16} />
+                <Text size="sm" fw={700}>Show conditionally</Text>
+              </Group>
+              <TextInput
+                label="Only show when this has a value"
+                placeholder="e.g. has_discount"
+                value={block.content.ifVariable || ''}
+                onChange={(e) => updateContent('ifVariable', e.currentTarget.value)}
+                size="xs"
+              />
+              <Text size="xs" c="dimmed">
+                Wrapped in <code>{"{{#if variable}}...{{/if}}"}</code>. An empty
+                list counts as no value, so a section keyed on one disappears
+                when it has nothing to show.
+              </Text>
+            </Stack>
+          </Paper>
 
-          {['list', 'table'].includes(block.type) && (
-              <Paper withBorder p="md" bg="light-dark(var(--mantine-color-orange-0), var(--mantine-color-orange-9))" radius="md">
-                <Stack gap="xs">
-                  <Group gap="xs">
-                    <IconRefresh size={16} />
-                    <Text size="sm" fw={700}>Data Looping (Each)</Text>
-                  </Group>
-                  <TextInput
-                      label="Data Source (Array)"
-                      placeholder="e.g. products"
-                      value={block.content.loopVariable || ''}
-                      onChange={(e) => updateContent('loopVariable', e.currentTarget.value)}
-                      size="xs"
-                  />
-                  <TextInput
-                      label="Item Name"
-                      placeholder="item"
-                      value={block.content.loopItemVariable || 'item'}
-                      onChange={(e) => updateContent('loopItemVariable', e.currentTarget.value)}
-                      size="xs"
-                  />
-                  <Text size="xs" c="dimmed">
-                    Iterate over an array. Use <code>{"{{#each items}}"}</code> or <code>{"{{range .items}}"}</code> (Go-style).
-                  </Text>
-                </Stack>
-              </Paper>
-          )}
+          {/* Also every block. Looping used to be list and table only, which
+              meant a line item could be a row of text and nothing else — a
+              cart row is an image beside a name beside a price, and that is a
+              columns block. */}
+          <Paper withBorder p="md" bg="light-dark(var(--mantine-color-orange-0), var(--mantine-color-orange-9))" radius="md">
+            <Stack gap="xs">
+              <Group gap="xs">
+                <IconRefresh size={16} />
+                <Text size="sm" fw={700}>Repeat for each item</Text>
+              </Group>
+              <TextInput
+                label="List variable"
+                placeholder="e.g. items"
+                value={block.content.loopVariable || ''}
+                onChange={(e) => updateContent('loopVariable', e.currentTarget.value)}
+                size="xs"
+              />
+
+              {['list', 'table'].includes(block.type) && (
+                <TextInput
+                  label="Item name"
+                  placeholder="item"
+                  value={block.content.loopItemVariable || 'item'}
+                  onChange={(e) => updateContent('loopItemVariable', e.currentTarget.value)}
+                  size="xs"
+                />
+              )}
+
+              {block.content.loopVariable && (
+                <TextInput
+                  label="When the list is empty"
+                  placeholder="e.g. Your cart is empty."
+                  value={block.content.emptyText || ''}
+                  onChange={(e) => updateContent('emptyText', e.currentTarget.value)}
+                  size="xs"
+                />
+              )}
+
+              <Text size="xs" c="dimmed">
+                {block.content.loopVariable
+                  ? <>Inside the loop, refer to each item's fields directly — <code>{"{{name}}"}</code>, <code>{"{{price}}"}</code>.</>
+                  : <>Repeats this block once per entry, so one row can be built and reused for every line item.</>}
+              </Text>
+            </Stack>
+          </Paper>
 
           {block.type === 'columns' && (
              <Paper withBorder p="md" radius="md">

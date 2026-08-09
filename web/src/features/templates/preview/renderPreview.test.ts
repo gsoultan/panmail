@@ -162,3 +162,42 @@ describe('helping the author supply data', () => {
     expect(suggestSampleData('{{order.total}}')).toEqual({});
   });
 });
+
+describe('a loop with an empty branch', () => {
+  // An empty cart must show the empty text, not the item template. Without
+  // splitting on else the preview rendered both, which is the one combination
+  // that can never be correct.
+  test('an empty array takes the else branch', () => {
+    const html = renderTemplatePreview(
+      '{{#each items}}<li>{{name}}</li>{{else}}<p>Your cart is empty.</p>{{/each}}',
+      { items: [] },
+    );
+    expect(html).toContain('Your cart is empty.');
+    expect(html).not.toContain('<li>');
+  });
+
+  test('a populated array takes the item branch and not the empty text', () => {
+    const html = renderTemplatePreview(
+      '{{#each items}}<li>{{name}}</li>{{else}}<p>Your cart is empty.</p>{{/each}}',
+      { items: [{ name: 'Widget' }, { name: 'Gadget' }] },
+    );
+    expect(html).toContain('Widget');
+    expect(html).toContain('Gadget');
+    expect(html).not.toContain('Your cart is empty.');
+  });
+
+  // While authoring there is no data, and showing both branches would
+  // misrepresent every actual render.
+  test('with no data the item branch is shown, repeated', () => {
+    const html = renderTemplatePreview(
+      '{{#each items}}<li>{{name}}</li>{{else}}<p>Your cart is empty.</p>{{/each}}',
+    );
+    expect(html).toContain('[name]');
+    expect(html).not.toContain('Your cart is empty.');
+  });
+
+  test('a loop with no else still renders nothing when empty', () => {
+    const html = renderTemplatePreview('{{#each items}}<li>{{name}}</li>{{/each}}', { items: [] });
+    expect(html.trim()).toBe('');
+  });
+});

@@ -181,8 +181,20 @@ export const generatePlainText = (design: EmailDesign): string => {
 
   const parts = blocks
     .map((b) => {
-      const text = blockToText(b);
+      let text = blockToText(b);
       if (!text) return '';
+
+      // A repeating block has to repeat in the text part too. `list` and
+      // `table` emit their own each from inside blockToText, so wrapping them
+      // again would iterate twice — the same exclusion the HTML side makes.
+      const loop = b.content?.loopVariable;
+      if (loop && b.type !== 'list' && b.type !== 'table') {
+        const empty = String(b.content?.emptyText ?? '').trim();
+        text = empty
+          ? `{{#each ${loop}}}\n${text}\n{{else}}\n${empty}\n{{/each}}`
+          : `{{#each ${loop}}}\n${text}\n{{/each}}`;
+      }
+
       // A conditional block has to stay conditional in the text part too, or
       // the two halves of the message disagree.
       return b.content?.ifVariable

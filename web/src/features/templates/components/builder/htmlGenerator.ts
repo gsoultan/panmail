@@ -206,6 +206,14 @@ export const generateHTML = (design: EmailDesign): string => {
     img { -ms-interpolation-mode: bicubic; }
     img { border: 0; line-height: 100%; outline: none; text-decoration: none; display: block; }
     table { border-collapse: collapse !important; }
+    /* Word's engine treats line-height as a minimum and grows it to fit the
+       font's own metrics, so text set at 1.5 comes out noticeably looser in
+       Outlook than everywhere else and carefully spaced blocks drift apart.
+       The exactly rule makes it honour the figure it was given. It has to be
+       declared wherever a line-height lands, which is why it also appears
+       inline below: Outlook applies an inline line-height without inheriting
+       the mode set here. */
+    body, table, td, p, a, li, blockquote { mso-line-height-rule: exactly; }
     /* Word's engine indents list items by an extra em, so a bulleted list sits
        further right in Outlook than anywhere else. Ported from gsmail's
        outlook package, which is where this knowledge is maintained. */
@@ -331,7 +339,7 @@ const renderBlockToHTML = (block: Block, depth = 0): string => {
                   <center style="color:${esc(btnColor)};font-family:sans-serif;font-size:${esc(fontSize)};font-weight:${esc(fontWeight)};">${label}</center>
                 </v:roundrect>
                 <![endif]-->
-                <a href="${href}" target="_blank" class="mobile-full-width" style="background-color:${esc(btnBg)};border-radius:${esc(btnRadius)};color:${esc(btnColor)};display:inline-block;font-family:sans-serif;font-size:${esc(fontSize)};font-weight:${esc(fontWeight)};line-height:45px;min-height:45px;text-align:center;text-decoration:none;width:${esc(btnWidth)};padding: 0 24px;box-sizing:border-box;-webkit-text-size-adjust:none;mso-hide:all;">
+                <a href="${href}" target="_blank" class="mobile-full-width" style="background-color:${esc(btnBg)};border-radius:${esc(btnRadius)};color:${esc(btnColor)};display:inline-block;font-family:sans-serif;font-size:${esc(fontSize)};font-weight:${esc(fontWeight)};line-height:45px;mso-line-height-rule:exactly;min-height:45px;text-align:center;text-decoration:none;width:${esc(btnWidth)};padding: 0 24px;box-sizing:border-box;-webkit-text-size-adjust:none;mso-hide:all;">
                   ${label}
                 </a>
               </div>
@@ -354,7 +362,7 @@ const renderBlockToHTML = (block: Block, depth = 0): string => {
       // The width attribute is for Outlook, which ignores max-width; the
       // `fluid` class is what lets every other client shrink the image to the
       // screen instead of forcing the message to scroll sideways.
-      const imgHtml = `<img src="${src}" alt="${esc(block.content.alt)}" width="${imgWidth}" class="fluid" style="display: block; width: 100%; max-width: ${imgWidth}px; height: auto; border-radius: ${esc(block.style.borderRadius || '4px')}; ${styles}" />`;
+      const imgHtml = `<img src="${src}" alt="${esc(block.content.alt)}" width="${imgWidth}" border="0" class="fluid" style="display: block; width: 100%; max-width: ${imgWidth}px; height: auto; border-radius: ${esc(block.style.borderRadius || '4px')}; ${styles}" />`;
       const linkUrl = String(block.content.linkUrl ?? '').trim();
       const imgContent = linkUrl
         ? `<a href="${safeUrl(linkUrl)}" target="_blank">${imgHtml}</a>`
@@ -393,7 +401,7 @@ const renderBlockToHTML = (block: Block, depth = 0): string => {
       html = `
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
-            <td height="${px}" style="height: ${px}px; line-height: ${px}px; font-size: 0; ${styles}">&nbsp;</td>
+            <td height="${px}" style="height: ${px}px; line-height: ${px}px; mso-line-height-rule: exactly; font-size: 0; ${styles}">&nbsp;</td>
           </tr>
         </table>
       `;
@@ -463,7 +471,7 @@ const renderBlockToHTML = (block: Block, depth = 0): string => {
           <tr><td align="${align}">${thumbHtml}</td></tr>
           <tr>
             <td align="${align}" style="padding-top: 12px;">
-              <a href="${href}" target="_blank" style="display: inline-block; background-color: #000000; color: #ffffff; font-family: sans-serif; font-size: 14px; line-height: 36px; padding: 0 20px; border-radius: 18px; text-decoration: none;">&#9654;&nbsp; Watch video</a>
+              <a href="${href}" target="_blank" style="display: inline-block; background-color: #000000; color: #ffffff; font-family: sans-serif; font-size: 14px; line-height: 36px; mso-line-height-rule: exactly; padding: 0 20px; border-radius: 18px; text-decoration: none;">&#9654;&nbsp; Watch video</a>
             </td>
           </tr>
         </table>
@@ -555,9 +563,51 @@ const renderBlockToHTML = (block: Block, depth = 0): string => {
       html = '';
   }
 
+  // Repeating an arbitrary block, which is what a cart, a product grid or a
+  // digest needs. Looping already existed but only inside `list` and `table`,
+  // so a line item could be a row of text and nothing else — you could not
+  // repeat an image beside a name beside a price, which is what those layouts
+  // actually are.
+  //
+  // Wrapping here rather than adding a `repeat` block with its own children:
+  // the builder recurses into `columns` at six separate sites (delete,
+  // duplicate, re-id, update, reorder, render), and a second nesting tree would
+  // have to be threaded through every one of them. A columns block that repeats
+  // is the same capability, reuses machinery that is already tested, and adds
+  // no new way for a nested block to become unreachable.
+  //
+  // `list` and `table` build their own each-block internally, so wrapping them
+  // again would iterate twice.
+  if (block.content.loopVariable && !SELF_LOOPING.has(block.type)) {
+    html = wrapInEach(html, String(block.content.loopVariable), block.content.emptyText);
+  }
+
   if (block.content.ifVariable) {
     return `{{#if ${esc(block.content.ifVariable)}}}\n${html}\n{{/if}}`;
   }
 
   return html;
+};
+
+// Blocks that already emit their own {{#each}} from inside their case.
+const SELF_LOOPING = new Set<Block['type']>(['list', 'table']);
+
+/**
+ * Wraps rendered HTML in an each, with an optional empty state.
+ *
+ * The empty branch matters more than it looks. Without it a cart with nothing
+ * in it renders as a heading, a total of zero and a gap where the items were,
+ * which reads as a broken email rather than an empty one — and it is invisible
+ * while authoring, because the author always has test data.
+ */
+export const wrapInEach = (html: string, variable: string, emptyText?: unknown): string => {
+  const each = esc(variable.trim());
+  if (!each) return html;
+
+  const empty = String(emptyText ?? '').trim();
+  if (!empty) {
+    return `{{#each ${each}}}\n${html}\n{{/each}}`;
+  }
+
+  return `{{#each ${each}}}\n${html}\n{{else}}\n<p style="margin: 0; padding: 12px 0; color: #6b7280; font-family: sans-serif; font-size: 14px; mso-line-height-rule: exactly;">${esc(empty)}</p>\n{{/each}}`;
 };

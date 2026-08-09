@@ -76,6 +76,7 @@ import { generatePlainText } from './plainTextGenerator';
 import { PropertyEditor } from './PropertyEditor';
 import { sanitizeHtml } from './sanitize';
 import { useDesignHistory } from './useDesignHistory';
+import { variablesInDesign } from './variableSuggest';
 import { reorderTopLevel, reorderWithinColumn, findContainer, sameContainer } from './reorder';
 import { lintDesign } from './lint';
 import { LintPanel } from './LintPanel';
@@ -207,6 +208,11 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
   const { design, setDesign, reset, undo, redo, canUndo, canRedo } = useDesignHistory(
     parseDesign(initialDesign) ?? DEFAULT_DESIGN,
   );
+
+  // Offered by the autocomplete alongside the built-ins, so a name used once
+  // anywhere in the design is suggested everywhere after that instead of being
+  // retyped from memory.
+  const designVariables = useMemo(() => variablesInDesign(design), [design]);
 
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<Viewport>('desktop');
@@ -508,6 +514,7 @@ export const CustomEmailBuilder = forwardRef<CustomEmailBuilderHandle, CustomEma
       <PropertyEditor
         block={selectedBlock}
         onChange={(updates) => updateBlock(selectedBlock.id, updates)}
+        designVariables={designVariables}
       />
     ) : (
       <Stack gap="md">

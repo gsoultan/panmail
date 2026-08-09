@@ -134,17 +134,29 @@ const render = (
     const before = out;
 
     const expandLoop = (re: RegExp) => {
-      out = out.replace(re, (_m, path: string, body: string) => {
+      out = out.replace(re, (_m, path: string, rawBody: string) => {
+        // A loop may carry an {{else}} branch for the empty case — an empty
+        // cart, a digest with no stories. Ignoring it rendered the empty text
+        // alongside the items, which is the one combination that can never be
+        // correct.
+        const [body, whenEmpty] = splitOnElse(rawBody);
         const value = lookup(scope, path) ?? lookup(root, path);
+
         if (Array.isArray(value)) {
-          // With data, iterate it — an empty array renders nothing, which is
-          // the whole point of previewing an empty state. Each item becomes the
-          // scope for the body, so nested blocks see the right values.
+          // An empty array takes the else branch, which is the whole point of
+          // being able to preview an empty state. Each item becomes the scope
+          // for the body, so nested blocks see the right values.
+          if (value.length === 0) {
+            return whenEmpty ? render(whenEmpty, scope, root, depth + 1) : '';
+          }
           return value
             .map((item) => render(body, item as PreviewData, root, depth + 1))
             .join('');
         }
+
         // Without data, repeat so the reader can see it is a repeating region.
+        // The else branch stays hidden: it is the exception, and showing both
+        // at once would misrepresent every render.
         return render(body, scope, root, depth + 1).repeat(PLACEHOLDER_LOOP_REPEATS);
       });
     };

@@ -372,3 +372,134 @@ describe('outlook specifics', () => {
     expect(html).not.toContain('…');
   });
 });
+
+describe('outlook line spacing and image borders', () => {
+  // Word's engine treats line-height as a minimum and grows it to suit the
+  // font's metrics, so a design spaced carefully in every other client comes
+  // out looser in Outlook. Declaring the mode is the only way to pin it.
+  test('the stylesheet declares the exact line-height mode', () => {
+    const html = generateHTML(design([]));
+    expect(html).toContain('mso-line-height-rule: exactly');
+  });
+
+  test('a spacer pins its own line-height, because the gap IS a line-height', () => {
+    const html = generateHTML(design([
+      { id: '1', type: 'spacer', content: { height: 32 }, style: {} } as Block,
+    ]));
+    const spacer = html.slice(html.indexOf('height="32"'));
+    expect(spacer.slice(0, 200)).toContain('mso-line-height-rule: exactly');
+  });
+
+  // The label is vertically centred by line-height, so Outlook growing it
+  // pushes the text off centre inside the VML shape.
+  test('a button pins the line-height centring its label', () => {
+    const html = generateHTML(design([
+      { id: '1', type: 'button', content: { text: 'Buy', url: 'https://example.com' }, style: {} } as Block,
+    ]));
+    expect(html).toContain('line-height:45px;mso-line-height-rule:exactly;');
+  });
+
+  // Outlook ignores the CSS `border: 0` in the stylesheet for a linked image
+  // and draws the link colour around it; only the attribute stops that.
+  test('images carry the border attribute, not just the CSS rule', () => {
+    const html = generateHTML(design([
+      { id: '1', type: 'image', content: { src: 'https://example.com/a.png', alt: 'A' }, style: {} } as Block,
+    ]));
+    expect(html).toMatch(/<img[^>]*border="0"/);
+  });
+
+  test('a linked image still carries it, which is the case that actually breaks', () => {
+    const html = generateHTML(design([
+      { id: '1', type: 'image', content: { src: 'https://example.com/a.png', alt: 'A', linkUrl: 'https://example.com' }, style: {} } as Block,
+    ]));
+    expect(html).toMatch(/<img[^>]*border="0"/);
+  });
+});
+
+describe('repeating an arbitrary block', () => {
+  // The gap this closes: looping existed only inside `list` and `table`, so a
+  // line item could be a row of text and nothing else. A cart row is an image
+  // beside a name beside a price — a columns block — and could not repeat.
+  test('a columns block can repeat, which is what a cart row actually is', () => {
+    const html = generateHTML(design([
+      block('columns', {
+        loopVariable: 'items',
+        columns: [{ id: 'c1', width: '30%', blocks: [block('image', { src: 'https://e.com/p.png', alt: '{{name}}' })] },
+                  { id: 'c2', width: '70%', blocks: [block('heading', { text: '{{name}} — {{price}}' })] }],
+      }),
+    ]));
+
+    expect(html).toContain('{{#each items}}');
+    expect(html).toContain('{{/each}}');
+    // The children render inside the loop, not beside it.
+    const loop = html.slice(html.indexOf('{{#each items}}'), html.indexOf('{{/each}}'));
+    expect(loop).toContain('{{name}}');
+    expect(loop).toContain('{{price}}');
+  });
+
+  test('any block type can repeat, not just a special one', () => {
+    for (const type of ['heading', 'text', 'button', 'image'] as const) {
+      const html = generateHTML(design([
+        block(type, { loopVariable: 'rows', text: 'x', src: 'https://e.com/a.png', url: 'https://e.com' }),
+      ]));
+      expect(html).toContain('{{#each rows}}');
+    }
+  });
+
+  // list and table build their own each internally; wrapping again would
+  // iterate the iteration.
+  test('a list is not wrapped twice', () => {
+    const html = generateHTML(design([
+      block('list', { loopVariable: 'items', items: ['{{this}}'] }),
+    ]));
+    expect(html.match(/\{\{#each items\}\}/g)).toHaveLength(1);
+  });
+
+  test('a table is not wrapped twice', () => {
+    const html = generateHTML(design([
+      block('table', { loopVariable: 'products', headers: ['P'], rows: [['{{this.name}}']] }),
+    ]));
+    expect(html.match(/\{\{#each products\}\}/g)).toHaveLength(1);
+  });
+
+  // An empty cart that renders a heading, a total of zero and a gap reads as a
+  // broken email rather than an empty one — and the author never sees it,
+  // because they always have test data.
+  test('an empty state renders as the else branch', () => {
+    const html = generateHTML(design([
+      block('heading', { text: '{{name}}', loopVariable: 'items', emptyText: 'Your cart is empty.' }),
+    ]));
+    expect(html).toContain('{{else}}');
+    expect(html).toContain('Your cart is empty.');
+  });
+
+  test('no empty text means no else branch, rather than an empty one', () => {
+    const html = generateHTML(design([
+      block('heading', { text: '{{name}}', loopVariable: 'items' }),
+    ]));
+    expect(html).not.toContain('{{else}}');
+  });
+
+  test('the empty text is escaped like everything else', () => {
+    const html = generateHTML(design([
+      block('heading', { text: 'x', loopVariable: 'items', emptyText: '<script>alert(1)</script>' }),
+    ]));
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  test('a blank loop variable leaves the block alone', () => {
+    const html = generateHTML(design([block('heading', { text: 'Hi', loopVariable: '   ' })]));
+    expect(html).not.toContain('{{#each');
+    expect(html).toContain('Hi');
+  });
+
+  // Both wrappers on one block: repeat the row, but only when there is a
+  // section to show at all.
+  test('repeat and conditional compose, with the conditional outermost', () => {
+    const html = generateHTML(design([
+      block('heading', { text: '{{name}}', loopVariable: 'items', ifVariable: 'has_items' }),
+    ]));
+    expect(html.indexOf('{{#if has_items}}')).toBeLessThan(html.indexOf('{{#each items}}'));
+  });
+});

@@ -12,6 +12,7 @@
  * misreports its behaviour is worse than not testing it, and jsdom is what
  * DOMPurify itself is tested against.
  */
+import { afterEach } from 'bun:test';
 import { JSDOM } from 'jsdom';
 
 // pretendToBeVisual supplies requestAnimationFrame and its cancel, which
@@ -51,7 +52,28 @@ const g = globalThis as Record<string, unknown>;
 
 if (!g.ResizeObserver) {
   g.ResizeObserver = class {
-    observe() {}
+    #callback: (entries: unknown[], observer: unknown) => void;
+
+    constructor(callback: (entries: unknown[], observer: unknown) => void) {
+      this.#callback = callback;
+    }
+
+    // A real ResizeObserver delivers one observation as soon as it starts
+    // watching, and floating-ui's autoUpdate waits for it before it will mount
+    // a positioned element. A stub that only records the call leaves every
+    // popover and tooltip permanently unmounted — which reads in a test as the
+    // component never opening, rather than as a missing browser API.
+    observe(target: unknown) {
+      const entry = {
+        target,
+        contentRect: { x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 },
+        borderBoxSize: [{ inlineSize: 0, blockSize: 0 }],
+        contentBoxSize: [{ inlineSize: 0, blockSize: 0 }],
+        devicePixelContentBoxSize: [{ inlineSize: 0, blockSize: 0 }],
+      };
+      queueMicrotask(() => this.#callback([entry], this));
+    }
+
     unobserve() {}
     disconnect() {}
   };
@@ -90,3 +112,21 @@ if (!doc.fonts) {
 
 // react-dom checks this to decide whether to warn about updates outside act().
 g.IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * Unmounts rendered components between tests.
+ *
+ * Testing Library registers this automatically under Jest and Vitest but not
+ * under `bun test`, and the whole run shares one jsdom document. Anything
+ * rendered into a portal — every Mantine popover, tooltip and modal — therefore
+ * stays in `document.body` after its test finishes, and the next file's
+ * assertions about what is on screen see the previous file's leftovers. The
+ * symptom is a suite that passes file by file and fails when run together,
+ * which is the worst way for this to show up.
+ *
+ * Imported inside the hook so the DOM globals above are in place first.
+ */
+afterEach(() => {
+  const { cleanup } = require('@testing-library/react') as { cleanup: () => void };
+  cleanup();
+});
