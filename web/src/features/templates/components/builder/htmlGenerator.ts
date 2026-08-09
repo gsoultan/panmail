@@ -183,6 +183,7 @@ export const generateHTML = (design: EmailDesign): string => {
 
   return `
 <!DOCTYPE html>
+<!--gsmail:outlook-->
 <html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8">
@@ -205,6 +206,10 @@ export const generateHTML = (design: EmailDesign): string => {
     img { -ms-interpolation-mode: bicubic; }
     img { border: 0; line-height: 100%; outline: none; text-decoration: none; display: block; }
     table { border-collapse: collapse !important; }
+    /* Word's engine indents list items by an extra em, so a bulleted list sits
+       further right in Outlook than anywhere else. Ported from gsmail's
+       outlook package, which is where this knowledge is maintained. */
+    li { text-indent: -1em; }
     body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
     div[style*="margin: 16px 0;"] { margin: 0 !important; }
 

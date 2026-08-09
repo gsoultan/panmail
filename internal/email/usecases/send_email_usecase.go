@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gsoultan/gsmail"
+	"github.com/gsoultan/gsmail/outlook"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email/repositories/stores"
@@ -413,6 +414,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			if currentBodyHTML != "" && u.baseURL != "" {
 				currentBodyHTML = u.injectTracking(tenantID, messageID, recipient, currentBodyHTML)
 			}
+			currentBodyHTML = hardenForOutlook(currentBodyHTML)
 
 			// One copy per recipient, because the tracking pixel and the signed
 			// links above are personal to this address. The headers still name
@@ -503,6 +505,26 @@ var (
 // injectTracking adds the open pixel and rewrites links to route through the
 // gateway. Every generated URL is signed, so the resulting events can be
 // trusted and the click endpoint cannot be turned into an open redirect.
+// hardenForOutlook adds the markup Word's rendering engine needs to HTML that
+// does not already have it.
+//
+// The visual builder emits a document that is already hardened, and marks it, so
+// this leaves that untouched — running the conversion over it would append a
+// second OfficeDocumentSettings block and two more stylesheets, roughly 3KB of
+// duplication with competing rules, for one rule it did not already have.
+//
+// The point is everything else. HTML uploaded as a file, or supplied straight to
+// the API as body_html, previously reached the recipient with no Outlook
+// handling at all — no VML namespaces, no DPI settings, no table spacing fixes.
+// The builder was the only path that got any of it, and it is not the only path
+// that sends mail.
+func hardenForOutlook(html string) string {
+	if html == "" || outlook.AlreadyConverted([]byte(html)) {
+		return html
+	}
+	return string(outlook.ToOutlookHTML([]byte(html)))
+}
+
 func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, htmlContent string) string {
 	if u.baseURL == "" || u.trackingSigner == nil {
 		return htmlContent
