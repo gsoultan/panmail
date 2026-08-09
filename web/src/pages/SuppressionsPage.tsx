@@ -3,7 +3,7 @@ import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIco
 import { notifications } from '@mantine/notifications';
 import { IconShieldCancel, IconPlus, IconTrash, IconSearch, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { suppressionService } from '../features/suppressions/services/suppression';
 
 export const SuppressionsPage: React.FC = () => {
@@ -64,7 +64,7 @@ export const SuppressionsPage: React.FC = () => {
     },
   });
 
-  const form = useForm({
+  const form = useAdaptedForm({
     initialValues: {
       email: '',
       reason: '',

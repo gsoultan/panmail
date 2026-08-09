@@ -2,7 +2,7 @@ import React from 'react';
 import { Container, Title, Text, Stack, Paper, Group, ThemeIcon, rem, Box, TextInput, NumberInput, Button, LoadingOverlay, Divider, Alert, TagsInput } from '@mantine/core';
 import { IconSettings, IconDeviceFloppy, IconInfoCircle, IconDatabase, IconWorld, IconRefresh } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { settingsService } from '../services/settings';
 import { notifications } from '@mantine/notifications';
 
@@ -13,7 +13,7 @@ export const SettingsPage: React.FC = () => {
     queryFn: settingsService.getSettings,
   });
 
-  const form = useForm({
+  const form = useAdaptedForm({
     initialValues: {
       baseUrl: '',
       logRetentionDays: 14,

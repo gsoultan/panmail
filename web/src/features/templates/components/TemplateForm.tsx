@@ -16,7 +16,7 @@ import {
   FileButton,
   SegmentedControl
 } from '@mantine/core';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../../../lib/form/useAdaptedForm';
 import { buildPreviewDocument } from '../preview/buildPreviewDocument';
 import { renderTemplatePreview } from '../preview/renderPreview';
 import { SampleDataPanel, parseSampleData } from '../preview/SampleDataPanel';
@@ -70,7 +70,7 @@ export const TemplateForm: React.FC<TemplateFormProps> = ({ initialValues, onSub
     },
   });
 
-  const form = useForm({
+  const form = useAdaptedForm({
     initialValues: {
       name: initialValues?.name || '',
       subject: initialValues?.subject || '',

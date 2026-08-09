@@ -6,7 +6,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconWebhook, IconPlus, IconEdit, IconTrash, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { webhookService, WebhookTriggerEvent } from '../features/webhooks/services/webhook';
 import { Webhook } from '../api/panmail/v1/webhook_pb';
 
@@ -66,7 +66,7 @@ export const WebhooksPage: React.FC = () => {
     setPageToken(prev === '' ? undefined : prev);
   };
 
-  const form = useForm({
+  const form = useAdaptedForm({
     initialValues: {
       name: '',
       url: '',

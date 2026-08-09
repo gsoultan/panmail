@@ -24,6 +24,28 @@ export type FieldErrors = Record<string, string | undefined>;
 export type Validate<T> = (values: T) => FieldErrors;
 
 /**
+ * A rule per field, which is the shape Mantine's resolver took.
+ *
+ * Accepted as well as the whole-form function so a form can move across by
+ * changing its import rather than restating every rule — twenty of them across
+ * the app, each an opportunity to change a condition while retyping it.
+ */
+export type FieldValidators = Record<string, (value: any, values: any) => string | null | undefined>;
+
+const toValidate = <T,>(validate: Validate<T> | FieldValidators | undefined): Validate<T> | undefined => {
+  if (!validate) return undefined;
+  if (typeof validate === 'function') return validate;
+
+  return (values: T) => {
+    const errors: FieldErrors = {};
+    for (const [path, rule] of Object.entries(validate)) {
+      errors[path] = rule(readPath(values, path), values) ?? undefined;
+    }
+    return errors;
+  };
+};
+
+/**
  * Validates against something only the server can answer.
  *
  * Kept separate from the synchronous validator rather than merged into it,
@@ -36,11 +58,16 @@ export type ValidateAsync<T> = (values: T, signal: AbortSignal) => Promise<Field
 
 interface AdaptedFormOptions<T> {
   initialValues: T;
-  validate?: Validate<T>;
+  validate?: Validate<T> | FieldValidators;
   validateAsync?: ValidateAsync<T>;
   /** How long the values must be still before the async check runs. */
   asyncDebounceMs?: number;
-  onSubmit: (values: T) => void | Promise<void>;
+  /**
+   * Optional, because a form may instead pass its handler at the point of
+   * submission — `form.onSubmit(handler)` — which is how most of these were
+   * written.
+   */
+  onSubmit?: (values: T) => void | Promise<void>;
 }
 
 /**
@@ -65,8 +92,18 @@ export interface AdaptedForm<T> {
   /** True while an async check is in flight, for a spinner on the field. */
   isValidating: boolean;
   setFieldValue: (path: string, value: unknown) => void;
+  setValues: (values: Partial<T>) => void;
+  /** Returns every field to the values the form was built with. */
+  reset: () => void;
+  insertListItem: (path: string, item: unknown, index?: number) => void;
+  removeListItem: (path: string, index: number) => void;
   getInputProps: (path: string, options?: { type?: 'checkbox' | 'input' }) => Record<string, unknown>;
   onSubmit: (handler?: (values: T) => void) => (e: React.FormEvent) => void;
+  /**
+   * Checks every rule now and reveals any failures, reporting whether the form
+   * is valid. For a wizard that gates a step on validity without submitting.
+   */
+  validate: () => { hasErrors: boolean; errors: FieldErrors };
   isSubmitting: boolean;
   /**
    * The underlying TanStack form, for sections that have moved off the adapter
@@ -89,11 +126,13 @@ interface FormState<T> {
 
 export const useAdaptedForm = <T extends object>({
   initialValues,
-  validate,
+  validate: rawValidate,
   validateAsync,
   asyncDebounceMs = DEFAULT_ASYNC_DEBOUNCE,
   onSubmit,
 }: AdaptedFormOptions<T>): AdaptedForm<T> => {
+  // Normalised once so everything below deals in one shape.
+  const validate = useMemo(() => toValidate(rawValidate), [rawValidate]);
   const form: any = useForm({
     defaultValues: initialValues,
     validators: {
@@ -110,7 +149,7 @@ export const useAdaptedForm = <T extends object>({
       },
     },
     onSubmit: async ({ value }: { value: unknown }) => {
-      await onSubmit(value as T);
+      await onSubmit?.(value as T);
     },
   });
 
@@ -179,6 +218,40 @@ export const useAdaptedForm = <T extends object>({
     [form],
   );
 
+  const setValues = useCallback(
+    (next: Partial<T>) => {
+      for (const [path, value] of Object.entries(next)) {
+        form.setFieldValue(path, value);
+      }
+    },
+    [form],
+  );
+
+  const reset = useCallback(() => {
+    form.reset();
+    // The dismissal and any async finding belong to the values being thrown
+    // away; keeping them would attach an old complaint to a fresh form.
+    setAsyncErrors({});
+  }, [form]);
+
+  const insertListItem = useCallback(
+    (path: string, item: unknown, index?: number) => {
+      const current = (readPath(form.store.state.values, path) as unknown[]) ?? [];
+      const next = [...current];
+      next.splice(index ?? next.length, 0, item);
+      form.setFieldValue(path, next);
+    },
+    [form],
+  );
+
+  const removeListItem = useCallback(
+    (path: string, index: number) => {
+      const current = (readPath(form.store.state.values, path) as unknown[]) ?? [];
+      form.setFieldValue(path, current.filter((_, i) => i !== index));
+    },
+    [form],
+  );
+
   const getInputProps = useCallback(
     (path: string, options?: { type?: 'checkbox' | 'input' }) => {
       const value = readPath(values, path);
@@ -234,11 +307,27 @@ export const useAdaptedForm = <T extends object>({
     [form, validate],
   );
 
+  const validateNow = useCallback(() => {
+    const found = validate ? validate(form.store.state.values as T) : {};
+    const hasErrors = Object.values(found).some(Boolean);
+    if (hasErrors) {
+      // Nothing is submitted, but the attempt is registered so the errors
+      // become visible — otherwise a blocked step gives no reason why.
+      void form.handleSubmit();
+    }
+    return { hasErrors, errors: found };
+  }, [form, validate]);
+
   return {
     values,
     errors,
     isValidating,
+    validate: validateNow,
     setFieldValue,
+    setValues,
+    reset,
+    insertListItem,
+    removeListItem,
     getInputProps,
     onSubmit: handleSubmit,
     isSubmitting,

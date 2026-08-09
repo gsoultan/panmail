@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userClient } from '../services/client';
 import { UserRole } from '../api/panmail/v1/auth_pb';
 import { useDisclosure } from '@mantine/hooks';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../store/authStore';
 
@@ -54,7 +54,7 @@ export const UsersPage: React.FC = () => {
     setPageToken(prev === '' ? undefined : prev);
   };
 
-  const createForm = useForm({
+  const createForm = useAdaptedForm({
     initialValues: {
       email: '',
       password: '',
@@ -68,7 +68,7 @@ export const UsersPage: React.FC = () => {
     },
   });
 
-  const roleForm = useForm({
+  const roleForm = useAdaptedForm({
     initialValues: {
       role: UserRole.VIEWER,
     },

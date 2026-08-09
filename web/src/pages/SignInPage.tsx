@@ -15,7 +15,7 @@ import {
   Divider,
   Alert,
 } from '@mantine/core';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { useNavigate } from '@tanstack/react-router';
 import { authClient } from '../services/client';
 import { useAuthStore } from '../store/authStore';
@@ -36,7 +36,7 @@ export const SignInPage: React.FC = () => {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
 
-  const form = useForm({
+  const form = useAdaptedForm({
     initialValues: {
       email: '',
       password: '',

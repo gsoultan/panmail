@@ -4,7 +4,7 @@ import { IconBuildingCommunity, IconDotsVertical, IconTrash, IconPlus, IconExter
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tenantService } from '../services/tenant';
 import { useDisclosure } from '@mantine/hooks';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { useAuthStore } from '../store/authStore';
 import { notifications } from '@mantine/notifications';
 import { TagsInput } from '@mantine/core';
@@ -28,7 +28,7 @@ export const TenantsPage: React.FC = () => {
     queryFn: () => tenantService.listTenants(Number(pageSize), pageToken),
   });
 
-  const form = useForm({
+  const form = useAdaptedForm({
     initialValues: {
       name: '',
       retryPattern: [] as string[],

@@ -300,3 +300,118 @@ describe('async validation', () => {
     expect(result.current.isValidating).toBe(false);
   });
 });
+
+// The surface the nine migrated forms rely on. Each of these replaced a
+// Mantine method those forms were already calling, so a gap here is a page
+// that silently stops working rather than one that fails to compile.
+describe('the Mantine-shaped surface', () => {
+  test('validators can be written per field, as they already were', () => {
+    const { result } = renderHook(() =>
+      useAdaptedForm<Values>({
+        initialValues,
+        // Twenty rules across the app were written this way; restating each
+        // one as part of a whole-form function is twenty chances to change a
+        // condition while retyping it.
+        validate: {
+          name: (value: string) => (value.length < 2 ? 'Too short' : null),
+          'smtp.host': (value: string) => (value ? null : 'Host is required'),
+        },
+        onSubmit: () => {},
+      }),
+    );
+
+    expect(result.current.errors.name).toBe('Too short');
+    expect(result.current.errors['smtp.host']).toBe('Host is required');
+  });
+
+  test('a per-field rule sees the whole value set as its second argument', () => {
+    const { result } = renderHook(() =>
+      useAdaptedForm<Values>({
+        initialValues: { ...initialValues, name: 'x' },
+        validate: {
+          name: (value: string, values: Values) =>
+            value === values.smtp.host ? 'Name and host must differ' : null,
+        },
+        onSubmit: () => {},
+      }),
+    );
+    expect(result.current.errors.name).toBeUndefined();
+  });
+
+  test('setValues writes several fields at once', () => {
+    const { result } = setup();
+    act(() => result.current.setValues({ name: 'Primary', type: 9 } as Partial<Values>));
+
+    expect(result.current.values.name).toBe('Primary');
+    expect(result.current.values.type).toBe(9);
+  });
+
+  test('reset returns the form to what it was built with', () => {
+    const { result } = setup();
+    change(result.current.getInputProps('name'), 'Edited');
+    change(result.current.getInputProps('smtp.host'), 'smtp.example.com');
+
+    act(() => result.current.reset());
+
+    expect(result.current.values.name).toBe('');
+    expect(result.current.values.smtp.host).toBe('');
+  });
+
+  test('list items can be added and removed', () => {
+    const { result } = renderHook(() =>
+      useAdaptedForm<{ recipients: string[] }>({
+        initialValues: { recipients: ['a@example.com'] },
+        onSubmit: () => {},
+      }),
+    );
+
+    act(() => result.current.insertListItem('recipients', 'b@example.com'));
+    expect(result.current.values.recipients).toEqual(['a@example.com', 'b@example.com']);
+
+    act(() => result.current.insertListItem('recipients', 'first@example.com', 0));
+    expect(result.current.values.recipients[0]).toBe('first@example.com');
+
+    act(() => result.current.removeListItem('recipients', 1));
+    expect(result.current.values.recipients).toEqual(['first@example.com', 'b@example.com']);
+  });
+
+  test('removing from an absent list is harmless', () => {
+    const { result } = setup();
+    act(() => result.current.removeListItem('nope', 0));
+    expect(result.current.values.name).toBe('');
+  });
+
+  // The setup wizard gates a step on validity without submitting.
+  test('validate can be called imperatively and reports what it found', () => {
+    const { result } = renderHook(() =>
+      useAdaptedForm<Values>({
+        initialValues,
+        validate: { name: (v: string) => (v.length < 2 ? 'Too short' : null) },
+        onSubmit: () => {},
+      }),
+    );
+
+    let outcome: { hasErrors: boolean } | undefined;
+    act(() => { outcome = result.current.validate(); });
+    expect(outcome?.hasErrors).toBe(true);
+
+    // And it reveals them, or a blocked step gives no reason why.
+    expect(result.current.getInputProps('name').error).toBe('Too short');
+
+    change(result.current.getInputProps('name'), 'Primary');
+    act(() => { outcome = result.current.validate(); });
+    expect(outcome?.hasErrors).toBe(false);
+  });
+
+  // Most of the migrated forms pass their handler at the point of submission
+  // rather than at construction.
+  test('a form built without onSubmit still submits through the handler', async () => {
+    const handler = mock(() => {});
+    const { result } = renderHook(() =>
+      useAdaptedForm<Values>({ initialValues, validate: { name: () => null } }),
+    );
+
+    await act(async () => result.current.onSubmit(handler)({ preventDefault: () => {} } as React.FormEvent));
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+});

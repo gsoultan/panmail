@@ -18,7 +18,7 @@ import {
   Divider,
   Grid,
 } from '@mantine/core';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { useNavigate } from '@tanstack/react-router';
 import { setupClient } from '../services/client';
 import { notifications } from '@mantine/notifications';
@@ -43,7 +43,7 @@ export const SetupPage: React.FC = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const navigate = useNavigate();
 
-  const dbForm = useForm({
+  const dbForm = useAdaptedForm({
     initialValues: {
       type: 'sqlite',
       host: 'localhost',
@@ -55,7 +55,7 @@ export const SetupPage: React.FC = () => {
     },
   });
 
-  const adminForm = useForm({
+  const adminForm = useAdaptedForm({
     initialValues: {
       email: '',
       password: '',
@@ -68,7 +68,7 @@ export const SetupPage: React.FC = () => {
     },
   });
 
-  const configForm = useForm({
+  const configForm = useAdaptedForm({
     initialValues: {
       baseUrl: window.location.origin,
     },

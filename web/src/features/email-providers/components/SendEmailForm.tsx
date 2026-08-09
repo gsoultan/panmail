@@ -26,7 +26,7 @@ import {
   ScrollArea,
   Alert
 } from '@mantine/core';
-import { useForm } from '@mantine/form';
+import { useAdaptedForm } from '../../../lib/form/useAdaptedForm';
 import { useQuery } from '@tanstack/react-query';
 import { templateService } from '../../templates/services/template';
 import { emailProviderService } from '../services/emailProvider';
@@ -78,7 +78,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
   const templates = templatesData?.templates || [];
   const providers = providersData?.providers || [];
 
-  const form = useForm({
+  const form = useAdaptedForm({
     initialValues: {
       providerId: initialProviderId || '',
       from: '',
