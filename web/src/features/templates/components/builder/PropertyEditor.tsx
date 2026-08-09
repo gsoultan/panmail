@@ -418,6 +418,34 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange,
 
           {block.type === 'columns' && (
             <Stack gap="xs">
+              <Paper withBorder p="xs" radius="md" mb="xs">
+                <Stack gap="xs">
+                  <Text size="xs" fw={700}>Background image</Text>
+                  <TextInput
+                    placeholder="https://example.com/hero.jpg"
+                    size="xs"
+                    value={block.content.backgroundImage || ''}
+                    onChange={(e) => updateContent('backgroundImage', e.currentTarget.value)}
+                  />
+                  {block.content.backgroundImage && (
+                    <>
+                      <NumberInput
+                        label="Height in Outlook"
+                        description="Outlook cannot size a background to its content, so it needs a number. Everything else grows to fit."
+                        size="xs"
+                        min={40}
+                        value={block.content.backgroundHeight || 300}
+                        onChange={(v) => updateContent('backgroundHeight', Number(v) || 300)}
+                      />
+                      <Text size="xs" c="dimmed">
+                        Set a background colour in the Style tab as well. Images are
+                        blocked by default in most clients, so the colour is what most
+                        recipients see first — light text on no background arrives blank.
+                      </Text>
+                    </>
+                  )}
+                </Stack>
+              </Paper>
               <Text size="sm" fw={600}>Columns Layout</Text>
               <Group grow>
                 <Button size="compact-xs" variant="outline" onClick={() => updateContent('columns', [{ id: 'c1', width: '100%', blocks: [], style: {} }])}>1 Col</Button>

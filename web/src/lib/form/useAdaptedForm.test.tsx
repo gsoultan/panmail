@@ -197,3 +197,106 @@ describe('rendering', () => {
     expect(getByTestId('host').textContent).toBe('changed.example.com');
   });
 });
+
+describe('async validation', () => {
+  const flush = async (ms: number) => {
+    await act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+  };
+
+  const setupAsync = (
+    validateAsync: (v: Values, signal: AbortSignal) => Promise<FieldErrors>,
+  ) =>
+    renderHook(() =>
+      useAdaptedForm<Values>({
+        initialValues,
+        validateAsync,
+        asyncDebounceMs: 20,
+        onSubmit: () => {},
+      }),
+    );
+
+  test('an async finding reaches the field', async () => {
+    const { result } = setupAsync(async () => ({ 'smtp.dkim.domain': 'Not published in DNS.' }));
+    await flush(60);
+
+    act(() => (result.current.getInputProps('smtp.dkim.domain').onBlur as any)());
+    expect(result.current.getInputProps('smtp.dkim.domain').error).toBe('Not published in DNS.');
+  });
+
+  // Otherwise every keystroke is a request, which for a check that costs a DNS
+  // lookup or a round trip is the difference between useful and abusive.
+  test('it is debounced rather than run per keystroke', async () => {
+    let calls = 0;
+    const { result } = setupAsync(async () => { calls++; return {}; });
+
+    for (const text of ['a', 'ab', 'abc', 'abcd']) {
+      change(result.current.getInputProps('name'), text);
+    }
+    await flush(60);
+
+    expect(calls).toBe(1);
+  });
+
+  // A slow answer landing on top of values it was never about is the classic
+  // way async validation reports a problem the user has already fixed.
+  test('a superseded answer is discarded', async () => {
+    const { result } = setupAsync(async (values) =>
+      values.name === 'bad' ? { name: 'That name is taken.' } : {},
+    );
+
+    change(result.current.getInputProps('name'), 'bad');
+    await flush(60);
+    act(() => (result.current.getInputProps('name').onBlur as any)());
+    expect(result.current.getInputProps('name').error).toBe('That name is taken.');
+
+    change(result.current.getInputProps('name'), 'good');
+    await flush(60);
+    expect(result.current.getInputProps('name').error).toBeUndefined();
+  });
+
+  test('a failed check does not become a field error', async () => {
+    const { result } = setupAsync(async () => { throw new Error('network down'); });
+    await flush(60);
+
+    act(() => (result.current.getInputProps('name').onBlur as any)());
+    // Reporting an error because the network was unavailable would block a
+    // form that is perfectly valid.
+    expect(result.current.getInputProps('name').error).toBeUndefined();
+  });
+
+  test('it reports while a check is in flight', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const { result } = setupAsync(async () => { await gate; return {}; });
+
+    await flush(40);
+    expect(result.current.isValidating).toBe(true);
+
+    await act(async () => { release(); await gate; });
+    expect(result.current.isValidating).toBe(false);
+  });
+
+  // A synchronous rule is about the value on screen right now; an async
+  // finding may already describe an older one.
+  test('a synchronous error wins over an async one on the same field', async () => {
+    const { result } = renderHook(() =>
+      useAdaptedForm<Values>({
+        initialValues,
+        validate: (v) => ({ name: v.name.length < 2 ? 'Too short' : undefined }),
+        validateAsync: async () => ({ name: 'Taken' }),
+        asyncDebounceMs: 20,
+        onSubmit: () => {},
+      }),
+    );
+    await flush(60);
+
+    act(() => (result.current.getInputProps('name').onBlur as any)());
+    expect(result.current.getInputProps('name').error).toBe('Too short');
+  });
+
+  test('no async validator means no checking at all', async () => {
+    const { result } = setup();
+    await flush(60);
+    expect(result.current.isValidating).toBe(false);
+  });
+});

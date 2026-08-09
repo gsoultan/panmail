@@ -167,7 +167,7 @@ export const generateHTML = (design: EmailDesign): string => {
     ...bodyCss,
   });
 
-  const content = blocks.map((b) => renderBlockToHTML(b, 0)).join('\n');
+  const content = blocks.map((b) => renderBlockToHTML(b, 0, widthNumeric)).join('\n');
 
   const preheaderHtml = preheader
     ? `
@@ -288,7 +288,10 @@ export const generateHTML = (design: EmailDesign): string => {
   `.trim();
 };
 
-const renderBlockToHTML = (block: Block, depth = 0): string => {
+// containerWidth is the pixel width the block is laid out in. VML cannot size
+// itself to its content, so a background image has to be given a box, and the
+// only honest number available is the width the email is built at.
+const renderBlockToHTML = (block: Block, depth = 0, containerWidth = 600): string => {
   if (!block || depth > MAX_DEPTH) return '';
 
   const styles = styleToString(block.style as Record<string, unknown>);
@@ -540,7 +543,7 @@ const renderBlockToHTML = (block: Block, depth = 0): string => {
       const cols = (block.content.columns || [])
         .map((col: any) => {
           const colContent = (col?.blocks || [])
-            .map((b: Block) => renderBlockToHTML(b, depth + 1))
+            .map((b: Block) => renderBlockToHTML(b, depth + 1, containerWidth))
             .join('\n');
           return `
           <td valign="top" width="${esc(col?.width || '50%')}" class="${stackClass}" style="padding: 10px; ${styleToString(col?.style)}">
@@ -549,13 +552,15 @@ const renderBlockToHTML = (block: Block, depth = 0): string => {
         `;
         })
         .join('');
-      html = `
+      const inner = `
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 10px 0; ${styles}">
           <tr>
             ${cols}
           </tr>
         </table>
       `;
+
+      html = withBackgroundImage(inner, block, containerWidth);
       break;
     }
 
@@ -610,4 +615,61 @@ export const wrapInEach = (html: string, variable: string, emptyText?: unknown):
   }
 
   return `{{#each ${each}}}\n${html}\n{{else}}\n<p style="margin: 0; padding: 12px 0; color: #6b7280; font-family: sans-serif; font-size: 14px; mso-line-height-rule: exactly;">${esc(empty)}</p>\n{{/each}}`;
+};
+
+/**
+ * The pixel height a background area is drawn at in Outlook.
+ *
+ * VML cannot size itself to its content — it needs a box before it knows what
+ * goes in it — so a hero has to declare how tall it is. Every other client
+ * ignores this and grows to fit, which means a mismatch shows up as Outlook
+ * clipping or padding the area rather than as a broken layout.
+ */
+const DEFAULT_BACKGROUND_HEIGHT = 300;
+
+/**
+ * Wraps content in a background image that Outlook will also draw.
+ *
+ * Three mechanisms, because no single one works everywhere:
+ *
+ *   - `background-image` in CSS, for every modern client.
+ *   - the `background` attribute on the cell, for older Outlook and some
+ *     webmail that strips the CSS property but honours the attribute.
+ *   - a VML rect, because Word's engine ignores both of the above. It is
+ *     wrapped in a conditional comment so nothing else ever sees it.
+ *
+ * A background colour is always emitted alongside. Images are blocked by
+ * default in most clients, so the colour is what most recipients actually see
+ * on first open — a hero whose text is white on an unset background is
+ * invisible until someone clicks "show images", which is a real way for a
+ * message to arrive blank.
+ */
+export const withBackgroundImage = (inner: string, block: Block, containerWidth: number): string => {
+  const src = safeImageUrl(block.content.backgroundImage);
+  if (!src) return inner;
+
+  const height = Number(block.content.backgroundHeight) || DEFAULT_BACKGROUND_HEIGHT;
+  const color = String(block.style?.backgroundColor || block.content.backgroundColor || '#333333');
+  const width = containerWidth > 0 ? containerWidth : 600;
+
+  return `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;">
+      <tr>
+        <td background="${src}" bgcolor="${esc(color)}" valign="top" style="background-image: url('${src}'); background-position: center center; background-size: cover; background-repeat: no-repeat; background-color: ${esc(color)};">
+          <!--[if gte mso 9]>
+          <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px;">
+            <v:fill type="frame" src="${src}" color="${esc(color)}" />
+            <v:textbox inset="0,0,0,0">
+          <![endif]-->
+          <div>
+            ${inner}
+          </div>
+          <!--[if gte mso 9]>
+            </v:textbox>
+          </v:rect>
+          <![endif]-->
+        </td>
+      </tr>
+    </table>
+  `;
 };

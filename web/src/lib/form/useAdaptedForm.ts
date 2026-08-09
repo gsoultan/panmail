@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm, useStore } from '@tanstack/react-form';
 
 /**
@@ -23,11 +23,31 @@ export type FieldErrors = Record<string, string | undefined>;
 /** Validates the whole value set, returning errors keyed by field path. */
 export type Validate<T> = (values: T) => FieldErrors;
 
+/**
+ * Validates against something only the server can answer.
+ *
+ * Kept separate from the synchronous validator rather than merged into it,
+ * because the two have to behave differently: a synchronous rule reruns on
+ * every keystroke and is free, while this one costs a request and must be
+ * debounced, cancelled when the values move on, and must never block a submit
+ * on an answer that has not arrived.
+ */
+export type ValidateAsync<T> = (values: T, signal: AbortSignal) => Promise<FieldErrors>;
+
 interface AdaptedFormOptions<T> {
   initialValues: T;
   validate?: Validate<T>;
+  validateAsync?: ValidateAsync<T>;
+  /** How long the values must be still before the async check runs. */
+  asyncDebounceMs?: number;
   onSubmit: (values: T) => void | Promise<void>;
 }
+
+/**
+ * Long enough that it does not fire mid-word, short enough that the answer
+ * arrives while the field is still what the author is looking at.
+ */
+const DEFAULT_ASYNC_DEBOUNCE = 700;
 
 /** Reads "smtp.dkim.domain" out of a nested object. */
 const readPath = (source: unknown, path: string): unknown => {
@@ -42,6 +62,8 @@ const readPath = (source: unknown, path: string): unknown => {
 export interface AdaptedForm<T> {
   values: T;
   errors: FieldErrors;
+  /** True while an async check is in flight, for a spinner on the field. */
+  isValidating: boolean;
   setFieldValue: (path: string, value: unknown) => void;
   getInputProps: (path: string, options?: { type?: 'checkbox' | 'input' }) => Record<string, unknown>;
   onSubmit: (handler?: (values: T) => void) => (e: React.FormEvent) => void;
@@ -68,6 +90,8 @@ interface FormState<T> {
 export const useAdaptedForm = <T extends object>({
   initialValues,
   validate,
+  validateAsync,
+  asyncDebounceMs = DEFAULT_ASYNC_DEBOUNCE,
   onSubmit,
 }: AdaptedFormOptions<T>): AdaptedForm<T> => {
   const form: any = useForm({
@@ -98,7 +122,49 @@ export const useAdaptedForm = <T extends object>({
 
   // Errors are derived rather than stored so they cannot drift from the values
   // they describe.
-  const errors = useMemo(() => (validate ? validate(values) : {}), [validate, values]);
+  const syncErrors = useMemo(() => (validate ? validate(values) : {}), [validate, values]);
+
+  // Async findings are held separately from the derived ones, because they
+  // describe an older set of values until the next answer arrives. Merging
+  // them into the derived object would make them vanish and reappear on every
+  // keystroke.
+  const [asyncErrors, setAsyncErrors] = useState<FieldErrors>({});
+  const [isValidating, setIsValidating] = useState(false);
+
+  const errors = useMemo(
+    // Synchronous rules win: they are about the value on screen right now,
+    // whereas an async finding may already be stale.
+    () => ({ ...asyncErrors, ...syncErrors }),
+    [asyncErrors, syncErrors],
+  );
+
+  useEffect(() => {
+    if (!validateAsync) return;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setIsValidating(true);
+      validateAsync(values, controller.signal)
+        .then((found) => {
+          if (!controller.signal.aborted) setAsyncErrors(found);
+        })
+        .catch(() => {
+          // A failed check is not a failed field. Reporting an error because
+          // the network was unavailable would block a form that is fine.
+          if (!controller.signal.aborted) setAsyncErrors({});
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setIsValidating(false);
+        });
+    }, asyncDebounceMs);
+
+    return () => {
+      // Cancelling on every change is what keeps a slow answer from landing
+      // on top of values it was never about.
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [validateAsync, values, asyncDebounceMs]);
 
   // Mantine only shows an error once a field has been touched or the form has
   // been submitted; showing "must be at least 2 characters" on an empty form
@@ -171,6 +237,7 @@ export const useAdaptedForm = <T extends object>({
   return {
     values,
     errors,
+    isValidating,
     setFieldValue,
     getInputProps,
     onSubmit: handleSubmit,

@@ -503,3 +503,99 @@ describe('repeating an arbitrary block', () => {
     expect(html.indexOf('{{#if has_items}}')).toBeLessThan(html.indexOf('{{#each items}}'));
   });
 });
+
+describe('background images', () => {
+  const hero = (content: any = {}, style: any = {}) =>
+    generateHTML(design([
+      block('columns', {
+        backgroundImage: 'https://example.com/hero.jpg',
+        columns: [{ id: 'c1', width: '100%', blocks: [block('heading', { text: 'Big news' })] }],
+        ...content,
+      }, style),
+    ]));
+
+  test('a block with no background image is left alone', () => {
+    const html = generateHTML(design([block('columns', { columns: [] })]));
+    expect(html).not.toContain('v:rect');
+    expect(html).not.toContain('background-image');
+  });
+
+  // Word's engine ignores both background-image and the background attribute,
+  // so without VML a hero is a blank box in Outlook.
+  test('Outlook gets a VML rect', () => {
+    const html = hero();
+    expect(html).toContain('<v:rect');
+    expect(html).toContain('<v:fill type="frame"');
+    expect(html).toContain('https://example.com/hero.jpg');
+  });
+
+  test('the VML is behind a conditional comment so nothing else sees it', () => {
+    const html = hero();
+    const start = html.indexOf('<v:rect');
+    const condition = html.lastIndexOf('<!--[if gte mso 9]>', start);
+    expect(condition).toBeGreaterThan(-1);
+    expect(condition).toBeLessThan(start);
+  });
+
+  // VML cannot size to its content, so the box has to be declared.
+  test('the VML box carries an explicit width and height', () => {
+    const html = hero({ backgroundHeight: 420 });
+    expect(html).toMatch(/<v:rect[^>]*width:600px/);
+    expect(html).toMatch(/<v:rect[^>]*height:420px/);
+  });
+
+  test('the width follows the design, not a hardcoded 600', () => {
+    const html = generateHTML(design([
+      block('columns', {
+        backgroundImage: 'https://example.com/hero.jpg',
+        columns: [{ id: 'c1', width: '100%', blocks: [] }],
+      }),
+    ], { contentWidth: '480px' }));
+    expect(html).toMatch(/<v:rect[^>]*width:480px/);
+  });
+
+  test('modern clients get CSS and older ones the attribute', () => {
+    const html = hero();
+    expect(html).toContain("background-image: url('https://example.com/hero.jpg')");
+    expect(html).toMatch(/background="https:\/\/example\.com\/hero\.jpg"/);
+  });
+
+  // Images are blocked by default in most clients, so the colour is what most
+  // recipients see on first open. White text on an unset background arrives
+  // blank.
+  test('a background colour is always emitted alongside', () => {
+    const html = hero({}, { backgroundColor: '#123456' });
+    expect(html).toMatch(/bgcolor="#123456"/);
+    expect(html).toContain('color="#123456"');
+  });
+
+  test('an unset colour still gets a readable fallback rather than nothing', () => {
+    const html = hero();
+    expect(html).toMatch(/bgcolor="#[0-9a-fA-F]{6}"/);
+  });
+
+  test('the content still renders inside the background', () => {
+    const html = hero();
+    expect(html).toContain('Big news');
+    const rect = html.indexOf('<v:rect');
+    expect(html.indexOf('Big news')).toBeGreaterThan(rect);
+  });
+
+  // The same escaping rule as everywhere else: a quote in the URL would close
+  // the attribute early and corrupt the tag.
+  test('a script-bearing url is refused', () => {
+    const html = generateHTML(design([
+      block('columns', { backgroundImage: 'javascript:alert(1)', columns: [] }),
+    ]));
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('v:rect');
+  });
+
+  test('a quote in the url cannot break out of the attribute', () => {
+    const html = generateHTML(design([
+      block('columns', { backgroundImage: 'https://example.com/a.jpg" onload="x', columns: [] }),
+    ]));
+    expect(html).not.toContain('onload="x"');
+    expect(html).toContain('&quot;');
+  });
+});

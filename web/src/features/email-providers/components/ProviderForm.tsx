@@ -8,6 +8,8 @@ import { DkimSection } from './DkimSection';
 import { ApiProviderFields } from './ApiProviderFields';
 import { OAuthSection } from './OAuthSection';
 import { DomainHealthPanel } from './DomainHealthPanel';
+import { DkimKeyMatch } from '../../../api/panmail/v1/email_provider_service_pb';
+import { emailProviderService } from '../services/emailProvider';
 
 interface ProviderFormProps {
   initialValues?: any;
@@ -69,9 +71,57 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
     name: values.name?.length < 2 ? 'Name must have at least 2 characters' : undefined,
   }), []);
 
+  /**
+   * Checks the DKIM selector against DNS as it is typed.
+   *
+   * This is the question only the server can answer, and the one worth asking
+   * early: a key whose public half was never published makes every message
+   * fail verification, and nothing about the form can tell. Learning it while
+   * the field is still on screen beats learning it from a deliverability
+   * report weeks later.
+   *
+   * The connection test stays a button. This is a DNS read with no side
+   * effects, so running it on a pause in typing is reasonable; opening an SMTP
+   * session against someone else's server every time a field settles is not.
+   */
+  const validateAsync = React.useCallback(async (values: any, signal: AbortSignal): Promise<FieldErrors> => {
+    if (values.type !== ProviderType.SMTP) return {};
+
+    const domain = String(values.smtp?.dkim?.domain ?? '').trim();
+    const selector = String(values.smtp?.dkim?.selector ?? '').trim();
+    // Both are needed to look anything up, and a half-typed pair is not a
+    // mistake yet.
+    if (!domain || !selector) return {};
+
+    const health = await emailProviderService.checkDomainHealth({
+      providerId: initialValues?.id,
+      domain,
+      selectors: [selector],
+    });
+    if (signal.aborted) return {};
+
+    const dkim = health.dkim?.find((d: any) => d.selector === selector);
+    if (!dkim) return {};
+
+    if (!dkim.dns?.found) {
+      return {
+        'smtp.dkim.selector':
+          `Nothing is published at ${selector}._domainkey.${domain}. Messages signed with this key will fail verification.`,
+      };
+    }
+    if (dkim.keyMatch === DkimKeyMatch.MISMATCH) {
+      return {
+        'smtp.dkim.privateKey':
+          'The key published for this selector belongs to a different key pair, so every signature will fail verification.',
+      };
+    }
+    return {};
+  }, [initialValues?.id]);
+
   const form = useAdaptedForm<any>({
     initialValues: getInitialValues(),
     validate,
+    validateAsync,
     // toProviderRequest strips the form-only switches and clears the values
     // behind whichever one is off; see providerFormValues.ts.
     onSubmit: (values) => onSubmit(toProviderRequest(values)),
