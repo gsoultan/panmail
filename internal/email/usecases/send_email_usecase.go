@@ -615,8 +615,14 @@ func (u *sendEmailUsecase) getProvider(ctx context.Context, tenantID, providerID
 	return u.providerRepo.GetByID(ctx, tenantID, providerID)
 }
 
+// isSuppressed asks whether a mailbox is on the tenant's suppression list.
+//
+// The address is normalised first, for the same reason the suppression usecase
+// normalises on write: a bounce recorded for "Alice@Example.COM" has to stop
+// the next send to "alice@example.com". Reading with the raw address made the
+// list fail open on any difference of case or display name.
 func (u *sendEmailUsecase) isSuppressed(ctx context.Context, tenantID, email string) (bool, string, error) {
-	s, err := u.suppressionRepo.GetByEmail(ctx, tenantID, email)
+	s, err := u.suppressionRepo.GetByEmail(ctx, tenantID, gsmail.NormalizeAddress(email))
 	if err != nil {
 		return false, "", err
 	}
