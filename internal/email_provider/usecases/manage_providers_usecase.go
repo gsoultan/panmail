@@ -277,6 +277,12 @@ func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.
 			return nil, err
 		}
 		c.Password = redactedPassword
+		// The DKIM private key is a credential too, and a leaked one lets
+		// anyone sign mail as this domain. The domain and selector are public —
+		// they are published in DNS — so only the key is withheld.
+		if c.Dkim != nil {
+			c.Dkim.PrivateKey = redactedPassword
+		}
 		proto.Config = &panmailv1.EmailProvider_Smtp{Smtp: c}
 	case panmailv1.ProviderType_PROVIDER_TYPE_IMAP:
 		c := &panmailv1.ImapConfig{}

@@ -188,13 +188,22 @@ func (*EmailProvider_Imap) isEmailProvider_Config() {}
 func (*EmailProvider_Pop3) isEmailProvider_Config() {}
 
 type SmtpConfig struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
-	Port          int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	Username      string                 `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
-	Password      string                 `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
-	SkipVerify    bool                   `protobuf:"varint,5,opt,name=skip_verify,json=skipVerify,proto3" json:"skip_verify,omitempty"`
-	UseSsl        bool                   `protobuf:"varint,6,opt,name=use_ssl,json=useSsl,proto3" json:"use_ssl,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Host       string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	Port       int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	Username   string                 `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
+	Password   string                 `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
+	SkipVerify bool                   `protobuf:"varint,5,opt,name=skip_verify,json=skipVerify,proto3" json:"skip_verify,omitempty"`
+	UseSsl     bool                   `protobuf:"varint,6,opt,name=use_ssl,json=useSsl,proto3" json:"use_ssl,omitempty"`
+	// DKIM signing. Unsigned mail is treated as suspicious by every major
+	// mailbox provider, and DMARC cannot pass on SPF alone once a message is
+	// forwarded, so this is the difference between the inbox and the spam folder.
+	//
+	// The private key lives in this message because the whole config blob is
+	// encrypted at rest with AES-256-GCM and redacted from every API response.
+	// Signing is off unless all three of domain, selector and private key are
+	// present.
+	Dkim          *DkimConfig `protobuf:"bytes,7,opt,name=dkim,proto3" json:"dkim,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -271,6 +280,79 @@ func (x *SmtpConfig) GetUseSsl() bool {
 	return false
 }
 
+func (x *SmtpConfig) GetDkim() *DkimConfig {
+	if x != nil {
+		return x.Dkim
+	}
+	return nil
+}
+
+type DkimConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The domain being signed for. Should match the From domain, or DMARC
+	// alignment fails even though the signature itself verifies.
+	Domain string `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	// The selector, which names which key to fetch: the receiver looks up
+	// <selector>._domainkey.<domain>.
+	Selector string `protobuf:"bytes,2,opt,name=selector,proto3" json:"selector,omitempty"`
+	// PEM-encoded RSA or Ed25519 private key. Write-only: it is redacted on read
+	// like every other stored credential.
+	PrivateKey    string `protobuf:"bytes,3,opt,name=private_key,json=privateKey,proto3" json:"private_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DkimConfig) Reset() {
+	*x = DkimConfig{}
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DkimConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DkimConfig) ProtoMessage() {}
+
+func (x *DkimConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DkimConfig.ProtoReflect.Descriptor instead.
+func (*DkimConfig) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DkimConfig) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
+func (x *DkimConfig) GetSelector() string {
+	if x != nil {
+		return x.Selector
+	}
+	return ""
+}
+
+func (x *DkimConfig) GetPrivateKey() string {
+	if x != nil {
+		return x.PrivateKey
+	}
+	return ""
+}
+
 type ImapConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
@@ -285,7 +367,7 @@ type ImapConfig struct {
 
 func (x *ImapConfig) Reset() {
 	*x = ImapConfig{}
-	mi := &file_panmail_v1_email_provider_proto_msgTypes[2]
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -297,7 +379,7 @@ func (x *ImapConfig) String() string {
 func (*ImapConfig) ProtoMessage() {}
 
 func (x *ImapConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_email_provider_proto_msgTypes[2]
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -310,7 +392,7 @@ func (x *ImapConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImapConfig.ProtoReflect.Descriptor instead.
 func (*ImapConfig) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{2}
+	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ImapConfig) GetHost() string {
@@ -369,7 +451,7 @@ type Pop3Config struct {
 
 func (x *Pop3Config) Reset() {
 	*x = Pop3Config{}
-	mi := &file_panmail_v1_email_provider_proto_msgTypes[3]
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -381,7 +463,7 @@ func (x *Pop3Config) String() string {
 func (*Pop3Config) ProtoMessage() {}
 
 func (x *Pop3Config) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_email_provider_proto_msgTypes[3]
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -394,7 +476,7 @@ func (x *Pop3Config) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pop3Config.ProtoReflect.Descriptor instead.
 func (*Pop3Config) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{3}
+	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Pop3Config) GetHost() string {
@@ -460,7 +542,7 @@ const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\ttenant_id\x18\r \x01(\tR\btenantId\x12'\n" +
 	"\x0fallowed_domains\x18\x0e \x03(\tR\x0eallowedDomains\x12%\n" +
 	"\x0ewebhook_secret\x18\x0f \x01(\tR\rwebhookSecretB\b\n" +
-	"\x06config\"\xa6\x01\n" +
+	"\x06config\"\xd2\x01\n" +
 	"\n" +
 	"SmtpConfig\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
@@ -469,7 +551,14 @@ const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\bpassword\x18\x04 \x01(\tR\bpassword\x12\x1f\n" +
 	"\vskip_verify\x18\x05 \x01(\bR\n" +
 	"skipVerify\x12\x17\n" +
-	"\ause_ssl\x18\x06 \x01(\bR\x06useSsl\"\xa6\x01\n" +
+	"\ause_ssl\x18\x06 \x01(\bR\x06useSsl\x12*\n" +
+	"\x04dkim\x18\a \x01(\v2\x16.panmail.v1.DkimConfigR\x04dkim\"a\n" +
+	"\n" +
+	"DkimConfig\x12\x16\n" +
+	"\x06domain\x18\x01 \x01(\tR\x06domain\x12\x1a\n" +
+	"\bselector\x18\x02 \x01(\tR\bselector\x12\x1f\n" +
+	"\vprivate_key\x18\x03 \x01(\tR\n" +
+	"privateKey\"\xa6\x01\n" +
 	"\n" +
 	"ImapConfig\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
@@ -504,27 +593,29 @@ func file_panmail_v1_email_provider_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_email_provider_proto_rawDescData
 }
 
-var file_panmail_v1_email_provider_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_panmail_v1_email_provider_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_panmail_v1_email_provider_proto_goTypes = []any{
 	(*EmailProvider)(nil),         // 0: panmail.v1.EmailProvider
 	(*SmtpConfig)(nil),            // 1: panmail.v1.SmtpConfig
-	(*ImapConfig)(nil),            // 2: panmail.v1.ImapConfig
-	(*Pop3Config)(nil),            // 3: panmail.v1.Pop3Config
-	(ProviderType)(0),             // 4: panmail.v1.ProviderType
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(*DkimConfig)(nil),            // 2: panmail.v1.DkimConfig
+	(*ImapConfig)(nil),            // 3: panmail.v1.ImapConfig
+	(*Pop3Config)(nil),            // 4: panmail.v1.Pop3Config
+	(ProviderType)(0),             // 5: panmail.v1.ProviderType
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_panmail_v1_email_provider_proto_depIdxs = []int32{
-	4, // 0: panmail.v1.EmailProvider.type:type_name -> panmail.v1.ProviderType
+	5, // 0: panmail.v1.EmailProvider.type:type_name -> panmail.v1.ProviderType
 	1, // 1: panmail.v1.EmailProvider.smtp:type_name -> panmail.v1.SmtpConfig
-	2, // 2: panmail.v1.EmailProvider.imap:type_name -> panmail.v1.ImapConfig
-	3, // 3: panmail.v1.EmailProvider.pop3:type_name -> panmail.v1.Pop3Config
-	5, // 4: panmail.v1.EmailProvider.create_time:type_name -> google.protobuf.Timestamp
-	5, // 5: panmail.v1.EmailProvider.update_time:type_name -> google.protobuf.Timestamp
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	3, // 2: panmail.v1.EmailProvider.imap:type_name -> panmail.v1.ImapConfig
+	4, // 3: panmail.v1.EmailProvider.pop3:type_name -> panmail.v1.Pop3Config
+	6, // 4: panmail.v1.EmailProvider.create_time:type_name -> google.protobuf.Timestamp
+	6, // 5: panmail.v1.EmailProvider.update_time:type_name -> google.protobuf.Timestamp
+	2, // 6: panmail.v1.SmtpConfig.dkim:type_name -> panmail.v1.DkimConfig
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_email_provider_proto_init() }
@@ -544,7 +635,7 @@ func file_panmail_v1_email_provider_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_email_provider_proto_rawDesc), len(file_panmail_v1_email_provider_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

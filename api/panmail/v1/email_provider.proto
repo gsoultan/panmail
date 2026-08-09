@@ -33,6 +33,28 @@ message SmtpConfig {
   string password = 4;
   bool skip_verify = 5;
   bool use_ssl = 6;
+
+  // DKIM signing. Unsigned mail is treated as suspicious by every major
+  // mailbox provider, and DMARC cannot pass on SPF alone once a message is
+  // forwarded, so this is the difference between the inbox and the spam folder.
+  //
+  // The private key lives in this message because the whole config blob is
+  // encrypted at rest with AES-256-GCM and redacted from every API response.
+  // Signing is off unless all three of domain, selector and private key are
+  // present.
+  DkimConfig dkim = 7;
+}
+
+message DkimConfig {
+  // The domain being signed for. Should match the From domain, or DMARC
+  // alignment fails even though the signature itself verifies.
+  string domain = 1;
+  // The selector, which names which key to fetch: the receiver looks up
+  // <selector>._domainkey.<domain>.
+  string selector = 2;
+  // PEM-encoded RSA or Ed25519 private key. Write-only: it is redacted on read
+  // like every other stored credential.
+  string private_key = 3;
 }
 
 message ImapConfig {

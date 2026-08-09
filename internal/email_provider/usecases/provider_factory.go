@@ -67,6 +67,19 @@ func (f *providerFactory) CreateSender(p *entities.EmailProvider) (gsmail.Sender
 
 	sender := smtp.NewSender(c.Host, int(c.Port), c.Username, c.Password, c.UseSsl)
 	sender.InsecureSkipVerify = c.SkipVerify
+
+	// Signing is enabled only when all three parts are present. A partial
+	// configuration would make every send fail at signing time, which is a
+	// worse outcome than sending unsigned: unsigned mail is delivered and
+	// merely distrusted, while a signing error stops delivery entirely.
+	if d := c.GetDkim(); d.GetDomain() != "" && d.GetSelector() != "" && d.GetPrivateKey() != "" {
+		sender.DKIMConfig = &gsmail.DKIMOptions{
+			Domain:     d.GetDomain(),
+			Selector:   d.GetSelector(),
+			PrivateKey: d.GetPrivateKey(),
+		}
+	}
+
 	sender.EnablePool(senderPoolConfig)
 
 	f.senders[key] = sender

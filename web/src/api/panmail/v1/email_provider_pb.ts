@@ -150,6 +150,20 @@ export class SmtpConfig extends Message<SmtpConfig> {
    */
   useSsl = false;
 
+  /**
+   * DKIM signing. Unsigned mail is treated as suspicious by every major
+   * mailbox provider, and DMARC cannot pass on SPF alone once a message is
+   * forwarded, so this is the difference between the inbox and the spam folder.
+   *
+   * The private key lives in this message because the whole config blob is
+   * encrypted at rest with AES-256-GCM and redacted from every API response.
+   * Signing is off unless all three of domain, selector and private key are
+   * present.
+   *
+   * @generated from field: panmail.v1.DkimConfig dkim = 7;
+   */
+  dkim?: DkimConfig;
+
   constructor(data?: PartialMessage<SmtpConfig>) {
     super();
     proto3.util.initPartial(data, this);
@@ -164,6 +178,7 @@ export class SmtpConfig extends Message<SmtpConfig> {
     { no: 4, name: "password", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "skip_verify", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 6, name: "use_ssl", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 7, name: "dkim", kind: "message", T: DkimConfig },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SmtpConfig {
@@ -180,6 +195,64 @@ export class SmtpConfig extends Message<SmtpConfig> {
 
   static equals(a: SmtpConfig | PlainMessage<SmtpConfig> | undefined, b: SmtpConfig | PlainMessage<SmtpConfig> | undefined): boolean {
     return proto3.util.equals(SmtpConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message panmail.v1.DkimConfig
+ */
+export class DkimConfig extends Message<DkimConfig> {
+  /**
+   * The domain being signed for. Should match the From domain, or DMARC
+   * alignment fails even though the signature itself verifies.
+   *
+   * @generated from field: string domain = 1;
+   */
+  domain = "";
+
+  /**
+   * The selector, which names which key to fetch: the receiver looks up
+   * <selector>._domainkey.<domain>.
+   *
+   * @generated from field: string selector = 2;
+   */
+  selector = "";
+
+  /**
+   * PEM-encoded RSA or Ed25519 private key. Write-only: it is redacted on read
+   * like every other stored credential.
+   *
+   * @generated from field: string private_key = 3;
+   */
+  privateKey = "";
+
+  constructor(data?: PartialMessage<DkimConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "panmail.v1.DkimConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "domain", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "selector", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "private_key", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): DkimConfig {
+    return new DkimConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): DkimConfig {
+    return new DkimConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): DkimConfig {
+    return new DkimConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: DkimConfig | PlainMessage<DkimConfig> | undefined, b: DkimConfig | PlainMessage<DkimConfig> | undefined): boolean {
+    return proto3.util.equals(DkimConfig, a, b);
   }
 }
 

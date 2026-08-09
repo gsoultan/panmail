@@ -3,6 +3,7 @@ import { useForm } from '@mantine/form';
 import { TextInput, Select, NumberInput, Checkbox, Button, Stack, Group, Paper, Title, Divider, Text, CopyButton, Tooltip, ActionIcon } from '@mantine/core';
 import { IconCopy, IconCheck } from '@tabler/icons-react';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
+import { DkimSection } from './DkimSection';
 
 interface ProviderFormProps {
   initialValues?: any;
@@ -16,7 +17,13 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
   const defaultValues = {
     name: '',
     type: ProviderType.SMTP,
-    smtp: { host: '', port: 587, username: '', password: '', skipVerify: false, useSsl: false },
+    smtp: {
+      host: '', port: 587, username: '', password: '', skipVerify: false, useSsl: false,
+      // dkimEnabled is form-only: the server infers signing from whether all
+      // three DKIM values are present, so it is never sent.
+      dkimEnabled: false,
+      dkim: { domain: '', selector: '', privateKey: '' },
+    },
     imap: { host: '', port: 993, username: '', password: '', skipVerify: false, useSsl: true },
     pop3: { host: '', port: 995, username: '', password: '', skipVerify: false, useSsl: true },
   };
@@ -32,6 +39,17 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
       imap: initialValues.config?.case === 'imap' ? initialValues.config.value : (initialValues.imap || defaultValues.imap),
       pop3: initialValues.config?.case === 'pop3' ? initialValues.config.value : (initialValues.pop3 || defaultValues.pop3),
     };
+  };
+
+  // dkimEnabled is a form-only switch; the server decides whether to sign from
+  // whether all three DKIM values are present. Turning it off must therefore
+  // clear the values, or signing would continue with the switch showing off.
+  const submit = (values: any) => {
+    const { dkimEnabled, ...smtp } = values.smtp ?? {};
+    onSubmit({
+      ...values,
+      smtp: dkimEnabled ? smtp : { ...smtp, dkim: { domain: '', selector: '', privateKey: '' } },
+    });
   };
 
   const form = useForm({
@@ -97,7 +115,12 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
 
     switch (form.values.type) {
       case ProviderType.SMTP:
-        return commonFields('smtp');
+        return (
+          <>
+            {commonFields('smtp')}
+            <DkimSection form={form} editing={Boolean(initialValues?.id)} />
+          </>
+        );
       case ProviderType.IMAP:
         return commonFields('imap');
       case ProviderType.POP3:
@@ -109,7 +132,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
 
   return (
     <Paper withBorder p="xl" radius="md">
-      <form onSubmit={form.onSubmit(onSubmit)}>
+      <form onSubmit={form.onSubmit(submit)}>
         <Stack gap="xl">
           <Stack gap={4}>
             <Title order={3} fw={800}>{initialValues ? 'Edit' : 'Connect'} Email Provider</Title>

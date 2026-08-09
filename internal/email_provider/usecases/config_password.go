@@ -17,10 +17,29 @@ import (
 func preserveStoredPassword(providerType panmailv1.ProviderType, stored, incoming []byte) ([]byte, error) {
 	switch providerType {
 	case panmailv1.ProviderType_PROVIDER_TYPE_SMTP:
-		return mergePassword(stored, incoming,
+		// SMTP carries two secrets, so both have to survive a round trip. An
+		// edit that only changed the host would otherwise blank the DKIM key
+		// and silently stop signing — mail would keep flowing while its
+		// deliverability quietly collapsed.
+		merged, err := mergePassword(stored, incoming,
 			&panmailv1.SmtpConfig{}, &panmailv1.SmtpConfig{},
 			func(c *panmailv1.SmtpConfig) string { return c.Password },
 			func(c *panmailv1.SmtpConfig, v string) { c.Password = v })
+		if err != nil {
+			return nil, err
+		}
+		return mergePassword(stored, merged,
+			&panmailv1.SmtpConfig{}, &panmailv1.SmtpConfig{},
+			func(c *panmailv1.SmtpConfig) string { return c.GetDkim().GetPrivateKey() },
+			func(c *panmailv1.SmtpConfig, v string) {
+				if v == "" {
+					return
+				}
+				if c.Dkim == nil {
+					c.Dkim = &panmailv1.DkimConfig{}
+				}
+				c.Dkim.PrivateKey = v
+			})
 	case panmailv1.ProviderType_PROVIDER_TYPE_IMAP:
 		return mergePassword(stored, incoming,
 			&panmailv1.ImapConfig{}, &panmailv1.ImapConfig{},
