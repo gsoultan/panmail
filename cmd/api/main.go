@@ -140,6 +140,16 @@ func main() {
 		return
 	}
 
+	// An explicit operator action rather than something that happens on
+	// startup. Rewriting every stored credential is not a thing a process
+	// should do because it happened to restart with a new environment
+	// variable — the operator needs to choose the moment, and to see the
+	// result.
+	if len(os.Args) > 1 && os.Args[1] == "rotate-secrets" {
+		handleRotateSecretsCommand()
+		return
+	}
+
 	// Parse flags for server mode
 	builtUIFlag := flag.Bool("built-ui", false, "Serve the built UI (embedded or from web/dist)")
 	configFlag := flag.String("config", "", "Path to configuration file")
@@ -226,10 +236,18 @@ func main() {
 			slog.Error("failed to resolve the data encryption key", "error", err)
 			os.Exit(1)
 		}
-		keyring, err = secrets.NewKeyring(dataKey)
+		// Retired keys are decrypt-only, so values written before a rotation
+		// stay readable while they are moved across. Without them a key can
+		// never be replaced: reading what the old key wrote needs the old key.
+		retired := secrets.ParseRetiredKeys(os.Getenv(secrets.EnvRetiredKeysName))
+		keyring, err = secrets.NewKeyring(dataKey, retired...)
 		if err != nil {
 			slog.Error("failed to initialize the data encryption keyring", "error", err)
 			os.Exit(1)
+		}
+		if len(retired) > 0 {
+			slog.Info("secret key rotation in progress",
+				"primary_key", keyring.PrimaryKeyID(), "retired_keys", len(retired))
 		}
 	}
 
@@ -690,4 +708,95 @@ func handleBuildCommand() {
 
 func migrate(conn db.Connection, dbType string) error {
 	return migrator.Run(conn.GetDB(), dbType)
+}
+
+// handleRotateSecretsCommand rewrites every stored credential under the
+// current primary key.
+//
+// The rotation itself is three steps for an operator, and only the middle one
+// is this command:
+//
+//  1. Generate a key, set it as PANMAIL_SECRET_KEY, and move the old one into
+//     PANMAIL_SECRET_KEYS_RETIRED. Restart. New writes use the new key; old
+//     values still read.
+//  2. Run this. Every value is rewritten under the new key.
+//  3. Remove PANMAIL_SECRET_KEYS_RETIRED and restart. The old key is now
+//     genuinely unused.
+//
+// Running it before step 1 is harmless: nothing needs rotating and it reports
+// zero. Running it twice is harmless for the same reason.
+func handleRotateSecretsCommand() {
+	fs := flag.NewFlagSet("rotate-secrets", flag.ExitOnError)
+	configFlag := fs.String("config", "", "Path to configuration file")
+	_ = fs.Parse(os.Args[2:])
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	if *configFlag != "" {
+		config.SetConfigPath(*configFlag)
+	}
+
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		fmt.Fprintf(os.Stderr, "cannot rotate secrets: no configuration found (%v)\n", err)
+		os.Exit(1)
+	}
+
+	// Resolve, never generate. EnsureDataKey invents a key when it finds none
+	// and writes it to the config, which is right at first start and exactly
+	// wrong here: a rotation is the one operation where an existing key is
+	// mandatory, and inventing one turns "I cannot read your data" into "I
+	// have silently replaced your key" — leaving every stored credential
+	// unreadable with no indication of which key was lost.
+	dataKey, err := config.ResolveDataKey(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"cannot rotate secrets: no encryption key is configured. Set %s to the key currently in use.\n",
+			secrets.EnvKeyName)
+		os.Exit(1)
+	}
+
+	retired := secrets.ParseRetiredKeys(os.Getenv(secrets.EnvRetiredKeysName))
+	keyring, err := secrets.NewKeyring(dataKey, retired...)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot build the keyring: %v\n", err)
+		os.Exit(1)
+	}
+
+	sqlDB, err := db.Connect(cfg.Database)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot connect to the database: %v\n", err)
+		os.Exit(1)
+	}
+	defer sqlDB.Close()
+
+	conn := db.NewConnection(sqlDB)
+	providerRepo := postgres.NewStore(conn, keyring)
+
+	rotator, ok := providerRepo.(interface {
+		RotateSecrets(ctx context.Context) (int, error)
+	})
+	if !ok {
+		fmt.Fprintln(os.Stderr, "this build cannot rotate secrets")
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	rotated, err := rotator.RotateSecrets(ctx)
+	if err != nil {
+		// Partial progress is reported rather than hidden: the pass is
+		// idempotent, so the operator can fix the cause and run it again.
+		fmt.Fprintf(os.Stderr, "rotation stopped after %d provider(s): %v\n", rotated, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("rotated %d provider(s) onto key %s\n", rotated, keyring.PrimaryKeyID())
+	if rotated == 0 {
+		fmt.Println("nothing needed rotating; every stored secret is already on the current key")
+	}
+	if len(retired) > 0 {
+		fmt.Printf("you can now remove %s and restart\n", secrets.EnvRetiredKeysName)
+	}
 }
