@@ -38,20 +38,33 @@ type trackingRequest struct {
 }
 
 // parse reads /track/{kind}/{tenant_id}/{message_id}/{recipient_base64}.
+// parseTrackingRequest reads /track/{kind}/{tenant}/{message}/{recipient}.
 func parseTrackingRequest(r *http.Request) (trackingRequest, bool) {
+	return parseSignedRequest(r, 2)
+}
+
+// parseSignedRequest reads {tenant}/{message}/{recipient} from a path, after
+// skipping prefixSegments leading segments.
+//
+// The prefix length is a parameter because the endpoints differ: tracking links
+// are /track/open/... (two segments) while unsubscribe is /unsubscribe/...
+// (one). It used to be hardcoded to two, so a handler mounted on a shorter path
+// silently read the message id as the tenant and rejected every valid link.
+func parseSignedRequest(r *http.Request, prefixSegments int) (trackingRequest, bool) {
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 4 {
+	// tenant and message are required; recipient is optional.
+	if len(parts) < prefixSegments+2 {
 		return trackingRequest{}, false
 	}
 
 	req := trackingRequest{
-		tenantID:  parts[2],
-		messageID: parts[3],
+		tenantID:  parts[prefixSegments],
+		messageID: parts[prefixSegments+1],
 		signature: r.URL.Query().Get(tracking.SignatureParam),
 	}
 
-	if len(parts) >= 5 {
-		decoded, err := base64.RawURLEncoding.DecodeString(parts[4])
+	if len(parts) >= prefixSegments+3 {
+		decoded, err := base64.RawURLEncoding.DecodeString(parts[prefixSegments+2])
 		if err != nil {
 			return trackingRequest{}, false
 		}

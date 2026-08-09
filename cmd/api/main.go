@@ -330,6 +330,13 @@ func main() {
 
 	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase, trackingSigner)
 
+	// One-click unsubscribe (RFC 8058), which Gmail and Yahoo require from bulk
+	// senders. It suppresses on POST and only shows a confirmation page on GET —
+	// link scanners fetch every URL in a message, so a GET that acted would
+	// unsubscribe recipients who never clicked.
+	unsubscribeHandler := eventhttp.NewUnsubscribeHandler(
+		manageSuppressionsUsecase, processEventUsecase, trackingSigner)
+
 	poller := inboundworker.NewPoller(tenantRepo, providerRepo, inboundUsecase, providerFactory, 30*time.Second)
 	runWorker(&workers, "inbound-poller", func() { poller.Start(workerCtx) })
 
@@ -420,6 +427,7 @@ func main() {
 	mux.Handle("/inbound/", inboundWebhookHandler)
 	mux.HandleFunc("/track/open/", trackingHandler.HandleOpen)
 	mux.HandleFunc("/track/click/", trackingHandler.HandleClick)
+	mux.Handle("/unsubscribe/", unsubscribeHandler)
 
 	// 6. Serve Frontend (Embedded or Disk)
 	serveUI := *builtUIFlag || web.IsBuiltUI

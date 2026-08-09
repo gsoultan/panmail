@@ -22,6 +22,10 @@ import (
 // audience while the envelope names the single address this copy is for.
 
 func newCCTestUsecase() (SendEmailUsecase, *mockSender) {
+	return newUsecaseWithBaseURL("http://localhost")
+}
+
+func newUsecaseWithBaseURL(baseURL string) (SendEmailUsecase, *mockSender) {
 	sender := &mockSender{}
 	provider := &providerEntities.EmailProvider{
 		ID: testProviderID, Name: "SMTP", Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
@@ -31,7 +35,7 @@ func newCCTestUsecase() (SendEmailUsecase, *mockSender) {
 		EventUsecase:    &mockEventUsecase{},
 		ProviderFactory: &mockFactory{sender: sender},
 		Renderer:        NewTemplateRenderer(),
-		BaseURL:         "http://localhost",
+		BaseURL:         baseURL,
 		TrackingSigner:  tracking.NewSigner([]byte("test-tracking-key")),
 	}), sender
 }
@@ -194,5 +198,73 @@ func TestASingleRecipientSendIsUnchanged(t *testing.T) {
 	}
 	if len(msg.Envelope) != 1 || msg.Envelope[0] != "only@example.com" {
 		t.Errorf("unexpected envelope %v", msg.Envelope)
+	}
+}
+
+// Gmail and Yahoo have required the RFC 8058 header *pair* from bulk senders
+// since February 2024, and they measure compliance across a sending domain — so
+// one campaign that omits it degrades delivery for every other message from that
+// domain. List-Unsubscribe on its own does not satisfy the requirement.
+func TestEveryMessageCarriesOneClickUnsubscribe(t *testing.T) {
+	// An https base URL, because RFC 8058 one-click works by the mailbox
+	// provider POSTing to the target: gsmail refuses to set the pair without
+	// one, and it is right to.
+	u, sender := newUsecaseWithBaseURL("https://mail.example.com")
+
+	req := &panmailv1.SendEmailRequest{
+		ProviderId: testProviderID,
+		From:       "from@example.com",
+		To:         []string{"to1@example.com"},
+		Cc:         []string{"cc1@example.com"},
+		Subject:    "Hello",
+		BodyHtml:   "<html><body>hi</body></html>",
+	}
+
+	ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
+	if _, err := u.SendEmail(ctx, testTenantID, req); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	for _, msg := range sender.sentEmails {
+		if !msg.HasOneClickUnsubscribe() {
+			t.Errorf("copy for %v is missing the RFC 8058 header pair", msg.Envelope)
+		}
+		// The link has to be per recipient, or unsubscribing one address would
+		// have to guess which mailbox actually asked.
+		encoded := base64.RawURLEncoding.EncodeToString([]byte(msg.Envelope[0]))
+		if !strings.Contains(msg.Headers["List-Unsubscribe"], encoded) {
+			t.Errorf("the unsubscribe link for %v does not identify that recipient", msg.Envelope)
+		}
+		// Signed, or the endpoint becomes a way to suppress arbitrary addresses.
+		if !strings.Contains(msg.Headers["List-Unsubscribe"], "sig=") {
+			t.Errorf("the unsubscribe link for %v is unsigned", msg.Envelope)
+		}
+	}
+}
+
+// A plain-http deployment cannot have one-click unsubscribe: the provider has to
+// POST to the target, so gsmail refuses a non-https one. The send must still go
+// out — refusing would turn an http base URL into a total outage — but the
+// message then does not satisfy the Gmail and Yahoo requirement, which is a
+// deployment problem worth knowing about rather than a silent one.
+func TestAPlainHTTPBaseURLCannotCarryOneClickUnsubscribe(t *testing.T) {
+	u, sender := newUsecaseWithBaseURL("http://localhost:8080")
+
+	ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
+	if _, err := u.SendEmail(ctx, testTenantID, &panmailv1.SendEmailRequest{
+		ProviderId: testProviderID,
+		From:       "from@example.com",
+		To:         []string{"to@example.com"},
+		Subject:    "Hello",
+		BodyHtml:   "<html><body>hi</body></html>",
+	}); err != nil {
+		t.Fatalf("the message must still be sent: %v", err)
+	}
+
+	if len(sender.sentEmails) != 1 {
+		t.Fatalf("expected the message to be sent, got %d copies", len(sender.sentEmails))
+	}
+	if sender.sentEmails[0].HasOneClickUnsubscribe() {
+		t.Error("an http target cannot satisfy RFC 8058 and must not be advertised as if it did")
 	}
 }

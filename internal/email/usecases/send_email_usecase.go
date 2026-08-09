@@ -31,6 +31,9 @@ import (
 const (
 	trackingKindOpen  = "open"
 	trackingKindClick = "click"
+	// Must match the value the unsubscribe handler verifies against. The kind
+	// is part of the signed payload, so a mismatch rejects every link.
+	trackingKindUnsubscribe = "unsubscribe"
 
 	providerCacheTTL      = time.Minute
 	templateCacheTTL      = time.Minute
@@ -407,6 +410,21 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 				HTMLBody: []byte(currentBodyHTML),
 			}
 
+			// Gmail and Yahoo have required the RFC 8058 header pair from bulk
+			// senders since February 2024, and they measure compliance across a
+			// sending domain — one campaign without it degrades delivery for
+			// every other message from that domain.
+			//
+			// The link is per recipient and signed, so the endpoint cannot be
+			// used to suppress an address the caller was never sending to.
+			// A failure is logged rather than fatal: refusing to send would turn
+			// a missing base URL into a total outage, and the message is still
+			// deliverable without the header.
+			if err := u.setUnsubscribeHeaders(&msg, tenantID, messageID, recipient); err != nil {
+				slog.Warn("sending without one-click unsubscribe headers",
+					"error", err, "id", messageID, "recipient", recipient)
+			}
+
 			for _, a := range req.Attachments {
 				msg.Attachments = append(msg.Attachments, gsmail.Attachment{
 					Filename:    a.Filename,
@@ -466,6 +484,36 @@ func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, htmlCo
 
 	htmlContent = u.injectPixel(htmlContent, tenantID, messageID, recipient, recipientEncoded)
 	return u.rewriteLinks(htmlContent, tenantID, messageID, recipient, recipientEncoded)
+}
+
+// setUnsubscribeHeaders adds the RFC 8058 pair, List-Unsubscribe and
+// List-Unsubscribe-Post, pointing at this gateway's signed endpoint.
+//
+// gsmail requires at least one https target, because one-click unsubscribe
+// works by the mailbox provider POSTing to it — a mailto: target alone cannot
+// satisfy the requirement and would make the pair invalid.
+func (u *sendEmailUsecase) setUnsubscribeHeaders(msg *gsmail.Email, tenantID, messageID, recipient string) error {
+	if u.baseURL == "" {
+		return fmt.Errorf("no base URL is configured, so no unsubscribe link can be built")
+	}
+	if u.trackingSigner == nil {
+		return fmt.Errorf("no tracking signer is configured")
+	}
+
+	signature := u.trackingSigner.Sign(tracking.Link{
+		Kind:      trackingKindUnsubscribe,
+		TenantID:  tenantID,
+		MessageID: messageID,
+		Recipient: recipient,
+	})
+
+	url := fmt.Sprintf("%s/unsubscribe/%s/%s/%s?%s=%s",
+		u.baseURL, tenantID, messageID,
+		base64.RawURLEncoding.EncodeToString([]byte(recipient)),
+		tracking.SignatureParam, signature,
+	)
+
+	return msg.SetOneClickUnsubscribe(url)
 }
 
 func (u *sendEmailUsecase) injectPixel(htmlContent, tenantID, messageID, recipient, recipientEncoded string) string {
