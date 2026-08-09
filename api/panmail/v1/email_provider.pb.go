@@ -32,6 +32,10 @@ type EmailProvider struct {
 	//	*EmailProvider_Smtp
 	//	*EmailProvider_Imap
 	//	*EmailProvider_Pop3
+	//	*EmailProvider_Sendgrid
+	//	*EmailProvider_Ses
+	//	*EmailProvider_Postmark
+	//	*EmailProvider_Mailgun
 	Config         isEmailProvider_Config `protobuf_oneof:"config"`
 	CreateTime     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	UpdateTime     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
@@ -130,6 +134,42 @@ func (x *EmailProvider) GetPop3() *Pop3Config {
 	return nil
 }
 
+func (x *EmailProvider) GetSendgrid() *SendGridConfig {
+	if x != nil {
+		if x, ok := x.Config.(*EmailProvider_Sendgrid); ok {
+			return x.Sendgrid
+		}
+	}
+	return nil
+}
+
+func (x *EmailProvider) GetSes() *SesConfig {
+	if x != nil {
+		if x, ok := x.Config.(*EmailProvider_Ses); ok {
+			return x.Ses
+		}
+	}
+	return nil
+}
+
+func (x *EmailProvider) GetPostmark() *PostmarkConfig {
+	if x != nil {
+		if x, ok := x.Config.(*EmailProvider_Postmark); ok {
+			return x.Postmark
+		}
+	}
+	return nil
+}
+
+func (x *EmailProvider) GetMailgun() *MailgunConfig {
+	if x != nil {
+		if x, ok := x.Config.(*EmailProvider_Mailgun); ok {
+			return x.Mailgun
+		}
+	}
+	return nil
+}
+
 func (x *EmailProvider) GetCreateTime() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreateTime
@@ -181,11 +221,35 @@ type EmailProvider_Pop3 struct {
 	Pop3 *Pop3Config `protobuf:"bytes,10,opt,name=pop3,proto3,oneof"`
 }
 
+type EmailProvider_Sendgrid struct {
+	Sendgrid *SendGridConfig `protobuf:"bytes,16,opt,name=sendgrid,proto3,oneof"`
+}
+
+type EmailProvider_Ses struct {
+	Ses *SesConfig `protobuf:"bytes,17,opt,name=ses,proto3,oneof"`
+}
+
+type EmailProvider_Postmark struct {
+	Postmark *PostmarkConfig `protobuf:"bytes,18,opt,name=postmark,proto3,oneof"`
+}
+
+type EmailProvider_Mailgun struct {
+	Mailgun *MailgunConfig `protobuf:"bytes,19,opt,name=mailgun,proto3,oneof"`
+}
+
 func (*EmailProvider_Smtp) isEmailProvider_Config() {}
 
 func (*EmailProvider_Imap) isEmailProvider_Config() {}
 
 func (*EmailProvider_Pop3) isEmailProvider_Config() {}
+
+func (*EmailProvider_Sendgrid) isEmailProvider_Config() {}
+
+func (*EmailProvider_Ses) isEmailProvider_Config() {}
+
+func (*EmailProvider_Postmark) isEmailProvider_Config() {}
+
+func (*EmailProvider_Mailgun) isEmailProvider_Config() {}
 
 type SmtpConfig struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
@@ -521,12 +585,259 @@ func (x *Pop3Config) GetUseSsl() bool {
 	return false
 }
 
+type SendGridConfig struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	ApiKey string                 `protobuf:"bytes,1,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	// Overrides the API host. For a regional endpoint or a test double; leave
+	// empty for api.sendgrid.com.
+	BaseUrl       string `protobuf:"bytes,2,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendGridConfig) Reset() {
+	*x = SendGridConfig{}
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendGridConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendGridConfig) ProtoMessage() {}
+
+func (x *SendGridConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendGridConfig.ProtoReflect.Descriptor instead.
+func (*SendGridConfig) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SendGridConfig) GetApiKey() string {
+	if x != nil {
+		return x.ApiKey
+	}
+	return ""
+}
+
+func (x *SendGridConfig) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+type SesConfig struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Region    string                 `protobuf:"bytes,1,opt,name=region,proto3" json:"region,omitempty"`
+	AccessKey string                 `protobuf:"bytes,2,opt,name=access_key,json=accessKey,proto3" json:"access_key,omitempty"`
+	SecretKey string                 `protobuf:"bytes,3,opt,name=secret_key,json=secretKey,proto3" json:"secret_key,omitempty"`
+	// Optional endpoint override, for a VPC endpoint or a local test double.
+	Endpoint      string `protobuf:"bytes,4,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SesConfig) Reset() {
+	*x = SesConfig{}
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SesConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SesConfig) ProtoMessage() {}
+
+func (x *SesConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SesConfig.ProtoReflect.Descriptor instead.
+func (*SesConfig) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SesConfig) GetRegion() string {
+	if x != nil {
+		return x.Region
+	}
+	return ""
+}
+
+func (x *SesConfig) GetAccessKey() string {
+	if x != nil {
+		return x.AccessKey
+	}
+	return ""
+}
+
+func (x *SesConfig) GetSecretKey() string {
+	if x != nil {
+		return x.SecretKey
+	}
+	return ""
+}
+
+func (x *SesConfig) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+type PostmarkConfig struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ServerToken string                 `protobuf:"bytes,1,opt,name=server_token,json=serverToken,proto3" json:"server_token,omitempty"`
+	// Postmark rejects bulk mail sent on a transactional stream, so a campaign
+	// needs this set to a broadcast stream. Empty uses the server default.
+	MessageStream string `protobuf:"bytes,2,opt,name=message_stream,json=messageStream,proto3" json:"message_stream,omitempty"`
+	BaseUrl       string `protobuf:"bytes,3,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PostmarkConfig) Reset() {
+	*x = PostmarkConfig{}
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PostmarkConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PostmarkConfig) ProtoMessage() {}
+
+func (x *PostmarkConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PostmarkConfig.ProtoReflect.Descriptor instead.
+func (*PostmarkConfig) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *PostmarkConfig) GetServerToken() string {
+	if x != nil {
+		return x.ServerToken
+	}
+	return ""
+}
+
+func (x *PostmarkConfig) GetMessageStream() string {
+	if x != nil {
+		return x.MessageStream
+	}
+	return ""
+}
+
+func (x *PostmarkConfig) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+type MailgunConfig struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Domain string                 `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	ApiKey string                 `protobuf:"bytes,2,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	// Mailgun's EU region uses a different host, and sending to the wrong one
+	// fails authentication rather than falling back.
+	BaseUrl       string `protobuf:"bytes,3,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MailgunConfig) Reset() {
+	*x = MailgunConfig{}
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MailgunConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MailgunConfig) ProtoMessage() {}
+
+func (x *MailgunConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_provider_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MailgunConfig.ProtoReflect.Descriptor instead.
+func (*MailgunConfig) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_provider_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *MailgunConfig) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
+func (x *MailgunConfig) GetApiKey() string {
+	if x != nil {
+		return x.ApiKey
+	}
+	return ""
+}
+
+func (x *MailgunConfig) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
 var File_panmail_v1_email_provider_proto protoreflect.FileDescriptor
 
 const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\n" +
 	"\x1fpanmail/v1/email_provider.proto\x12\n" +
-	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1epanmail/v1/provider_type.proto\"\xdc\x03\n" +
+	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1epanmail/v1/provider_type.proto\"\xb2\x05\n" +
 	"\rEmailProvider\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -534,7 +845,11 @@ const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\x04smtp\x18\x04 \x01(\v2\x16.panmail.v1.SmtpConfigH\x00R\x04smtp\x12,\n" +
 	"\x04imap\x18\t \x01(\v2\x16.panmail.v1.ImapConfigH\x00R\x04imap\x12,\n" +
 	"\x04pop3\x18\n" +
-	" \x01(\v2\x16.panmail.v1.Pop3ConfigH\x00R\x04pop3\x12;\n" +
+	" \x01(\v2\x16.panmail.v1.Pop3ConfigH\x00R\x04pop3\x128\n" +
+	"\bsendgrid\x18\x10 \x01(\v2\x1a.panmail.v1.SendGridConfigH\x00R\bsendgrid\x12)\n" +
+	"\x03ses\x18\x11 \x01(\v2\x15.panmail.v1.SesConfigH\x00R\x03ses\x128\n" +
+	"\bpostmark\x18\x12 \x01(\v2\x1a.panmail.v1.PostmarkConfigH\x00R\bpostmark\x125\n" +
+	"\amailgun\x18\x13 \x01(\v2\x19.panmail.v1.MailgunConfigH\x00R\amailgun\x12;\n" +
 	"\vcreate_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12;\n" +
 	"\vupdate_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -576,7 +891,25 @@ const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\bpassword\x18\x04 \x01(\tR\bpassword\x12\x1f\n" +
 	"\vskip_verify\x18\x05 \x01(\bR\n" +
 	"skipVerify\x12\x17\n" +
-	"\ause_ssl\x18\x06 \x01(\bR\x06useSslB\xa3\x01\n" +
+	"\ause_ssl\x18\x06 \x01(\bR\x06useSsl\"D\n" +
+	"\x0eSendGridConfig\x12\x17\n" +
+	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12\x19\n" +
+	"\bbase_url\x18\x02 \x01(\tR\abaseUrl\"}\n" +
+	"\tSesConfig\x12\x16\n" +
+	"\x06region\x18\x01 \x01(\tR\x06region\x12\x1d\n" +
+	"\n" +
+	"access_key\x18\x02 \x01(\tR\taccessKey\x12\x1d\n" +
+	"\n" +
+	"secret_key\x18\x03 \x01(\tR\tsecretKey\x12\x1a\n" +
+	"\bendpoint\x18\x04 \x01(\tR\bendpoint\"u\n" +
+	"\x0ePostmarkConfig\x12!\n" +
+	"\fserver_token\x18\x01 \x01(\tR\vserverToken\x12%\n" +
+	"\x0emessage_stream\x18\x02 \x01(\tR\rmessageStream\x12\x19\n" +
+	"\bbase_url\x18\x03 \x01(\tR\abaseUrl\"[\n" +
+	"\rMailgunConfig\x12\x16\n" +
+	"\x06domain\x18\x01 \x01(\tR\x06domain\x12\x17\n" +
+	"\aapi_key\x18\x02 \x01(\tR\x06apiKey\x12\x19\n" +
+	"\bbase_url\x18\x03 \x01(\tR\abaseUrlB\xa3\x01\n" +
 	"\x0ecom.panmail.v1B\x12EmailProviderProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"
@@ -593,29 +926,37 @@ func file_panmail_v1_email_provider_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_email_provider_proto_rawDescData
 }
 
-var file_panmail_v1_email_provider_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_panmail_v1_email_provider_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_panmail_v1_email_provider_proto_goTypes = []any{
 	(*EmailProvider)(nil),         // 0: panmail.v1.EmailProvider
 	(*SmtpConfig)(nil),            // 1: panmail.v1.SmtpConfig
 	(*DkimConfig)(nil),            // 2: panmail.v1.DkimConfig
 	(*ImapConfig)(nil),            // 3: panmail.v1.ImapConfig
 	(*Pop3Config)(nil),            // 4: panmail.v1.Pop3Config
-	(ProviderType)(0),             // 5: panmail.v1.ProviderType
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*SendGridConfig)(nil),        // 5: panmail.v1.SendGridConfig
+	(*SesConfig)(nil),             // 6: panmail.v1.SesConfig
+	(*PostmarkConfig)(nil),        // 7: panmail.v1.PostmarkConfig
+	(*MailgunConfig)(nil),         // 8: panmail.v1.MailgunConfig
+	(ProviderType)(0),             // 9: panmail.v1.ProviderType
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
 }
 var file_panmail_v1_email_provider_proto_depIdxs = []int32{
-	5, // 0: panmail.v1.EmailProvider.type:type_name -> panmail.v1.ProviderType
-	1, // 1: panmail.v1.EmailProvider.smtp:type_name -> panmail.v1.SmtpConfig
-	3, // 2: panmail.v1.EmailProvider.imap:type_name -> panmail.v1.ImapConfig
-	4, // 3: panmail.v1.EmailProvider.pop3:type_name -> panmail.v1.Pop3Config
-	6, // 4: panmail.v1.EmailProvider.create_time:type_name -> google.protobuf.Timestamp
-	6, // 5: panmail.v1.EmailProvider.update_time:type_name -> google.protobuf.Timestamp
-	2, // 6: panmail.v1.SmtpConfig.dkim:type_name -> panmail.v1.DkimConfig
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	9,  // 0: panmail.v1.EmailProvider.type:type_name -> panmail.v1.ProviderType
+	1,  // 1: panmail.v1.EmailProvider.smtp:type_name -> panmail.v1.SmtpConfig
+	3,  // 2: panmail.v1.EmailProvider.imap:type_name -> panmail.v1.ImapConfig
+	4,  // 3: panmail.v1.EmailProvider.pop3:type_name -> panmail.v1.Pop3Config
+	5,  // 4: panmail.v1.EmailProvider.sendgrid:type_name -> panmail.v1.SendGridConfig
+	6,  // 5: panmail.v1.EmailProvider.ses:type_name -> panmail.v1.SesConfig
+	7,  // 6: panmail.v1.EmailProvider.postmark:type_name -> panmail.v1.PostmarkConfig
+	8,  // 7: panmail.v1.EmailProvider.mailgun:type_name -> panmail.v1.MailgunConfig
+	10, // 8: panmail.v1.EmailProvider.create_time:type_name -> google.protobuf.Timestamp
+	10, // 9: panmail.v1.EmailProvider.update_time:type_name -> google.protobuf.Timestamp
+	2,  // 10: panmail.v1.SmtpConfig.dkim:type_name -> panmail.v1.DkimConfig
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_email_provider_proto_init() }
@@ -628,6 +969,10 @@ func file_panmail_v1_email_provider_proto_init() {
 		(*EmailProvider_Smtp)(nil),
 		(*EmailProvider_Imap)(nil),
 		(*EmailProvider_Pop3)(nil),
+		(*EmailProvider_Sendgrid)(nil),
+		(*EmailProvider_Ses)(nil),
+		(*EmailProvider_Postmark)(nil),
+		(*EmailProvider_Mailgun)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -635,7 +980,7 @@ func file_panmail_v1_email_provider_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_email_provider_proto_rawDesc), len(file_panmail_v1_email_provider_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

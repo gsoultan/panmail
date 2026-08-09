@@ -41,19 +41,9 @@ func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, re
 		}
 	}
 
-	var config interface{}
-	switch c := req.Config.(type) {
-	case *panmailv1.CreateEmailProviderRequest_Smtp:
-		config = c.Smtp
-	case *panmailv1.CreateEmailProviderRequest_Imap:
-		config = c.Imap
-	case *panmailv1.CreateEmailProviderRequest_Pop3:
-		config = c.Pop3
-	}
-
-	configBytes, err := protojson.Marshal(config.(proto.Message))
+	configBytes, err := marshalCreateConfig(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal config: %w", err)
+		return nil, err
 	}
 
 	p := &entities.EmailProvider{
@@ -135,18 +125,10 @@ func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, re
 		return nil, err
 	}
 
-	var config interface{}
-	switch c := req.Config.(type) {
-	case *panmailv1.UpdateEmailProviderRequest_Smtp:
-		config = c.Smtp
-	case *panmailv1.UpdateEmailProviderRequest_Imap:
-		config = c.Imap
-	case *panmailv1.UpdateEmailProviderRequest_Pop3:
-		config = c.Pop3
-	}
+	config := updateConfigMessage(req)
 
 	if config != nil {
-		configBytes, err := protojson.Marshal(config.(proto.Message))
+		configBytes, err := protojson.Marshal(config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal config: %w", err)
 		}
@@ -217,23 +199,9 @@ func (u *manageProvidersUsecase) TestConfig(ctx context.Context, req *panmailv1.
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	var config interface{}
-	switch c := req.Config.(type) {
-	case *panmailv1.CreateEmailProviderRequest_Smtp:
-		config = c.Smtp
-	case *panmailv1.CreateEmailProviderRequest_Imap:
-		config = c.Imap
-	case *panmailv1.CreateEmailProviderRequest_Pop3:
-		config = c.Pop3
-	}
-
-	if config == nil {
-		return fmt.Errorf("provider configuration is required")
-	}
-
-	configBytes, err := protojson.Marshal(config.(proto.Message))
+	configBytes, err := marshalCreateConfig(req)
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return err
 	}
 
 	p := &entities.EmailProvider{
@@ -298,6 +266,40 @@ func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.
 		}
 		c.Password = redactedPassword
 		proto.Config = &panmailv1.EmailProvider_Pop3{Pop3: c}
+
+	// The API providers. Each hides its one secret; the rest of the config —
+	// region, domain, stream, endpoint — is operational detail the operator
+	// needs to see in order to edit it.
+	case panmailv1.ProviderType_PROVIDER_TYPE_SENDGRID:
+		c := &panmailv1.SendGridConfig{}
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
+			return nil, err
+		}
+		c.ApiKey = redactedPassword
+		proto.Config = &panmailv1.EmailProvider_Sendgrid{Sendgrid: c}
+	case panmailv1.ProviderType_PROVIDER_TYPE_SES:
+		c := &panmailv1.SesConfig{}
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
+			return nil, err
+		}
+		// The access key identifies the credential and is not itself secret;
+		// the secret key is.
+		c.SecretKey = redactedPassword
+		proto.Config = &panmailv1.EmailProvider_Ses{Ses: c}
+	case panmailv1.ProviderType_PROVIDER_TYPE_POSTMARK:
+		c := &panmailv1.PostmarkConfig{}
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
+			return nil, err
+		}
+		c.ServerToken = redactedPassword
+		proto.Config = &panmailv1.EmailProvider_Postmark{Postmark: c}
+	case panmailv1.ProviderType_PROVIDER_TYPE_MAILGUN:
+		c := &panmailv1.MailgunConfig{}
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
+			return nil, err
+		}
+		c.ApiKey = redactedPassword
+		proto.Config = &panmailv1.EmailProvider_Mailgun{Mailgun: c}
 	}
 
 	return proto, nil
@@ -341,4 +343,68 @@ func (u *manageProvidersUsecase) dialProvider(p *entities.EmailProvider) (gsmail
 		return nil, fmt.Errorf("this provider type cannot be health-checked")
 	}
 	return pinger, nil
+}
+
+// createConfigMessage and updateConfigMessage pull the populated arm out of the
+// request's config oneof.
+//
+// These exist as one function each because the same switch used to be written
+// out three times — in Create, Update and TestConfig — and a provider type
+// added to two of them would marshal a nil config in the third, storing an
+// empty configuration with no error. One place to add a case is one place to
+// forget it.
+func createConfigMessage(req *panmailv1.CreateEmailProviderRequest) proto.Message {
+	switch c := req.Config.(type) {
+	case *panmailv1.CreateEmailProviderRequest_Smtp:
+		return c.Smtp
+	case *panmailv1.CreateEmailProviderRequest_Imap:
+		return c.Imap
+	case *panmailv1.CreateEmailProviderRequest_Pop3:
+		return c.Pop3
+	case *panmailv1.CreateEmailProviderRequest_Sendgrid:
+		return c.Sendgrid
+	case *panmailv1.CreateEmailProviderRequest_Ses:
+		return c.Ses
+	case *panmailv1.CreateEmailProviderRequest_Postmark:
+		return c.Postmark
+	case *panmailv1.CreateEmailProviderRequest_Mailgun:
+		return c.Mailgun
+	default:
+		return nil
+	}
+}
+
+func updateConfigMessage(req *panmailv1.UpdateEmailProviderRequest) proto.Message {
+	switch c := req.Config.(type) {
+	case *panmailv1.UpdateEmailProviderRequest_Smtp:
+		return c.Smtp
+	case *panmailv1.UpdateEmailProviderRequest_Imap:
+		return c.Imap
+	case *panmailv1.UpdateEmailProviderRequest_Pop3:
+		return c.Pop3
+	case *panmailv1.UpdateEmailProviderRequest_Sendgrid:
+		return c.Sendgrid
+	case *panmailv1.UpdateEmailProviderRequest_Ses:
+		return c.Ses
+	case *panmailv1.UpdateEmailProviderRequest_Postmark:
+		return c.Postmark
+	case *panmailv1.UpdateEmailProviderRequest_Mailgun:
+		return c.Mailgun
+	default:
+		return nil
+	}
+}
+
+// marshalCreateConfig refuses a request with no configuration rather than
+// marshalling a nil message, which previously panicked on the type assertion.
+func marshalCreateConfig(req *panmailv1.CreateEmailProviderRequest) ([]byte, error) {
+	config := createConfigMessage(req)
+	if config == nil {
+		return nil, fmt.Errorf("provider configuration is required")
+	}
+	b, err := protojson.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal config: %w", err)
+	}
+	return b, nil
 }

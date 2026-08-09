@@ -50,6 +50,26 @@ func preserveStoredPassword(providerType panmailv1.ProviderType, stored, incomin
 			&panmailv1.Pop3Config{}, &panmailv1.Pop3Config{},
 			func(c *panmailv1.Pop3Config) string { return c.Password },
 			func(c *panmailv1.Pop3Config, v string) { c.Password = v })
+	case panmailv1.ProviderType_PROVIDER_TYPE_SENDGRID:
+		return mergePassword(stored, incoming,
+			&panmailv1.SendGridConfig{}, &panmailv1.SendGridConfig{},
+			func(c *panmailv1.SendGridConfig) string { return c.ApiKey },
+			func(c *panmailv1.SendGridConfig, v string) { c.ApiKey = v })
+	case panmailv1.ProviderType_PROVIDER_TYPE_SES:
+		return mergePassword(stored, incoming,
+			&panmailv1.SesConfig{}, &panmailv1.SesConfig{},
+			func(c *panmailv1.SesConfig) string { return c.SecretKey },
+			func(c *panmailv1.SesConfig, v string) { c.SecretKey = v })
+	case panmailv1.ProviderType_PROVIDER_TYPE_POSTMARK:
+		return mergePassword(stored, incoming,
+			&panmailv1.PostmarkConfig{}, &panmailv1.PostmarkConfig{},
+			func(c *panmailv1.PostmarkConfig) string { return c.ServerToken },
+			func(c *panmailv1.PostmarkConfig, v string) { c.ServerToken = v })
+	case panmailv1.ProviderType_PROVIDER_TYPE_MAILGUN:
+		return mergePassword(stored, incoming,
+			&panmailv1.MailgunConfig{}, &panmailv1.MailgunConfig{},
+			func(c *panmailv1.MailgunConfig) string { return c.ApiKey },
+			func(c *panmailv1.MailgunConfig, v string) { c.ApiKey = v })
 	default:
 		return incoming, nil
 	}

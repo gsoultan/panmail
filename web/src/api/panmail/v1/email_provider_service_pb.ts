@@ -6,7 +6,7 @@
 import type { BinaryReadOptions, FieldList, JsonReadOptions, JsonValue, PartialMessage, PlainMessage } from "@bufbuild/protobuf";
 import { Message, proto3 } from "@bufbuild/protobuf";
 import { ProviderType } from "./provider_type_pb.js";
-import { EmailProvider, ImapConfig, Pop3Config, SmtpConfig } from "./email_provider_pb.js";
+import { EmailProvider, ImapConfig, MailgunConfig, Pop3Config, PostmarkConfig, SendGridConfig, SesConfig, SmtpConfig } from "./email_provider_pb.js";
 
 /**
  * @generated from message panmail.v1.CreateEmailProviderRequest
@@ -43,6 +43,30 @@ export class CreateEmailProviderRequest extends Message<CreateEmailProviderReque
      */
     value: Pop3Config;
     case: "pop3";
+  } | {
+    /**
+     * @generated from field: panmail.v1.SendGridConfig sendgrid = 12;
+     */
+    value: SendGridConfig;
+    case: "sendgrid";
+  } | {
+    /**
+     * @generated from field: panmail.v1.SesConfig ses = 13;
+     */
+    value: SesConfig;
+    case: "ses";
+  } | {
+    /**
+     * @generated from field: panmail.v1.PostmarkConfig postmark = 14;
+     */
+    value: PostmarkConfig;
+    case: "postmark";
+  } | {
+    /**
+     * @generated from field: panmail.v1.MailgunConfig mailgun = 15;
+     */
+    value: MailgunConfig;
+    case: "mailgun";
   } | { case: undefined; value?: undefined } = { case: undefined };
 
   /**
@@ -70,6 +94,10 @@ export class CreateEmailProviderRequest extends Message<CreateEmailProviderReque
     { no: 3, name: "smtp", kind: "message", T: SmtpConfig, oneof: "config" },
     { no: 8, name: "imap", kind: "message", T: ImapConfig, oneof: "config" },
     { no: 9, name: "pop3", kind: "message", T: Pop3Config, oneof: "config" },
+    { no: 12, name: "sendgrid", kind: "message", T: SendGridConfig, oneof: "config" },
+    { no: 13, name: "ses", kind: "message", T: SesConfig, oneof: "config" },
+    { no: 14, name: "postmark", kind: "message", T: PostmarkConfig, oneof: "config" },
+    { no: 15, name: "mailgun", kind: "message", T: MailgunConfig, oneof: "config" },
     { no: 10, name: "allowed_domains", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 11, name: "webhook_secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
@@ -335,6 +363,30 @@ export class UpdateEmailProviderRequest extends Message<UpdateEmailProviderReque
      */
     value: Pop3Config;
     case: "pop3";
+  } | {
+    /**
+     * @generated from field: panmail.v1.SendGridConfig sendgrid = 12;
+     */
+    value: SendGridConfig;
+    case: "sendgrid";
+  } | {
+    /**
+     * @generated from field: panmail.v1.SesConfig ses = 13;
+     */
+    value: SesConfig;
+    case: "ses";
+  } | {
+    /**
+     * @generated from field: panmail.v1.PostmarkConfig postmark = 14;
+     */
+    value: PostmarkConfig;
+    case: "postmark";
+  } | {
+    /**
+     * @generated from field: panmail.v1.MailgunConfig mailgun = 15;
+     */
+    value: MailgunConfig;
+    case: "mailgun";
   } | { case: undefined; value?: undefined } = { case: undefined };
 
   /**
@@ -363,6 +415,10 @@ export class UpdateEmailProviderRequest extends Message<UpdateEmailProviderReque
     { no: 3, name: "smtp", kind: "message", T: SmtpConfig, oneof: "config" },
     { no: 8, name: "imap", kind: "message", T: ImapConfig, oneof: "config" },
     { no: 9, name: "pop3", kind: "message", T: Pop3Config, oneof: "config" },
+    { no: 12, name: "sendgrid", kind: "message", T: SendGridConfig, oneof: "config" },
+    { no: 13, name: "ses", kind: "message", T: SesConfig, oneof: "config" },
+    { no: 14, name: "postmark", kind: "message", T: PostmarkConfig, oneof: "config" },
+    { no: 15, name: "mailgun", kind: "message", T: MailgunConfig, oneof: "config" },
     { no: 10, name: "allowed_domains", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 11, name: "webhook_secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);

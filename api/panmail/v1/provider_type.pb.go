@@ -28,21 +28,33 @@ const (
 	ProviderType_PROVIDER_TYPE_SMTP        ProviderType = 1
 	ProviderType_PROVIDER_TYPE_IMAP        ProviderType = 6
 	ProviderType_PROVIDER_TYPE_POP3        ProviderType = 7
+	ProviderType_PROVIDER_TYPE_SENDGRID    ProviderType = 8
+	ProviderType_PROVIDER_TYPE_SES         ProviderType = 9
+	ProviderType_PROVIDER_TYPE_POSTMARK    ProviderType = 10
+	ProviderType_PROVIDER_TYPE_MAILGUN     ProviderType = 11
 )
 
 // Enum value maps for ProviderType.
 var (
 	ProviderType_name = map[int32]string{
-		0: "PROVIDER_TYPE_UNSPECIFIED",
-		1: "PROVIDER_TYPE_SMTP",
-		6: "PROVIDER_TYPE_IMAP",
-		7: "PROVIDER_TYPE_POP3",
+		0:  "PROVIDER_TYPE_UNSPECIFIED",
+		1:  "PROVIDER_TYPE_SMTP",
+		6:  "PROVIDER_TYPE_IMAP",
+		7:  "PROVIDER_TYPE_POP3",
+		8:  "PROVIDER_TYPE_SENDGRID",
+		9:  "PROVIDER_TYPE_SES",
+		10: "PROVIDER_TYPE_POSTMARK",
+		11: "PROVIDER_TYPE_MAILGUN",
 	}
 	ProviderType_value = map[string]int32{
 		"PROVIDER_TYPE_UNSPECIFIED": 0,
 		"PROVIDER_TYPE_SMTP":        1,
 		"PROVIDER_TYPE_IMAP":        6,
 		"PROVIDER_TYPE_POP3":        7,
+		"PROVIDER_TYPE_SENDGRID":    8,
+		"PROVIDER_TYPE_SES":         9,
+		"PROVIDER_TYPE_POSTMARK":    10,
+		"PROVIDER_TYPE_MAILGUN":     11,
 	}
 )
 
@@ -78,12 +90,17 @@ var File_panmail_v1_provider_type_proto protoreflect.FileDescriptor
 const file_panmail_v1_provider_type_proto_rawDesc = "" +
 	"\n" +
 	"\x1epanmail/v1/provider_type.proto\x12\n" +
-	"panmail.v1*\xd5\x01\n" +
+	"panmail.v1*\xe5\x01\n" +
 	"\fProviderType\x12\x1d\n" +
 	"\x19PROVIDER_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12PROVIDER_TYPE_SMTP\x10\x01\x12\x16\n" +
 	"\x12PROVIDER_TYPE_IMAP\x10\x06\x12\x16\n" +
-	"\x12PROVIDER_TYPE_POP3\x10\a\"\x04\b\x02\x10\x05*\x11PROVIDER_TYPE_SES*\x16PROVIDER_TYPE_SENDGRID*\x15PROVIDER_TYPE_MAILGUN*\x16PROVIDER_TYPE_POSTMARKB\xa2\x01\n" +
+	"\x12PROVIDER_TYPE_POP3\x10\a\x12\x1a\n" +
+	"\x16PROVIDER_TYPE_SENDGRID\x10\b\x12\x15\n" +
+	"\x11PROVIDER_TYPE_SES\x10\t\x12\x1a\n" +
+	"\x16PROVIDER_TYPE_POSTMARK\x10\n" +
+	"\x12\x19\n" +
+	"\x15PROVIDER_TYPE_MAILGUN\x10\v\"\x04\b\x02\x10\x05B\xa2\x01\n" +
 	"\x0ecom.panmail.v1B\x11ProviderTypeProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"

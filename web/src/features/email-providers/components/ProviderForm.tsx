@@ -4,6 +4,7 @@ import { TextInput, Select, NumberInput, Checkbox, Button, Stack, Group, Paper, 
 import { IconCopy, IconCheck } from '@tabler/icons-react';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
 import { DkimSection } from './DkimSection';
+import { ApiProviderFields } from './ApiProviderFields';
 
 interface ProviderFormProps {
   initialValues?: any;
@@ -26,6 +27,10 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
     },
     imap: { host: '', port: 993, username: '', password: '', skipVerify: false, useSsl: true },
     pop3: { host: '', port: 995, username: '', password: '', skipVerify: false, useSsl: true },
+    sendgrid: { apiKey: '', baseUrl: '' },
+    ses: { region: 'us-east-1', accessKey: '', secretKey: '', endpoint: '' },
+    postmark: { serverToken: '', messageStream: '', baseUrl: '' },
+    mailgun: { domain: '', apiKey: '', baseUrl: '' },
   };
 
   const getInitialValues = () => {
@@ -38,6 +43,10 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
       smtp: initialValues.config?.case === 'smtp' ? initialValues.config.value : (initialValues.smtp || defaultValues.smtp),
       imap: initialValues.config?.case === 'imap' ? initialValues.config.value : (initialValues.imap || defaultValues.imap),
       pop3: initialValues.config?.case === 'pop3' ? initialValues.config.value : (initialValues.pop3 || defaultValues.pop3),
+      sendgrid: initialValues.config?.case === 'sendgrid' ? initialValues.config.value : (initialValues.sendgrid || defaultValues.sendgrid),
+      ses: initialValues.config?.case === 'ses' ? initialValues.config.value : (initialValues.ses || defaultValues.ses),
+      postmark: initialValues.config?.case === 'postmark' ? initialValues.config.value : (initialValues.postmark || defaultValues.postmark),
+      mailgun: initialValues.config?.case === 'mailgun' ? initialValues.config.value : (initialValues.mailgun || defaultValues.mailgun),
     };
   };
 
@@ -125,6 +134,17 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
         return commonFields('imap');
       case ProviderType.POP3:
         return commonFields('pop3');
+      case ProviderType.SENDGRID:
+      case ProviderType.SES:
+      case ProviderType.POSTMARK:
+      case ProviderType.MAILGUN:
+        return (
+          <ApiProviderFields
+            form={form}
+            type={form.values.type}
+            editing={Boolean(initialValues?.id)}
+          />
+        );
       default:
         return null;
     }
@@ -176,9 +196,19 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
               <Select
                 label="Connection Protocol"
                 data={[
-                  { value: ProviderType.SMTP.toString(), label: 'SMTP (Outgoing)' },
-                  { value: ProviderType.IMAP.toString(), label: 'IMAP (Incoming)' },
-                  { value: ProviderType.POP3.toString(), label: 'POP3 (Incoming)' },
+                  { group: 'Outgoing (SMTP)', items: [
+                    { value: ProviderType.SMTP.toString(), label: 'SMTP' },
+                  ]},
+                  { group: 'Outgoing (provider API)', items: [
+                    { value: ProviderType.SENDGRID.toString(), label: 'SendGrid' },
+                    { value: ProviderType.SES.toString(), label: 'Amazon SES' },
+                    { value: ProviderType.POSTMARK.toString(), label: 'Postmark' },
+                    { value: ProviderType.MAILGUN.toString(), label: 'Mailgun' },
+                  ]},
+                  { group: 'Incoming', items: [
+                    { value: ProviderType.IMAP.toString(), label: 'IMAP' },
+                    { value: ProviderType.POP3.toString(), label: 'POP3' },
+                  ]},
                 ]}
                 {...form.getInputProps('type')}
                 onChange={(val) => form.setFieldValue('type', parseInt(val || '0'))}

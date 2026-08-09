@@ -24,6 +24,10 @@ message CreateEmailProviderRequest {
     SmtpConfig smtp = 3;
     ImapConfig imap = 8;
     Pop3Config pop3 = 9;
+    SendGridConfig sendgrid = 12;
+    SesConfig ses = 13;
+    PostmarkConfig postmark = 14;
+    MailgunConfig mailgun = 15;
   }
   repeated string allowed_domains = 10;
   // Secret used to verify this provider's delivery webhooks. Write-only.
@@ -61,6 +65,10 @@ message UpdateEmailProviderRequest {
     SmtpConfig smtp = 3;
     ImapConfig imap = 8;
     Pop3Config pop3 = 9;
+    SendGridConfig sendgrid = 12;
+    SesConfig ses = 13;
+    PostmarkConfig postmark = 14;
+    MailgunConfig mailgun = 15;
   }
   repeated string allowed_domains = 10;
   // Secret used to verify this provider's delivery webhooks. Write-only.

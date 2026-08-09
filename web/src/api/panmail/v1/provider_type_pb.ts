@@ -28,6 +28,26 @@ export enum ProviderType {
    * @generated from enum value: PROVIDER_TYPE_POP3 = 7;
    */
   POP3 = 7,
+
+  /**
+   * @generated from enum value: PROVIDER_TYPE_SENDGRID = 8;
+   */
+  SENDGRID = 8,
+
+  /**
+   * @generated from enum value: PROVIDER_TYPE_SES = 9;
+   */
+  SES = 9,
+
+  /**
+   * @generated from enum value: PROVIDER_TYPE_POSTMARK = 10;
+   */
+  POSTMARK = 10,
+
+  /**
+   * @generated from enum value: PROVIDER_TYPE_MAILGUN = 11;
+   */
+  MAILGUN = 11,
 }
 // Retrieve enum metadata with: proto3.getEnumType(ProviderType)
 proto3.util.setEnumType(ProviderType, "panmail.v1.ProviderType", [
@@ -35,5 +55,9 @@ proto3.util.setEnumType(ProviderType, "panmail.v1.ProviderType", [
   { no: 1, name: "PROVIDER_TYPE_SMTP" },
   { no: 6, name: "PROVIDER_TYPE_IMAP" },
   { no: 7, name: "PROVIDER_TYPE_POP3" },
+  { no: 8, name: "PROVIDER_TYPE_SENDGRID" },
+  { no: 9, name: "PROVIDER_TYPE_SES" },
+  { no: 10, name: "PROVIDER_TYPE_POSTMARK" },
+  { no: 11, name: "PROVIDER_TYPE_MAILGUN" },
 ]);
 

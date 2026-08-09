@@ -9,7 +9,11 @@ import (
 
 	"github.com/gsoultan/gsmail"
 	"github.com/gsoultan/gsmail/imap"
+	"github.com/gsoultan/gsmail/mailgun"
 	"github.com/gsoultan/gsmail/pop3"
+	"github.com/gsoultan/gsmail/postmark"
+	"github.com/gsoultan/gsmail/sendgrid"
+	"github.com/gsoultan/gsmail/ses"
 	"github.com/gsoultan/gsmail/smtp"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
@@ -29,12 +33,23 @@ var senderPoolConfig = smtp.PoolConfig{
 }
 
 type providerFactory struct {
-	mu      sync.Mutex
-	senders map[string]*smtp.Sender
+	mu sync.Mutex
+	// Typed as the interface, not *smtp.Sender, because the API-backed senders
+	// are also cached here. Only SMTP holds connections; the others are HTTP
+	// clients with nothing to close, which is why closing is conditional.
+	senders map[string]gsmail.Sender
 }
 
 func NewProviderFactory() entities.ProviderFactory {
-	return &providerFactory{senders: make(map[string]*smtp.Sender)}
+	return &providerFactory{senders: make(map[string]gsmail.Sender)}
+}
+
+// closeSender releases a sender's resources if it has any. Only the SMTP sender
+// pools connections; the API senders implement no Close.
+func closeSender(s gsmail.Sender) {
+	if c, ok := s.(interface{ Close() error }); ok {
+		_ = c.Close()
+	}
 }
 
 // CreateSender returns a pooled sender for the provider.
@@ -43,15 +58,6 @@ func NewProviderFactory() entities.ProviderFactory {
 // produces a different fingerprint, so the old sender is replaced rather than
 // silently kept with stale credentials.
 func (f *providerFactory) CreateSender(p *entities.EmailProvider) (gsmail.Sender, error) {
-	if p.Type != panmailv1.ProviderType_PROVIDER_TYPE_SMTP {
-		return nil, fmt.Errorf("provider type %v does not support sending", p.Type)
-	}
-
-	c := &panmailv1.SmtpConfig{}
-	if err := protojson.Unmarshal(p.Config, c); err != nil {
-		return nil, err
-	}
-
 	key := senderCacheKey(p.ID, p.Config)
 
 	f.mu.Lock()
@@ -64,6 +70,90 @@ func (f *providerFactory) CreateSender(p *entities.EmailProvider) (gsmail.Sender
 	// The configuration changed: retire every sender for this provider so the
 	// old connections, and the credentials on them, are not reused.
 	f.closeProviderLocked(p.ID)
+
+	sender, err := buildSender(p)
+	if err != nil {
+		return nil, err
+	}
+
+	f.senders[key] = sender
+	return sender, nil
+}
+
+// buildSender constructs the sender for a provider type.
+//
+// Separate from the caching so the construction is testable on its own, and so
+// adding a provider is one case rather than a change to the locking.
+func buildSender(p *entities.EmailProvider) (gsmail.Sender, error) {
+	switch p.Type {
+	case panmailv1.ProviderType_PROVIDER_TYPE_SMTP:
+		return buildSMTPSender(p)
+
+	case panmailv1.ProviderType_PROVIDER_TYPE_SENDGRID:
+		c := &panmailv1.SendGridConfig{}
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
+			return nil, err
+		}
+		if c.GetApiKey() == "" {
+			return nil, fmt.Errorf("sendgrid provider %q has no API key", p.Name)
+		}
+		s := sendgrid.NewSender(c.GetApiKey())
+		if c.GetBaseUrl() != "" {
+			s.BaseURL = c.GetBaseUrl()
+		}
+		return s, nil
+
+	case panmailv1.ProviderType_PROVIDER_TYPE_SES:
+		c := &panmailv1.SesConfig{}
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
+			return nil, err
+		}
+		if c.GetRegion() == "" || c.GetAccessKey() == "" || c.GetSecretKey() == "" {
+			return nil, fmt.Errorf("ses provider %q needs a region, access key and secret key", p.Name)
+		}
+		return ses.NewSender(c.GetRegion(), c.GetAccessKey(), c.GetSecretKey(), c.GetEndpoint()), nil
+
+	case panmailv1.ProviderType_PROVIDER_TYPE_POSTMARK:
+		c := &panmailv1.PostmarkConfig{}
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
+			return nil, err
+		}
+		if c.GetServerToken() == "" {
+			return nil, fmt.Errorf("postmark provider %q has no server token", p.Name)
+		}
+		s := postmark.NewSender(c.GetServerToken())
+		// Postmark rejects bulk mail on a transactional stream, so a campaign
+		// that leaves this empty fails at the API rather than being delivered.
+		s.MessageStream = c.GetMessageStream()
+		if c.GetBaseUrl() != "" {
+			s.BaseURL = c.GetBaseUrl()
+		}
+		return s, nil
+
+	case panmailv1.ProviderType_PROVIDER_TYPE_MAILGUN:
+		c := &panmailv1.MailgunConfig{}
+		if err := protojson.Unmarshal(p.Config, c); err != nil {
+			return nil, err
+		}
+		if c.GetDomain() == "" || c.GetApiKey() == "" {
+			return nil, fmt.Errorf("mailgun provider %q needs a domain and an API key", p.Name)
+		}
+		s := mailgun.NewSender(c.GetDomain(), c.GetApiKey())
+		if c.GetBaseUrl() != "" {
+			s.BaseURL = c.GetBaseUrl()
+		}
+		return s, nil
+
+	default:
+		return nil, fmt.Errorf("provider type %v does not support sending", p.Type)
+	}
+}
+
+func buildSMTPSender(p *entities.EmailProvider) (gsmail.Sender, error) {
+	c := &panmailv1.SmtpConfig{}
+	if err := protojson.Unmarshal(p.Config, c); err != nil {
+		return nil, err
+	}
 
 	sender := smtp.NewSender(c.Host, int(c.Port), c.Username, c.Password, c.UseSsl)
 	sender.InsecureSkipVerify = c.SkipVerify
@@ -81,8 +171,6 @@ func (f *providerFactory) CreateSender(p *entities.EmailProvider) (gsmail.Sender
 	}
 
 	sender.EnablePool(senderPoolConfig)
-
-	f.senders[key] = sender
 	return sender, nil
 }
 
@@ -116,7 +204,7 @@ func (f *providerFactory) Close() error {
 	defer f.mu.Unlock()
 
 	for key, sender := range f.senders {
-		_ = sender.Close()
+		closeSender(sender)
 		delete(f.senders, key)
 	}
 	return nil
@@ -128,7 +216,7 @@ func (f *providerFactory) closeProviderLocked(providerID string) {
 	prefix := providerID + ":"
 	for key, sender := range f.senders {
 		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
-			_ = sender.Close()
+			closeSender(sender)
 			delete(f.senders, key)
 		}
 	}
