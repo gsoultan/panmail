@@ -11,6 +11,7 @@ import (
 	"github.com/gsoultan/gsmail"
 	"github.com/gsoultan/gsmail/imap"
 	"github.com/gsoultan/gsmail/mailgun"
+	"github.com/gsoultan/gsmail/otelgs"
 	"github.com/gsoultan/gsmail/pop3"
 	"github.com/gsoultan/gsmail/postmark"
 	"github.com/gsoultan/gsmail/sendgrid"
@@ -66,7 +67,7 @@ func (f *providerFactory) CreateSender(p *entities.EmailProvider) (gsmail.Sender
 	defer f.mu.Unlock()
 
 	if sender, ok := f.senders[key]; ok {
-		return sender, nil
+		return observed(sender), nil
 	}
 
 	// The configuration changed: retire every sender for this provider so the
@@ -78,8 +79,30 @@ func (f *providerFactory) CreateSender(p *entities.EmailProvider) (gsmail.Sender
 		return nil, err
 	}
 
+	// The raw sender is what goes in the cache, because that is what owns the
+	// connection pool and implements Close. Wrapping happens on the way out:
+	// an interceptor chain has no Close, so caching the wrapper would leak
+	// every pooled SMTP connection at shutdown.
 	f.senders[key] = sender
-	return sender, nil
+	return observed(sender), nil
+}
+
+// observed adds the cross-cutting behaviour every send should have.
+//
+// Recovery first, so a panic inside a vendor SDK becomes an error on one
+// message rather than taking down the worker that happened to be draining the
+// outbox at the time.
+//
+// The OpenTelemetry interceptors are attached unconditionally. With no provider
+// configured, OTel resolves to a no-op and costs almost nothing; the moment an
+// operator points the process at a collector, send spans and counters appear
+// without a code change. They deliberately record no addresses or subjects.
+func observed(s gsmail.Sender) gsmail.Sender {
+	return gsmail.WrapSender(s,
+		gsmail.RecoveryInterceptor(),
+		otelgs.SendInterceptor(),
+		otelgs.SendMetricsInterceptor(),
+	)
 }
 
 // buildSender constructs the sender for a provider type.

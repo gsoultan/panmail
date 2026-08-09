@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gsoultan/gsmail"
 	"github.com/gsoultan/gsmail/mailgun"
 	"github.com/gsoultan/gsmail/postmark"
 	"github.com/gsoultan/gsmail/sendgrid"
@@ -282,5 +283,73 @@ func TestACreateWithNoConfigIsRefusedNotPanicked(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "configuration is required") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// Every sender handed out is wrapped in an interceptor chain for panic recovery
+// and telemetry. Two properties of that wrapping are easy to break silently.
+
+// Ping is part of the gsmail.Sender interface, so it is promoted through the
+// interceptor chain and the "Test connection" button keeps working. If a future
+// gsmail moved Ping off the interface, this fails rather than the button
+// starting to report every provider as unhealthy.
+func TestAWrappedSenderCanStillBePinged(t *testing.T) {
+	f := NewProviderFactory()
+	t.Cleanup(func() { _ = f.Close() })
+
+	s, err := f.CreateSender(providerWith(t, panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+		&panmailv1.SmtpConfig{Host: "smtp.example.com", Port: 587}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, ok := s.(gsmail.Pinger); !ok {
+		t.Error("the wrapped sender cannot be pinged; health checks would report every provider unhealthy")
+	}
+}
+
+// Close is NOT on the gsmail.Sender interface, so an interceptor chain does not
+// have one. Caching the wrapper instead of the raw sender would therefore leak
+// every pooled SMTP connection at shutdown, silently and only in production.
+func TestTheCacheHoldsSomethingClosable(t *testing.T) {
+	f := NewProviderFactory()
+
+	if _, err := f.CreateSender(providerWith(t, panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+		&panmailv1.SmtpConfig{Host: "smtp.example.com", Port: 587})); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	pf := f.(*providerFactory)
+	pf.mu.Lock()
+	defer pf.mu.Unlock()
+	if len(pf.senders) != 1 {
+		t.Fatalf("expected one cached sender, got %d", len(pf.senders))
+	}
+	for _, cached := range pf.senders {
+		if _, ok := cached.(interface{ Close() error }); !ok {
+			t.Error("the cached sender has no Close; pooled connections would leak at shutdown")
+		}
+	}
+}
+
+// The same provider must keep returning a usable sender rather than a new one
+// each time, or the connection pool is pointless.
+func TestRepeatedCreatesReuseTheCachedSender(t *testing.T) {
+	f := NewProviderFactory()
+	t.Cleanup(func() { _ = f.Close() })
+
+	p := providerWith(t, panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+		&panmailv1.SmtpConfig{Host: "smtp.example.com", Port: 587})
+
+	for range 3 {
+		if _, err := f.CreateSender(p); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+	}
+
+	pf := f.(*providerFactory)
+	pf.mu.Lock()
+	defer pf.mu.Unlock()
+	if len(pf.senders) != 1 {
+		t.Errorf("expected the sender to be reused, got %d cached", len(pf.senders))
 	}
 }
