@@ -2,12 +2,14 @@ package usecases
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/webhook/repositories/entities"
 	"github.com/gsoultan/panmail/internal/webhook/repositories/stores"
+	"github.com/gsoultan/panmail/pkg/secrets"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -17,6 +19,11 @@ type WebhookUsecase interface {
 	Delete(ctx context.Context, tenantID, id string) error
 	Update(ctx context.Context, tenantID string, req *panmailv1.UpdateWebhookRequest) (*panmailv1.Webhook, error)
 	ListActiveByEvent(ctx context.Context, tenantID string, event panmailv1.WebhookTriggerEvent) ([]*entities.Webhook, error)
+
+	// GetSubscription returns the raw subscription, secret included, for the
+	// delivery worker. Distinct from the API-facing reads, which must not hand
+	// the signing secret back out.
+	GetSubscription(ctx context.Context, tenantID, id string) (*entities.Webhook, error)
 }
 
 type webhookUsecase struct {
@@ -33,6 +40,13 @@ func (u *webhookUsecase) Create(ctx context.Context, tenantID string, req *panma
 		events[i] = int32(e)
 	}
 
+	// Generated here rather than accepted from the caller: a secret chosen by
+	// whoever is configuring the webhook is a secret someone reused.
+	secret, err := secrets.GenerateKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate a webhook signing secret: %w", err)
+	}
+
 	w := &entities.Webhook{
 		ID:        uuid.New().String(),
 		TenantID:  tenantID,
@@ -40,6 +54,7 @@ func (u *webhookUsecase) Create(ctx context.Context, tenantID string, req *panma
 		URL:       req.Url,
 		Events:    events,
 		Active:    true,
+		Secret:    secret,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -48,7 +63,11 @@ func (u *webhookUsecase) Create(ctx context.Context, tenantID string, req *panma
 		return nil, err
 	}
 
-	return u.toProto(w), nil
+	// Returned once, on creation only. Handing it back on every read would
+	// make each list response a way to obtain it.
+	created := u.toProto(w)
+	created.Secret = secret
+	return created, nil
 }
 
 func (u *webhookUsecase) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*panmailv1.Webhook, string, error) {
@@ -116,4 +135,8 @@ func (u *webhookUsecase) toProto(w *entities.Webhook) *panmailv1.Webhook {
 		Active:    w.Active,
 		CreatedAt: timestamppb.New(w.CreatedAt),
 	}
+}
+
+func (u *webhookUsecase) GetSubscription(ctx context.Context, tenantID, id string) (*entities.Webhook, error) {
+	return u.repo.GetByID(ctx, tenantID, id)
 }

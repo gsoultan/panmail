@@ -8,13 +8,22 @@ import (
 	"github.com/gsoultan/panmail/internal/storetest"
 	"github.com/gsoultan/panmail/internal/webhook/repositories/entities"
 	"github.com/gsoultan/panmail/internal/webhook/repositories/stores"
+	"github.com/gsoultan/panmail/pkg/secrets"
 )
 
 var fixedTime = time.Date(2026, 8, 8, 10, 0, 0, 0, time.UTC)
 
 func newRepo(t *testing.T) stores.WebhookRepository {
 	t.Helper()
-	return NewStore(storetest.NewConnection(t))
+	key, err := secrets.GenerateKey()
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	keyring, err := secrets.NewKeyring(key)
+	if err != nil {
+		t.Fatalf("keyring: %v", err)
+	}
+	return NewStore(storetest.NewConnection(t), keyring)
 }
 
 func webhook(id, tenantID, name string, events []int32, active bool) *entities.Webhook {

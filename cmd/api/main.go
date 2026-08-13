@@ -267,7 +267,7 @@ func main() {
 	templateRepo := templatestores.NewStore(conn)
 	suppressionRepo := suppressionstores.NewStore(conn)
 	outboxRepo := emailstores.NewOutboxStore(conn)
-	webhookRepo := webhookstores.NewStore(conn)
+	webhookRepo := webhookstores.NewStore(conn, keyring)
 	eventRepo, err := eventstores.NewStore(*eventDirFlag)
 	if err != nil {
 		slog.Error("failed to open event store", "error", err)
@@ -305,7 +305,12 @@ func main() {
 	workerCtx, stopWorkers := context.WithCancel(context.Background())
 	var workers sync.WaitGroup
 
-	outboundWebhookWorker := webhookworker.NewWebhookWorker(webhookUsecase)
+	// Persisted rather than buffered. The previous worker held an in-memory
+	// channel and lost notifications three ways — a failing endpoint, a full
+	// queue, a restart — which for the mechanism that tells a tenant their mail
+	// bounced is silent, unrecoverable loss.
+	webhookDeliveryRepo := webhookstores.NewDeliveryStore(conn)
+	outboundWebhookWorker := webhookworker.NewDurableWorker(webhookDeliveryRepo, webhookUsecase)
 	runWorker(&workers, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
 
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)

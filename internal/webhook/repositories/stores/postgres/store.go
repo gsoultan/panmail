@@ -1,9 +1,12 @@
 package postgres
 
 import (
+	"fmt"
+
 	"context"
 	_ "embed"
 	"encoding/json"
+	"github.com/gsoultan/panmail/pkg/secrets"
 	"strings"
 
 	"github.com/gsoultan/panmail/internal/webhook/repositories/entities"
@@ -28,10 +31,14 @@ var deleteWebhookQuery string
 
 type store struct {
 	conn db.Connection
+	// The signing secret is a credential: anyone holding it can forge a
+	// notification the tenant will believe. Encrypted at rest like the
+	// provider passwords, and readable only by the delivery worker.
+	keyring *secrets.Keyring
 }
 
-func NewStore(conn db.Connection) stores.WebhookRepository {
-	return &store{conn: conn}
+func NewStore(conn db.Connection, keyring *secrets.Keyring) stores.WebhookRepository {
+	return &store{conn: conn, keyring: keyring}
 }
 
 func (s *store) Create(ctx context.Context, webhook *entities.Webhook) error {
@@ -41,6 +48,11 @@ func (s *store) Create(ctx context.Context, webhook *entities.Webhook) error {
 		return err
 	}
 
+	sealed, err := s.keyring.Encrypt(webhook.Secret)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt the webhook signing secret: %w", err)
+	}
+
 	_, err = dbConn.ExecContext(ctx, createWebhookQuery,
 		webhook.ID,
 		webhook.TenantID,
@@ -48,6 +60,7 @@ func (s *store) Create(ctx context.Context, webhook *entities.Webhook) error {
 		webhook.URL,
 		string(eventsJSON),
 		webhook.Active,
+		sealed,
 		webhook.CreatedAt,
 		webhook.UpdatedAt,
 	)
@@ -81,11 +94,15 @@ func (s *store) List(ctx context.Context, tenantID string, pageSize int, pageTok
 			&w.URL,
 			&eventsJSON,
 			&w.Active,
+			&w.Secret,
 			&w.CreatedAt,
 			&w.UpdatedAt,
 		)
 		if err != nil {
 			return nil, "", err
+		}
+		if w.Secret, err = s.keyring.Decrypt(w.Secret); err != nil {
+			return nil, "", fmt.Errorf("failed to decrypt the webhook signing secret: %w", err)
 		}
 		if err := json.Unmarshal(eventsJSON, &w.Events); err != nil {
 			return nil, "", err
@@ -112,11 +129,17 @@ func (s *store) GetByID(ctx context.Context, tenantID, id string) (*entities.Web
 		&w.URL,
 		&eventsJSON,
 		&w.Active,
+		&w.Secret,
 		&w.CreatedAt,
 		&w.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	// GetByID is what the delivery worker calls, so this is the read that has
+	// to yield a usable signing secret.
+	if w.Secret, err = s.keyring.Decrypt(w.Secret); err != nil {
+		return nil, fmt.Errorf("failed to decrypt the webhook signing secret: %w", err)
 	}
 	if err := json.Unmarshal(eventsJSON, &w.Events); err != nil {
 		return nil, err
@@ -168,6 +191,7 @@ func (s *store) ListActiveByEvent(ctx context.Context, tenantID string, event in
 			&w.URL,
 			&eventsJSON,
 			&w.Active,
+			&w.Secret,
 			&w.CreatedAt,
 			&w.UpdatedAt,
 		)

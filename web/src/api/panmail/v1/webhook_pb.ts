@@ -101,6 +101,20 @@ export class Webhook extends Message<Webhook> {
    */
   createdAt?: Timestamp;
 
+  /**
+   * The signing secret, returned only by CreateWebhook and empty on every
+   * other read.
+   *
+   * Panmail signs the notifications it sends so a receiver can tell a real one
+   * from a forged one — it verifies the webhooks it receives from SendGrid and
+   * Mailgun, and left the same threat open in the other direction. Shown once
+   * because storing it in a form that can be read back turns every list
+   * response into a way to obtain it.
+   *
+   * @generated from field: string secret = 8;
+   */
+  secret = "";
+
   constructor(data?: PartialMessage<Webhook>) {
     super();
     proto3.util.initPartial(data, this);
@@ -116,6 +130,7 @@ export class Webhook extends Message<Webhook> {
     { no: 5, name: "events", kind: "enum", T: proto3.getEnumType(WebhookTriggerEvent), repeated: true },
     { no: 6, name: "active", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 7, name: "created_at", kind: "message", T: Timestamp },
+    { no: 8, name: "secret", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Webhook {
