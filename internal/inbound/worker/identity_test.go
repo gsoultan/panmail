@@ -150,3 +150,40 @@ func TestNoDateHeaderFallsBackToNow(t *testing.T) {
 		t.Errorf("received at %v, want roughly now", got)
 	}
 }
+
+// gsmail reports which property it identified the message by, and the three
+// produce different kinds of value. Keying on the value alone would let a
+// content digest collide with someone's Message-ID.
+func TestTheIdentitySourceIsPartOfTheKey(t *testing.T) {
+	byHeader := msg(map[string]string{"Message-ID": "<abc@example.com>"})
+
+	// The same string arriving as a UID rather than a Message-ID.
+	byUID := msg(nil)
+	byUID.UID = 7
+	byUID.Mailbox = "INBOX"
+
+	if messageIdentity(tenantA, provider, byHeader) == messageIdentity(tenantA, provider, byUID) {
+		t.Error("two different kinds of identity collided")
+	}
+}
+
+// A message with nothing to identify it by is stored without deduplication
+// rather than given an invented id: it cannot be recognised on the next pass,
+// and pretending otherwise would suppress a later, different message.
+func TestAMessageWithNothingToIdentifyItGetsNoID(t *testing.T) {
+	if got := messageIdentity(tenantA, provider, gsmail.Email{}); got != "" {
+		t.Errorf("identity = %q, want empty for a message with no distinguishing property", got)
+	}
+}
+
+// A Message-ID identifies the message wherever it is found, so the same mail
+// reaching a tenant through two of their accounts is one message.
+func TestAMessageIdIsNotScopedByProvider(t *testing.T) {
+	e := msg(map[string]string{"Message-ID": "<abc@example.com>"})
+
+	a := messageIdentity(tenantA, provider, e)
+	b := messageIdentity(tenantA, "99999999-9999-9999-9999-999999999999", e)
+	if a != b {
+		t.Error("the same message read from two providers was stored twice")
+	}
+}

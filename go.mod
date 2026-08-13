@@ -9,7 +9,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/google/uuid v1.6.0
-	github.com/gsoultan/gsmail v0.8.5
+	github.com/gsoultan/gsmail v0.9.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/o1egl/paseto/v2 v2.1.1
 	github.com/pquerna/otp v1.5.0

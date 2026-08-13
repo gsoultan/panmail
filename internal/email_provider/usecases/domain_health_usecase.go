@@ -2,10 +2,7 @@ package usecases
 
 import (
 	"context"
-	"crypto"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/pem"
+	"crypto/subtle"
 	"fmt"
 	"sort"
 	"strings"
@@ -215,12 +212,18 @@ func toDnsCheck(r gsmail.HealthResult) *panmailv1.DnsCheck {
 
 // compareDkimKey checks the published key against the one being signed with.
 //
-// This is the check that gsmail's DNS lookup cannot make and the one that
-// matters most. A record can be present, parse cleanly and carry a perfectly
-// well-formed key that belongs to a different pair — after a rotation where
-// DNS was never updated, or a key pasted from the wrong provider. Every
-// signature then fails verification while everything on the page reads green.
-func compareDkimKey(privateKeyPEM, record string) (panmailv1.DkimKeyMatch, string) {
+// The comparison itself is gsmail's: DKIMPublicKeyRecord derives the public
+// half from the same key forms SignDKIM accepts, so the key checked is exactly
+// the key signed with. Panmail used to derive it here, which duplicated the
+// crypto and only handled a PEM string.
+//
+// What stays here is the verdict panmail reports, which is three-valued where
+// gsmail's is two. A record that is absent, has no p= tag or has been revoked
+// is not evidence of a mismatch, and calling it one sends an operator to
+// republish a key when the actual fix is to publish one at all. Those cases
+// are told apart structurally, from the record, rather than by reading gsmail's
+// wording.
+func compareDkimKey(privateKey string, record string) (panmailv1.DkimKeyMatch, string) {
 	published, ok := dkimPublicKeyTag(record)
 	if !ok {
 		return panmailv1.DkimKeyMatch_DKIM_KEY_MATCH_UNKNOWN, "The published record has no p= tag to compare against."
@@ -230,12 +233,13 @@ func compareDkimKey(privateKeyPEM, record string) (panmailv1.DkimKeyMatch, strin
 		return panmailv1.DkimKeyMatch_DKIM_KEY_MATCH_UNKNOWN, "The published key has been revoked (p= is empty)."
 	}
 
-	configured, err := publicKeyFromPrivatePEM(privateKeyPEM)
+	expected, err := gsmail.DKIMPublicKeyRecord(privateKey)
 	if err != nil {
 		return panmailv1.DkimKeyMatch_DKIM_KEY_MATCH_UNKNOWN, "The configured private key could not be read: " + err.Error()
 	}
+	configured, _ := dkimPublicKeyTag(expected)
 
-	if configured == published {
+	if subtle.ConstantTimeCompare([]byte(configured), []byte(published)) == 1 {
 		return panmailv1.DkimKeyMatch_DKIM_KEY_MATCH_MATCHES, ""
 	}
 	return panmailv1.DkimKeyMatch_DKIM_KEY_MATCH_MISMATCH,
@@ -265,35 +269,4 @@ func stripWhitespace(s string) string {
 		}
 		return r
 	}, s)
-}
-
-// publicKeyFromPrivatePEM derives the base64 SubjectPublicKeyInfo that belongs
-// in a p= tag, accepting the same key formats gsmail signs with.
-func publicKeyFromPrivatePEM(privateKeyPEM string) (string, error) {
-	block, _ := pem.Decode([]byte(privateKeyPEM))
-	if block == nil {
-		return "", fmt.Errorf("not PEM encoded")
-	}
-
-	var signer crypto.Signer
-
-	if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
-		signer = key
-	} else {
-		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return "", fmt.Errorf("neither a PKCS#1 nor a PKCS#8 private key")
-		}
-		s, ok := parsed.(crypto.Signer)
-		if !ok {
-			return "", fmt.Errorf("key of type %T cannot sign", parsed)
-		}
-		signer = s
-	}
-
-	der, err := x509.MarshalPKIXPublicKey(signer.Public())
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(der), nil
 }
