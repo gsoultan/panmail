@@ -668,3 +668,7 @@ func (m *mockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time.Time)
 	m.emails = kept
 	return removed, nil
 }
+
+func (m *mockOutboxRepo) Stats(context.Context) (int64, time.Time, error) {
+	return int64(len(m.emails)), time.Now(), nil
+}

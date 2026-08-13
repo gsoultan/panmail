@@ -47,6 +47,7 @@ import (
 	inboundworker "github.com/gsoultan/panmail/internal/inbound/worker"
 	"github.com/gsoultan/panmail/internal/logging"
 	migrator "github.com/gsoultan/panmail/internal/migrate"
+	"github.com/gsoultan/panmail/internal/observability"
 	"github.com/gsoultan/panmail/internal/ratelimit"
 	setupservices "github.com/gsoultan/panmail/internal/setup/services"
 	setupusecases "github.com/gsoultan/panmail/internal/setup/usecases"
@@ -157,6 +158,12 @@ func main() {
 	eventDirFlag := flag.String("event-dir", "events.db", "Directory for events database")
 	inboundDirFlag := flag.String("inbound-dir", "inbound.db", "Directory for inbound database")
 	versionFlag := flag.Bool("version", false, "Show version and exit")
+	// Loopback by default. Queue depths and send volumes are operational
+	// detail, and this gateway is internet-facing — serving them from the same
+	// listener as the API would publish them to anyone who asked. A scraper
+	// runs alongside, or an operator forwards the port deliberately.
+	metricsAddrFlag := flag.String("metrics-addr", "127.0.0.1:9090",
+		"Address for the Prometheus metrics listener; empty to disable")
 	flag.Parse()
 
 	if *versionFlag {
@@ -389,6 +396,79 @@ func main() {
 	idleSupervisor := inboundworker.NewIdleSupervisor(poller)
 	runWorker(&workers, "inbound-idle", func() { idleSupervisor.Start(workerCtx) })
 
+	// What an operator needs to see. Every failure this system has is a quiet
+	// one — a stalled outbox still answers 200, a webhook queue that stops
+	// draining looks like one with nothing to do, a hung IMAP connection keeps
+	// the process healthy — so the depth and, more importantly, the *age* of
+	// each queue are published for scraping.
+	metrics, err := observability.New()
+	if err != nil {
+		slog.Error("failed to set up metrics", "error", err)
+		os.Exit(1)
+	}
+	// Installing the global provider is what makes gsmail's own send and
+	// receive instrumentation appear; otelgs measures into otel.Meter(...) and
+	// was until now recording into a no-op.
+	metrics.SetGlobal()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = metrics.Shutdown(shutdownCtx)
+	}()
+
+	queueStats := func(read func(context.Context) (int64, time.Time, error)) observability.QueueSource {
+		return func(ctx context.Context) (observability.QueueStats, error) {
+			pending, oldest, err := read(ctx)
+			if err != nil {
+				return observability.QueueStats{}, err
+			}
+			stats := observability.QueueStats{Pending: pending}
+			// An empty queue has no oldest item; reporting the age of a
+			// sentinel timestamp would look like a very old backlog.
+			if pending > 0 && !oldest.IsZero() {
+				stats.Oldest = time.Since(oldest)
+			}
+			return stats, nil
+		}
+	}
+
+	if err := metrics.ObserveQueue("outbox", "Messages accepted but not yet delivered",
+		queueStats(outboxRepo.Stats)); err != nil {
+		slog.Error("failed to register outbox metrics", "error", err)
+	}
+	if err := metrics.ObserveQueue("webhook_deliveries", "Notifications owed to tenant endpoints",
+		queueStats(webhookDeliveryRepo.Stats)); err != nil {
+		slog.Error("failed to register webhook metrics", "error", err)
+	}
+	// Zero open sessions while IMAP providers are configured is the signal that
+	// inbound has silently stopped.
+	if err := metrics.ObserveGauge("imap_idle_sessions", "Open IMAP IDLE connections",
+		func() int64 { return int64(idleSupervisor.Sessions()) }); err != nil {
+		slog.Error("failed to register idle metrics", "error", err)
+	}
+
+	// Its own listener rather than a route on the API. Keeping it off the
+	// public surface is the point, and a separate server also means a metrics
+	// scrape cannot be starved by the API's own timeouts.
+	var metricsServer *http.Server
+	if *metricsAddrFlag != "" {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", metrics.Handler())
+		metricsServer = &http.Server{
+			Addr:              *metricsAddrFlag,
+			Handler:           metricsMux,
+			ReadHeaderTimeout: readHeaderTimeout,
+		}
+		go func() {
+			slog.Info("metrics listener started", "addr", *metricsAddrFlag)
+			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				// Not fatal: losing visibility is bad, but refusing to send
+				// mail because the metrics port is taken would be worse.
+				slog.Error("metrics listener stopped", "error", err)
+			}
+		}()
+	}
+
 	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, swappableTokenMaker)
 	authService := authservices.NewAuthService(authUsecase)
 
@@ -578,6 +658,9 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
+	if metricsServer != nil {
+		_ = metricsServer.Shutdown(shutdownCtx)
+	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown failed", "error", err)
 	}

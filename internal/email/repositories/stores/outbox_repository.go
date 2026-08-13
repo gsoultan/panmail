@@ -31,4 +31,10 @@ type OutboxRepository interface {
 	// request including the body. Over the life of a deployment that is the
 	// largest table in the database, holding nothing anyone will read.
 	PruneTerminal(ctx context.Context, olderThan time.Time) (int64, error)
+
+	// Stats reports how much is queued and how old the oldest of it is.
+	//
+	// The age is the part worth alerting on: a depth of five hundred is a busy
+	// minute or a stopped worker and cannot tell you which.
+	Stats(ctx context.Context) (pending int64, oldest time.Time, err error)
 }

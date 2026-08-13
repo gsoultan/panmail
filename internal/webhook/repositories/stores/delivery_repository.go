@@ -26,4 +26,8 @@ type DeliveryRepository interface {
 	// PruneTerminal removes notifications that have finished, older than the
 	// cutoff, so the table does not grow for the life of the deployment.
 	PruneTerminal(ctx context.Context, olderThan time.Time) (int64, error)
+
+	// Stats reports how much is queued and how old the oldest of it is. The
+	// age is what distinguishes a busy queue from one that has stopped.
+	Stats(ctx context.Context) (pending int64, oldest time.Time, err error)
 }

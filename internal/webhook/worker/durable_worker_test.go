@@ -425,3 +425,15 @@ func TestAGoneSubscriptionIsStillFinished(t *testing.T) {
 		t.Errorf("status = %q, want failed for a subscription that is really gone", row.Status)
 	}
 }
+
+func (m *memDeliveries) Stats(context.Context) (int64, time.Time, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	oldest := time.Now()
+	for _, r := range m.rows {
+		if r.CreatedAt.Before(oldest) {
+			oldest = r.CreatedAt
+		}
+	}
+	return int64(len(m.rows)), oldest, nil
+}

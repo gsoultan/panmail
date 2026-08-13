@@ -24,6 +24,8 @@ var (
 	updateDeliveryQuery string
 	//go:embed sql/delete_delivery.sql
 	deleteDeliveryQuery string
+	//go:embed sql/delivery_stats.sql
+	deliveryStatsQuery string
 	//go:embed sql/prune_terminal_deliveries.sql
 	pruneTerminalDeliveriesQuery string
 )
@@ -151,4 +153,19 @@ func (s *deliveryStore) PruneTerminal(ctx context.Context, olderThan time.Time) 
 		return 0, nil
 	}
 	return removed, nil
+}
+
+func (s *deliveryStore) Stats(ctx context.Context) (int64, time.Time, error) {
+	database, err := s.getDB()
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	var pending int64
+	var oldest sql.NullString
+	if err := database.QueryRowContext(ctx, deliveryStatsQuery).Scan(&pending, &oldest); err != nil {
+		return 0, time.Time{}, err
+	}
+	// Rows written by this store are UTC, but the parse is shared with the
+	// outbox's, which is not — see parseStoredTime.
+	return pending, parseStoredTime(oldest), nil
 }

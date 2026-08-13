@@ -14,6 +14,8 @@ import (
 )
 
 var (
+	//go:embed sql/outbox_stats.sql
+	outboxStatsQuery string
 	//go:embed sql/prune_terminal_outbox.sql
 	pruneTerminalOutboxQuery string
 
@@ -165,4 +167,17 @@ func (s *outboxStore) PruneTerminal(ctx context.Context, olderThan time.Time) (i
 		return 0, nil
 	}
 	return removed, nil
+}
+
+func (s *outboxStore) Stats(ctx context.Context) (int64, time.Time, error) {
+	db, err := s.getDB()
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	var pending int64
+	var oldest sql.NullString
+	if err := db.QueryRowContext(ctx, outboxStatsQuery).Scan(&pending, &oldest); err != nil {
+		return 0, time.Time{}, err
+	}
+	return pending, parseStoredTime(oldest), nil
 }
