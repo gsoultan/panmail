@@ -213,3 +213,64 @@ func (s *store) ListActiveByEvent(ctx context.Context, tenantID string, event in
 	}
 	return active, nil
 }
+
+// RotateSecrets rewrites every stored signing secret under the keyring's
+// primary key.
+//
+// Without this a rotation is incomplete in a way that only shows up after the
+// old key is dropped: the provider credentials move, the webhook secrets do
+// not, and every later read fails to decrypt. The documented rotation would
+// then silently stop webhook delivery.
+//
+// Values already on the primary key are skipped, so the pass is idempotent and
+// an interrupted run resumes by running it again. Not tenant-scoped: a key
+// still holding one tenant's rows is a key that cannot be retired.
+func (s *store) RotateSecrets(ctx context.Context) (rotated int, err error) {
+	dbConn := s.conn.GetDB()
+
+	type row struct{ id, secret string }
+
+	// Read everything first: holding a cursor open while updating the same
+	// table deadlocks on some engines and re-reads rewritten rows on others.
+	rows, err := dbConn.QueryContext(ctx, `SELECT id, COALESCE(secret, '') FROM webhooks`)
+	if err != nil {
+		return 0, err
+	}
+	var all []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.secret); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+
+	for _, r := range all {
+		if !s.keyring.NeedsRotation(r.secret) {
+			continue
+		}
+
+		// A failure here means a key is missing, and rewriting the row anyway
+		// would replace a recoverable secret with an unreadable one.
+		plain, err := s.keyring.Decrypt(r.secret)
+		if err != nil {
+			return rotated, fmt.Errorf("webhook %s: %w", r.id, err)
+		}
+		sealed, err := s.keyring.Encrypt(plain)
+		if err != nil {
+			return rotated, fmt.Errorf("webhook %s: %w", r.id, err)
+		}
+		if _, err := dbConn.ExecContext(ctx, `UPDATE webhooks SET secret = $2 WHERE id = $1`, r.id, sealed); err != nil {
+			return rotated, fmt.Errorf("webhook %s: %w", r.id, err)
+		}
+		rotated++
+	}
+
+	return rotated, nil
+}

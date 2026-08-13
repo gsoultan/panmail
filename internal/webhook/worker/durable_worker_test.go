@@ -2,8 +2,11 @@ package worker
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -368,5 +371,57 @@ func TestTheDeliveryIdIsStableAcrossRetries(t *testing.T) {
 	// A receiver deduplicates on this; a new id per attempt would defeat that.
 	if deliveries.all()[0].ID != first {
 		t.Error("the delivery id changed between attempts")
+	}
+}
+
+// An unreadable subscription is an operational fault, not a deleted one, and
+// confusing the two is what made a missed key rotation catastrophic: every
+// read fails to decrypt, every queued notification is marked permanently
+// failed, and the recorded reason says the subscription was deleted when it
+// was not.
+type failingSubs struct {
+	usecases.WebhookUsecase
+	err error
+}
+
+func (f *failingSubs) ListActiveByEvent(context.Context, string, panmailv1.WebhookTriggerEvent) ([]*entities.Webhook, error) {
+	return []*entities.Webhook{{ID: "sub-1", TenantID: wTenant, URL: "http://127.0.0.1:1/hook", Active: true}}, nil
+}
+
+func (f *failingSubs) GetSubscription(context.Context, string, string) (*entities.Webhook, error) {
+	return nil, f.err
+}
+
+func TestAnUnreadableSubscriptionIsRetriedNotAbandoned(t *testing.T) {
+	deliveries := newMemDeliveries()
+	subs := &failingSubs{err: errors.New("stored secret could not be decrypted with any configured key")}
+
+	w := newWorker(deliveries, subs)
+	w.Enqueue(wTenant, panmailv1.WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_SENT, nil)
+	w.processDue(context.Background())
+
+	row := deliveries.all()[0]
+	if row.Status != entities.DeliveryStatusDeferred {
+		t.Errorf("status = %q, want deferred — restoring the key should recover the queue", row.Status)
+	}
+	// The reason has to point at the real cause, or an operator goes looking
+	// for a subscription that was never deleted.
+	if !strings.Contains(row.LastError, "could not be read") {
+		t.Errorf("last error = %q, does not say the subscription was unreadable", row.LastError)
+	}
+}
+
+// A genuinely deleted subscription is still finished rather than retried
+// forever.
+func TestAGoneSubscriptionIsStillFinished(t *testing.T) {
+	deliveries := newMemDeliveries()
+	subs := &failingSubs{err: sql.ErrNoRows}
+
+	w := newWorker(deliveries, subs)
+	w.Enqueue(wTenant, panmailv1.WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_SENT, nil)
+	w.processDue(context.Background())
+
+	if row := deliveries.all()[0]; row.Status != entities.DeliveryStatusFailed {
+		t.Errorf("status = %q, want failed for a subscription that is really gone", row.Status)
 	}
 }

@@ -3,7 +3,9 @@ package worker
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -184,10 +186,22 @@ func (w *DurableWorker) attempt(ctx context.Context, d *entities.WebhookDelivery
 	d.AttemptCount++
 
 	sub, err := w.webhookUsecase.GetSubscription(ctx, d.TenantID, d.WebhookID)
-	if err != nil || sub == nil {
-		// The subscription is gone or unreadable. A notification owed to
-		// nobody is finished, not retried forever.
+
+	switch {
+	case errors.Is(err, sql.ErrNoRows) || (err == nil && sub == nil):
+		// Genuinely gone. A notification owed to nobody is finished, not
+		// retried forever.
 		w.finish(ctx, d, entities.DeliveryStatusFailed, "the webhook subscription no longer exists")
+		return
+
+	case err != nil:
+		// Anything else is an operational fault, not a deleted subscription,
+		// and the two must not be confused. The case that made this matter:
+		// after a key rotation that missed the webhook secrets, every read
+		// fails to decrypt — and treating that as "gone" permanently fails
+		// every queued notification and reports a reason that is untrue. It
+		// defers instead, so restoring the key recovers the queue.
+		w.reschedule(ctx, d, fmt.Sprintf("the webhook subscription could not be read: %v", err))
 		return
 	}
 	if !sub.Active {

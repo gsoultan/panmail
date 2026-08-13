@@ -785,29 +785,49 @@ func handleRotateSecretsCommand() {
 	defer sqlDB.Close()
 
 	conn := db.NewConnection(sqlDB)
-	providerRepo := postgres.NewStore(conn, keyring)
 
-	rotator, ok := providerRepo.(interface {
+	// Every store that holds an encrypted value, not just the providers.
+	//
+	// Missing one is the failure that only appears after the old key is
+	// dropped: those rows can no longer be decrypted, and whatever depends on
+	// them stops working with no obvious cause. Webhook signing secrets were
+	// exactly that gap.
+	type rotator interface {
 		RotateSecrets(ctx context.Context) (int, error)
-	})
-	if !ok {
-		fmt.Fprintln(os.Stderr, "this build cannot rotate secrets")
-		os.Exit(1)
+	}
+	stores := []struct {
+		name string
+		repo any
+	}{
+		{"provider", postgres.NewStore(conn, keyring)},
+		{"webhook", webhookstores.NewStore(conn, keyring)},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	rotated, err := rotator.RotateSecrets(ctx)
-	if err != nil {
-		// Partial progress is reported rather than hidden: the pass is
-		// idempotent, so the operator can fix the cause and run it again.
-		fmt.Fprintf(os.Stderr, "rotation stopped after %d provider(s): %v\n", rotated, err)
-		os.Exit(1)
+	total := 0
+	for _, s := range stores {
+		r, ok := s.repo.(rotator)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "this build cannot rotate %s secrets\n", s.name)
+			os.Exit(1)
+		}
+		rotated, err := r.RotateSecrets(ctx)
+		total += rotated
+		if err != nil {
+			// Partial progress is reported rather than hidden: the pass is
+			// idempotent, so the operator can fix the cause and run it again.
+			fmt.Fprintf(os.Stderr, "rotation stopped in %s secrets after %d row(s): %v\n", s.name, rotated, err)
+			os.Exit(1)
+		}
+		if rotated > 0 {
+			fmt.Printf("rotated %d %s secret(s)\n", rotated, s.name)
+		}
 	}
 
-	fmt.Printf("rotated %d provider(s) onto key %s\n", rotated, keyring.PrimaryKeyID())
-	if rotated == 0 {
+	fmt.Printf("rotated %d row(s) onto key %s\n", total, keyring.PrimaryKeyID())
+	if total == 0 {
 		fmt.Println("nothing needed rotating; every stored secret is already on the current key")
 	}
 	if len(retired) > 0 {

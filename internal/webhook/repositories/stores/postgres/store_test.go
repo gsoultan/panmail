@@ -220,3 +220,85 @@ func TestUpdateChangesTheStoredRow(t *testing.T) {
 		t.Errorf("event list did not update: %v", got.Events)
 	}
 }
+
+// A rotation that misses a store only shows up after the old key is dropped:
+// those rows can no longer be decrypted, and whatever depends on them stops
+// working with no obvious cause. Webhook signing secrets were that gap.
+func TestRotateSecretsMovesSigningSecretsOntoTheNewKey(t *testing.T) {
+	conn := storetest.NewConnection(t)
+	ctx := context.Background()
+
+	oldKey, newKey := mustGenerateKey(t), mustGenerateKey(t)
+
+	before := NewStore(conn, mustKeyring(t, oldKey))
+	if err := before.Create(ctx, &entities.Webhook{
+		ID: "wh-1", TenantID: storetest.TenantA, Name: "probe",
+		URL: "https://example.com/hook", Events: []int32{1}, Active: true,
+		Secret: "the-signing-secret",
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	after := NewStore(conn, mustKeyring(t, newKey, oldKey))
+	rotated, err := after.(interface {
+		RotateSecrets(context.Context) (int, error)
+	}).RotateSecrets(ctx)
+	if err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	if rotated != 1 {
+		t.Errorf("rotated %d webhooks, want 1", rotated)
+	}
+
+	// The point of the rotation: the old key is now genuinely unnecessary.
+	final := NewStore(conn, mustKeyring(t, newKey))
+	w, err := final.GetByID(ctx, storetest.TenantA, "wh-1")
+	if err != nil {
+		t.Fatalf("read after rotation without the old key: %v", err)
+	}
+	if w.Secret != "the-signing-secret" {
+		t.Errorf("secret = %q, want it preserved", w.Secret)
+	}
+}
+
+func TestRotatingWebhookSecretsIsIdempotent(t *testing.T) {
+	conn := storetest.NewConnection(t)
+	ctx := context.Background()
+	oldKey, newKey := mustGenerateKey(t), mustGenerateKey(t)
+
+	before := NewStore(conn, mustKeyring(t, oldKey))
+	before.Create(ctx, &entities.Webhook{
+		ID: "wh-1", TenantID: storetest.TenantA, Name: "probe",
+		URL: "https://example.com/hook", Events: []int32{1}, Active: true, Secret: "s",
+	})
+
+	after := NewStore(conn, mustKeyring(t, newKey, oldKey)).(interface {
+		RotateSecrets(context.Context) (int, error)
+	})
+
+	if n, err := after.RotateSecrets(ctx); err != nil || n != 1 {
+		t.Fatalf("first pass: %d, %v", n, err)
+	}
+	// Saying nothing was left is how an operator knows the old key can go.
+	if n, err := after.RotateSecrets(ctx); err != nil || n != 0 {
+		t.Errorf("second pass: %d, %v; want 0 and no error", n, err)
+	}
+}
+
+func mustGenerateKey(t *testing.T) string {
+	t.Helper()
+	k, err := secrets.GenerateKey()
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	return k
+}
+
+func mustKeyring(t *testing.T, primary string, retired ...string) *secrets.Keyring {
+	t.Helper()
+	k, err := secrets.NewKeyring(primary, retired...)
+	if err != nil {
+		t.Fatalf("keyring: %v", err)
+	}
+	return k
+}
