@@ -21,7 +21,6 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpchealth"
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
 	authmiddlewares "github.com/gsoultan/panmail/internal/auth/middlewares"
 	authstores "github.com/gsoultan/panmail/internal/auth/repositories/stores/postgres"

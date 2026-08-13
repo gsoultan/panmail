@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
@@ -31,9 +30,19 @@ func Connect(cfg Config) (*sql.DB, error) {
 		dataSourceName = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&default_query_exec_mode=simple_protocol",
 			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName)
 	case "mysql", "mariadb":
-		driverName = "mysql"
-		dataSourceName = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName)
+		// Refused rather than connected. The DDL layer is multi-vendor — the
+		// migrations swap types per engine — but the DML layer is not: the
+		// embedded queries use PostgreSQL's $1 positional parameters, which
+		// MySQL and MariaDB do not accept, so every query fails at runtime.
+		//
+		// Connecting anyway produces the worst version of that: setup
+		// succeeds, the schema is created, and the failure only appears later
+		// when someone tries to use it. Refusing here says so at the one
+		// moment it can still be acted on.
+		return nil, fmt.Errorf(
+			"database type %q is not supported: the query layer uses PostgreSQL-style "+
+				"positional parameters, so %s connects but every query fails. Use postgres or sqlite",
+			cfg.Type, cfg.Type)
 	case "sqlite":
 		driverName = "sqlite"
 		dataSourceName = sqliteDSN(cfg.FilePath)

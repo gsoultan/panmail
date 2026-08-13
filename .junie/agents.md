@@ -73,9 +73,14 @@ Adhere to the following layered structure within domain-based packages to ensure
 - **Repositories**: Data access layer for interacting with databases or external data sources.
     - **Structure**: The `repositories` folder must consist of exactly two sub-folders:
         1.  **`entities`**: Contains database-specific models or entities.
-        2.  **`stores`**: Contains repository implementations, separated per database vendor (e.g., `stores/postgres`, `stores/mysql`).
+        2.  **`stores`**: Contains repository implementations, separated per database vendor. Only `stores/postgres` exists, and it serves
+        PostgreSQL and SQLite alike — see the database note below.
     - **SQL Sub-folders**: Each database-specific folder within `stores/` must contain a `sql/` sub-folder for storing `.sql` files.
-- **Multi-DB Support**: The system must support PostgreSQL, MySQL, MariaDB, and SQLite.
+- **Database Support**: PostgreSQL and SQLite. MySQL and MariaDB are **not**
+  supported and are refused at connection time: the embedded queries use
+  PostgreSQL's `$1` positional parameters, which those engines do not accept,
+  so they connect and then fail on every query. Supporting them means a
+  placeholder-rebinding layer, not a driver import.
 - **Pebble Logging**: Use Pebble (KV store) for high-performance log storage.
 
 **Pattern Flow**: `Transports` → `Middlewares` → `Endpoints` → `Services` → `Usecases` → `Repositories`.
