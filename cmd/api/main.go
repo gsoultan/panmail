@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -493,60 +494,34 @@ func main() {
 
 		// Backup lives here because this is the process that can actually do
 		// it: the Pebble stores are held exclusively while the gateway runs,
-		// so an external command cannot snapshot them without downtime. The
-		// listener is loopback-only, which is the right audience for an
-		// operator action and keeps it off the public surface.
-		metricsMux.HandleFunc("/admin/backup", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				http.Error(w, "POST required", http.StatusMethodNotAllowed)
-				return
-			}
-			out := r.URL.Query().Get("out")
-			if out == "" {
-				http.Error(w, "out= is required", http.StatusBadRequest)
-				return
-			}
+		// so an external command cannot snapshot them without downtime.
+		//
+		// It is mounted only when nothing outside this machine can reach it.
+		// The endpoint takes no credentials, on the reasoning that a loopback
+		// caller is already an operator on the box — which is true, and stops
+		// being true the moment anyone binds this listener elsewhere. That is
+		// not a hypothetical misconfiguration: --metrics-addr exists precisely
+		// so Prometheus can scrape from another host, and 0.0.0.0:9090 is the
+		// obvious way to arrange it.
+		//
+		// What that combination gave up, demonstrated rather than guessed: an
+		// unauthenticated POST from another address wrote the SQL database,
+		// every Pebble store and config.yaml — which carries the auth signing
+		// key, and the data key on installations that do not set
+		// PANMAIL_SECRET_KEY — to a path chosen in the query string, and
+		// returned a manifest itemising it.
+		//
+		// Metrics need to be scrapable remotely. This does not. So the two
+		// part company when the listener is not loopback.
+		if !isLoopbackAddr(*metricsAddrFlag) {
+			slog.Warn("backup endpoint not mounted: the metrics listener is reachable from outside this machine",
+				"addr", *metricsAddrFlag,
+				"detail", "/admin/backup takes no credentials and writes the database, the stores and the auth signing key to a path the caller names",
+				"fix", "take backups with `panmail backup`, or run a second gateway with --metrics-addr on loopback")
+		} else {
+			mountBackupEndpoint(metricsMux, conn, cfg, keyring, eventRepo, inboundRepo, logStore)
+		}
 
-			opts := backup.Options{
-				OutDir:     out,
-				SQLDB:      conn.GetDB(),
-				SQLEngine:  cfg.Database.Type,
-				SQLitePath: cfg.Database.FilePath,
-				Version:    Version,
-				Stores:     map[string]backup.Checkpointer{},
-			}
-			if path, err := config.GetConfigPath(); err == nil {
-				opts.ConfigPath = path
-			}
-			opts.SecretKeyID = keyring.PrimaryKeyID()
-
-			// Every store, or none. A backup missing one of them restores into
-			// a gateway that has lost its events or its inbound mail, which is
-			// worse than a backup that refused to be taken.
-			for name, store := range map[string]any{
-				"events.db":  eventRepo,
-				"inbound.db": inboundRepo,
-				"logs.db":    logStore,
-			} {
-				cp, ok := store.(backup.Checkpointer)
-				if !ok {
-					http.Error(w, fmt.Sprintf("%s cannot snapshot itself", name), http.StatusInternalServerError)
-					return
-				}
-				opts.Stores[name] = cp
-			}
-
-			manifest, err := backup.Run(r.Context(), opts)
-			if err != nil {
-				slog.Error("backup failed", "error", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			slog.Info("backup written", "out", out, "contents", manifest.Stores)
-
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(manifest)
-		})
 		metricsServer = &http.Server{
 			Addr:              *metricsAddrFlag,
 			Handler:           metricsMux,
@@ -795,6 +770,89 @@ func main() {
 	}
 
 	slog.Info("Server stopped gracefully")
+}
+
+// mountBackupEndpoint serves a backup of the running gateway.
+//
+// Mounted only on a loopback listener: it takes no credentials, and what it
+// writes — the database, every store, and the config file carrying the auth
+// signing key — goes to a directory the caller names. See the call site.
+func mountBackupEndpoint(
+	mux *http.ServeMux,
+	conn db.Connection,
+	cfg *config.Config,
+	keyring *secrets.Keyring,
+	eventRepo, inboundRepo, logStore any,
+) {
+	mux.HandleFunc("/admin/backup", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST required", http.StatusMethodNotAllowed)
+			return
+		}
+		out := r.URL.Query().Get("out")
+		if out == "" {
+			http.Error(w, "out= is required", http.StatusBadRequest)
+			return
+		}
+
+		opts := backup.Options{
+			OutDir:     out,
+			SQLDB:      conn.GetDB(),
+			SQLEngine:  cfg.Database.Type,
+			SQLitePath: cfg.Database.FilePath,
+			Version:    Version,
+			Stores:     map[string]backup.Checkpointer{},
+		}
+		if path, err := config.GetConfigPath(); err == nil {
+			opts.ConfigPath = path
+		}
+		opts.SecretKeyID = keyring.PrimaryKeyID()
+
+		// Every store, or none. A backup missing one of them restores into
+		// a gateway that has lost its events or its inbound mail, which is
+		// worse than a backup that refused to be taken.
+		for name, store := range map[string]any{
+			"events.db":  eventRepo,
+			"inbound.db": inboundRepo,
+			"logs.db":    logStore,
+		} {
+			cp, ok := store.(backup.Checkpointer)
+			if !ok {
+				http.Error(w, fmt.Sprintf("%s cannot snapshot itself", name), http.StatusInternalServerError)
+				return
+			}
+			opts.Stores[name] = cp
+		}
+
+		manifest, err := backup.Run(r.Context(), opts)
+		if err != nil {
+			slog.Error("backup failed", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		slog.Info("backup written", "out", out, "contents", manifest.Stores)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(manifest)
+	})
+}
+
+// isLoopbackAddr reports whether a listen address is reachable only from this
+// machine. An empty or wildcard host is not: ":9090" and "0.0.0.0:9090" both
+// bind every interface.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // rpcRegistrar mounts ConnectRPC handlers with a fixed interceptor chain.

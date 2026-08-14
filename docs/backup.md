@@ -99,3 +99,28 @@ writes *because* the gateway's SQLite connection carries a busy timeout and
 WAL. Against a database opened without them, `VACUUM INTO` fails outright with
 `SQLITE_BUSY` the moment anything else is writing. If you are backing up by
 some other route, use `pkg/db.Connect` rather than opening the file yourself.
+
+## The backup endpoint and the metrics listener
+
+`POST /admin/backup` is served on the metrics listener and takes no
+credentials. That is safe because the listener defaults to `127.0.0.1:9090`,
+and a caller who is already on the box is already an operator.
+
+It stops being safe if you bind that listener anywhere else — which
+`--metrics-addr 0.0.0.0:9090` does, and which is the obvious way to let
+Prometheus scrape from another host. So panmail does not mount the endpoint
+when the listener is not loopback, and says so at startup:
+
+```
+WARN backup endpoint not mounted: the metrics listener is reachable from
+     outside this machine addr=0.0.0.0:9090
+```
+
+Metrics still serve normally; only `/admin/backup` is withheld. To take
+backups in that configuration, use `panmail backup` with the gateway stopped,
+or expose metrics through a sidecar that scrapes over loopback.
+
+Do not "fix" this by putting the listener back on loopback and adding a port
+forward. The endpoint writes the database, every store, and `config.yaml` —
+which carries the auth signing key — into a directory named in the query
+string. Anything that can reach it can take all of that.
