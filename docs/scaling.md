@@ -317,3 +317,28 @@ machines can reach.
 
 If you need profiles from a gateway whose metrics are exposed for scraping,
 reach it over an SSH tunnel or a sidecar rather than binding it wider.
+
+## Deploying it
+
+`deploy/kubernetes/panmail.yaml` and `deploy/prometheus/alerts.yaml` are a
+starting point, not a drop-in. Every value in them is one this document
+explains; the manifests carry the reasoning inline so you can change them
+knowing what you are trading.
+
+Two choices there are worth calling out because the obvious alternative is
+wrong:
+
+**A StatefulSet, not a Deployment** — and not for ordering. Each replica needs
+its own Pebble directories, because Pebble takes an exclusive lock on a store
+directory and the second replica to mount a shared volume will not start.
+`volumeClaimTemplates` gives each pod its own.
+
+**A memory limit near the heap figure will OOMKill a healthy process.** Heap in
+use held 19–31 MB across a 16-minute run of 57,500 messages while RSS peaked at
+251 MB before the runtime returned it. Size the limit against RSS; watch
+`panmail_heap_in_use_bytes`.
+
+The image keeps the metrics listener on loopback, so `/metrics`, `/admin/backup`
+and `/debug/pprof` are all reachable only from inside the pod. Scrape with a
+sidecar or a port-forward rather than binding it wider — the latter two take no
+credentials.

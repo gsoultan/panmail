@@ -174,6 +174,33 @@ jobs:
       - name: Smoke test the binary
         run: ./panmail --version
 
+  image:
+    # The container is what a Kubernetes deployment actually runs, and it is a
+    # separate build from the release binaries — different base, different UI
+    # step, its own way to break. An image nobody builds is an image that is
+    # broken the day someone needs it.
+    name: container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: docker build -t panmail:ci --build-arg VERSION=ci .
+
+      # Proves the binary runs and, by printing a version, that the ldflag
+      # reached it. The embedded UI is covered by release-build.
+      - name: Smoke test
+        run: docker run --rm panmail:ci --version
+
+      - name: Refuse to run as root
+        run: |
+          user="$(docker run --rm --entrypoint id panmail:ci -u)"
+          if [ "$user" = "0" ]; then
+            echo "the image runs as root"
+            exit 1
+          fi
+          echo "runs as uid $user"
+
   generated:
     # Whether the committed output of `buf generate` still matches the .proto
     # files. This was deliberately unchecked while the TypeScript client under

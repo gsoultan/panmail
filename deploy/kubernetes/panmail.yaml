@@ -1,0 +1,182 @@
+# A starting point, not a drop-in. Every value here is one this session either
+# measured or had to fix; the comments say which, so you can change them
+# knowing what you are trading.
+#
+# docs/scaling.md has the reasoning at length.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: panmail
+type: Opaque
+stringData:
+  # The key every stored credential is encrypted under. Losing it means every
+  # provider password, DKIM private key, OAuth token and webhook secret is
+  # permanently unreadable — nothing can recover them, they have to be re-entered
+  # by hand from each customer. Back it up somewhere other than this cluster.
+  PANMAIL_SECRET_KEY: "replace-me-with-64-hex-characters"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: panmail-config
+data:
+  config.yaml: |
+    database:
+      type: postgres
+      host: postgres.default.svc.cluster.local
+      port: 5432
+      user: panmail
+      dbname: panmail
+
+      # instances × max_open_conns + headroom ≤ server max_connections.
+      # Three replicas at 25 needs 75 of a stock server's 100, leaving room for
+      # migrations, a psql session and the superuser reservation.
+      #
+      # This is the number that matters most. It was hard-coded at 100 — the
+      # server's whole default budget — and a second instance could not get a
+      # connection. The symptom was not an error page: sends succeeded, the
+      # delete of the outbox row failed, the lease expired, and the message was
+      # delivered a second time.
+      max_open_conns: 25
+
+      # prefer uses TLS wherever the server offers it and still connects to one
+      # that does not. Use verify-full for anything crossing a network you do
+      # not own; the gateway warns at startup if it ends up in the clear.
+      ssl_mode: prefer
+
+    auth:
+      # Must be identical across replicas: a token minted by one is verified by
+      # another. Move this to the Secret for a real deployment.
+      symmetric_key: "replace-me-with-64-hex-characters"
+
+    app:
+      base_url: https://mail.example.com
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: panmail
+spec:
+  # A StatefulSet rather than a Deployment, and not for ordering: each replica
+  # needs its own Pebble directories. Pebble takes an exclusive lock on a store
+  # directory, so two replicas sharing one volume means the second never starts.
+  # volumeClaimTemplates gives each pod its own.
+  serviceName: panmail
+  replicas: 3
+  selector:
+    matchLabels: { app: panmail }
+  template:
+    metadata:
+      labels: { app: panmail }
+      annotations:
+        # Scrape from the pod. The metrics listener stays on loopback inside the
+        # container — the backup and profiling endpoints are served beside it and
+        # take no credentials — so this needs a sidecar or a port-forward rather
+        # than binding it wider. See docs/backup.md.
+        prometheus.io/scrape: "false"
+    spec:
+      # Long enough for the drain. On SIGTERM the queue worker stops claiming
+      # and gives sends already in flight ten seconds to finish. Cutting that
+      # short re-creates the bug it was added for: a send killed after the
+      # provider accepted DATA but before its reply has been delivered, panmail
+      # cannot know, and the retry sends it again. Measured: 184 messages cut
+      # off per deploy before the drain existed.
+      terminationGracePeriodSeconds: 30
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+
+      containers:
+        - name: panmail
+          image: ghcr.io/gsoultan/panmail:latest
+          args:
+            - --built-ui
+            - --config=/etc/panmail/config.yaml
+            - --log-dir=/var/lib/panmail/data/logs.db
+            - --event-dir=/var/lib/panmail/data/events.db
+            - --inbound-dir=/var/lib/panmail/data/inbound.db
+            - --metrics-addr=127.0.0.1:9090
+          ports:
+            - { name: http, containerPort: 8080 }
+
+          envFrom:
+            - secretRef: { name: panmail }
+
+          # Liveness asks whether the process is working; readiness asks whether
+          # it can serve. They must not be the same probe. /healthz deliberately
+          # checks nothing external: a database failover fails every replica's
+          # dependency check at the same moment, and pointing liveness at that
+          # would restart the whole fleet against a database already struggling.
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # /readyz pings the database and returns 503 naming what failed. It
+          # recovers on its own when the database returns — no restart.
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+
+          # Migrations run on startup and take a PostgreSQL advisory lock, so
+          # one replica migrates and the rest wait. That wait is unbounded on
+          # purpose — starting to serve against a half-changed schema is worse —
+          # so a large migration delays the rollout. This is the knob that stops
+          # Kubernetes killing a pod that is waiting its turn.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            failureThreshold: 60   # up to five minutes to migrate and start
+
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            # Heap held a flat 19-31 MB band across a 16-minute run of 57,500
+            # messages, but RSS peaked at 251 MB before the runtime returned it.
+            # A limit near the heap figure would OOMKill a healthy process.
+            limits: { memory: 512Mi }
+
+          volumeMounts:
+            - { name: config, mountPath: /etc/panmail, readOnly: true }
+            - { name: data, mountPath: /var/lib/panmail/data }
+
+      volumes:
+        - name: config
+          configMap: { name: panmail-config }
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: panmail
+spec:
+  selector: { app: panmail }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: panmail
+spec:
+  # Keeps a voluntary drain from taking every replica at once. Nothing is lost
+  # if it does — a claimed message returns when its lease expires — but the
+  # queue stops moving until something comes back.
+  minAvailable: 1
+  selector:
+    matchLabels: { app: panmail }

@@ -1,0 +1,26 @@
+# Keep the build context to what the image is built from. Without this, `docker
+# build` uploads every Pebble store and SQLite file lying around a development
+# checkout — which is slow, and puts real credentials into a layer cache.
+.git
+.dev
+.serena
+graphify-out
+
+# Build output. The image builds its own; copying a host build in would ship
+# whatever happened to be on someone's laptop.
+web/node_modules
+web/dist
+panmail
+dist
+
+# Local state. These are the development stores, and they contain encrypted
+# provider credentials.
+*.db
+*.sqlite
+*.sqlite-*
+logs.db
+events.db
+inbound.db
+
+*.log
+.DS_Store

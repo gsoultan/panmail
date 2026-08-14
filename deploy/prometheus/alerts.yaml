@@ -1,0 +1,116 @@
+# Alerts for the failures this gateway actually has.
+#
+# All of them are quiet. A stalled outbox returns 200 to every caller; a worker
+# that died looks exactly like one with nothing to do; a pool that has run out
+# of connections delivers mail twice rather than refusing. None raise an error
+# anyone sees, so none are visible until someone asks why mail stopped.
+groups:
+  - name: panmail
+    rules:
+      # The one that matters most, and the reason age is published at all.
+      #
+      # Depth cannot tell you anything on its own: five hundred pending is a
+      # busy minute or a dead worker, and the number is identical. The oldest
+      # message being fifteen minutes old can only mean one thing.
+      - alert: PanmailOutboxStalled
+        expr: panmail_outbox_oldest_seconds > 900
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Mail has been queued for over 15 minutes"
+          description: >-
+            The oldest message in the outbox is {{ $value | humanizeDuration }}
+            old. Check panmail_worker_restarts_total and the gateway logs; a
+            worker that panicked is restarted but stops sending while it is
+            down.
+
+      - alert: PanmailWebhooksStalled
+        expr: panmail_webhook_deliveries_oldest_seconds > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Webhook notifications are not draining"
+
+      # Non-zero means something stopped for a while. No health check can see
+      # this: the process stays up, /healthz and /readyz both stay green because
+      # the process and the database are fine, and mail simply is not sent.
+      - alert: PanmailWorkerRestarted
+        expr: increase(panmail_worker_restarts_total[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "A background worker panicked and was restarted"
+          description: >-
+            Nothing that worker is responsible for happened between the panic
+            and the restart. The log carries the stack.
+
+      # The defect that caused duplicate mail, caught before any is sent twice.
+      #
+      # A gateway sized to consume its database's whole connection budget did
+      # not fail cleanly: sends succeeded, the delete of the outbox row failed
+      # with "sorry, too many clients already", the lease expired, and the
+      # message went out again.
+      - alert: PanmailConnectionPoolSaturated
+        expr: |
+          rate(panmail_db_connections_wait_seconds_total[5m]) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Waiting on the database pool is costing real time"
+          description: >-
+            Callers are spending {{ $value | humanize }}s per second waiting for
+            a connection. Some waiting is normal — a send holds no connection
+            while it talks to SMTP — but sustained time here means the pool is
+            the limit. Raise database.max_open_conns, or add an instance if the
+            server cannot take more connections. Check
+            instances × max_open_conns + headroom ≤ server max_connections first.
+
+      # Leak detection. Flat is healthy; a rising floor is not.
+      #
+      # Deliberately not on RSS. Go returns memory lazily, and a measured run
+      # saw RSS peak at 251 MB and settle at 26 MB while heap never left a
+      # 19-31 MB band — alerting on RSS would page for a leak that is not there.
+      - alert: PanmailHeapGrowing
+        expr: |
+          min_over_time(panmail_heap_in_use_bytes[1h])
+            > 2 * min_over_time(panmail_heap_in_use_bytes[1h] offset 6h)
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Heap floor has doubled over six hours"
+          description: >-
+            The floor, not the peak — a sawtooth is normal. Take a profile:
+            go tool pprof http://127.0.0.1:9090/debug/pprof/heap
+
+      - alert: PanmailGoroutinesGrowing
+        expr: |
+          min_over_time(panmail_goroutines[1h])
+            > 2 * min_over_time(panmail_goroutines[1h] offset 6h)
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Goroutine floor has doubled over six hours"
+          description: >-
+            Something is being started and never finishing.
+            curl 'http://127.0.0.1:9090/debug/pprof/goroutine?debug=1'
+
+      # Inbound stops silently: the connection is up as far as the process is
+      # concerned and the mailbox simply stops being read.
+      - alert: PanmailInboundIdle
+        expr: panmail_imap_idle_sessions == 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "No IMAP IDLE sessions are open"
+          description: >-
+            Only meaningful if IMAP providers are configured. Remove this alert
+            if this deployment does not receive mail.
+
+      # A source that cannot be read publishes nothing rather than zero, so the
+      # series going absent is itself the signal — and it is the one that would
+      # otherwise silence every alert above it.
+      - alert: PanmailMetricsMissing
+        expr: absent(panmail_outbox_pending)
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "panmail is not reporting"
