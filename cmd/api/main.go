@@ -90,6 +90,15 @@ const (
 	idleTimeout       = 120 * time.Second
 	maxHeaderBytes    = 1 << 20 // 1 MiB
 
+	// The largest RPC body accepted, before any handler runs.
+	//
+	// Sized for the biggest thing anyone legitimately sends: a message whose
+	// attachments come to emailusecases.MaxAttachmentBytes, plus the base64
+	// expansion of about a third that protojson applies to them, plus the body
+	// and headers. Comfortably above a real email and far below what it takes
+	// to exhaust a process.
+	maxRPCRequestBytes = 48 << 20 // 48 MiB
+
 	shutdownTimeout    = 15 * time.Second
 	workerDrainTimeout = 30 * time.Second
 )
@@ -554,7 +563,19 @@ func main() {
 
 	// 6. Setup ConnectRPC Transport
 	rbacInterceptor := authmiddlewares.NewRBACInterceptor()
-	interceptors := connect.WithInterceptors(rbacInterceptor)
+	interceptors := connect.WithOptions(
+		connect.WithInterceptors(rbacInterceptor),
+
+		// connect documents zero — the default, and what this was — as
+		// allowing any message size. Every RPC would read whatever it was
+		// given into memory before a handler saw it, and SignIn and the setup
+		// calls are unauthenticated by design, so that needed no credentials.
+		//
+		// The compressed case is worse than the raw one: without a limit,
+		// decompression is unbounded too, and a few megabytes of gzip expand
+		// into as much memory as the attacker cares to name.
+		connect.WithReadMaxBytes(maxRPCRequestBytes),
+	)
 
 	mux := http.NewServeMux()
 

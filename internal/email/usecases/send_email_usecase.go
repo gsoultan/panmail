@@ -168,6 +168,13 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		}
 	}
 
+	// Same reasoning as the provider check below, for the same reason: a
+	// message that cannot be delivered must be refused here, while the caller
+	// is still listening, rather than queued for a worker to fail on.
+	if err := validateAttachments(req); err != nil {
+		return nil, err
+	}
+
 	// Fail fast on a provider that does not exist, rather than queueing a
 	// message that can never be delivered.
 	provider, err := u.getProvider(ctx, tenantID, req.ProviderId)
