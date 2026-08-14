@@ -193,6 +193,25 @@ Delivery remains at-least-once across a restart, because the send and the
 record of it are not one transaction. Draining shrinks the window; it does not
 close it.
 
+### Migrations during a deploy
+
+Nothing special is required. Every instance runs the migrations on startup, and
+a PostgreSQL advisory lock means one of them does the work while the rest wait
+and then find nothing to do. There is no separate migration step to run and no
+ordering to arrange.
+
+Two consequences worth knowing:
+
+- An instance will not finish starting until whichever instance holds the lock
+  has finished migrating. That wait is deliberately unbounded — the alternative
+  is starting to serve against a schema halfway through changing — so a long
+  migration delays the whole rollout. Set readiness probe timeouts accordingly,
+  or run a long migration deliberately rather than as part of a deploy.
+- Migrations are not transactional across statements. A migration that fails
+  partway leaves what it had already applied in place and the version
+  unrecorded, so the next start retries the whole file. Additive steps tolerate
+  "already exists"; anything else does not, and will need a hand.
+
 ## Send rate limits are per instance
 
 `send_rate_per_minute` is enforced by an in-memory token bucket, so each
