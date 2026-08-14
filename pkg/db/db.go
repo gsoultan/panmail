@@ -18,7 +18,30 @@ type Config struct {
 	Password string
 	DBName   string
 	FilePath string
+
+	// MaxOpenConns bounds this process's share of the server's connections.
+	// Zero takes defaultMaxOpenConns. The other fields are matched by their
+	// lowercased names; this one is two words, so it says so.
+	MaxOpenConns int `yaml:"max_open_conns"`
 }
+
+// A gateway is stateless so that several can be run against one database, and
+// this is the number that decides whether that actually works. The pool used to
+// be pinned at 100 — PostgreSQL's own default max_connections — so a single
+// instance was sized to consume every slot the server had. A second instance
+// then spent its life losing races for connections, and the way that surfaced
+// was not a clean error: a send would succeed, the delete of the outbox row
+// would fail with "sorry, too many clients already", the row would stay
+// PENDING, and the message would be sent again. Exhausting the connection
+// budget delivered duplicate mail.
+//
+// 25 leaves room for three instances plus migrations, an interactive psql and
+// the superuser reservation inside a default server. Operators running more
+// instances, or a server tuned higher, set database.max_open_conns; the
+// arithmetic they need is
+//
+//	instances × max_open_conns + headroom ≤ server max_connections
+const defaultMaxOpenConns = 25
 
 func Connect(cfg Config) (*sql.DB, error) {
 	var driverName string
@@ -58,8 +81,16 @@ func Connect(cfg Config) (*sql.DB, error) {
 	if cfg.Type == "sqlite" {
 		tuneSQLitePool(db)
 	} else {
-		db.SetMaxOpenConns(100)
-		db.SetMaxIdleConns(25)
+		maxOpen := cfg.MaxOpenConns
+		if maxOpen <= 0 {
+			maxOpen = defaultMaxOpenConns
+		}
+		db.SetMaxOpenConns(maxOpen)
+		// Idle tracks open: holding fewer idle than the pool will open means
+		// the connections above that mark are closed and reopened on every
+		// burst, which is the load pattern here — a queue tick claims a batch
+		// and goes quiet.
+		db.SetMaxIdleConns(maxOpen)
 	}
 	db.SetConnMaxLifetime(5 * time.Minute)
 	db.SetConnMaxIdleTime(2 * time.Minute)

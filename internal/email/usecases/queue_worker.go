@@ -24,6 +24,11 @@ const (
 	perEmailTimeout    = 30 * time.Second
 	bookkeepingTimeout = 10 * time.Second
 	retryPatternTTL    = time.Minute
+
+	// Short and few: this runs after a send, and the lease is the backstop.
+	// The point is to ride out a blip, not to block a worker.
+	bookkeepingAttempts = 3
+	bookkeepingBackoff  = 200 * time.Millisecond
 )
 
 var defaultRetryPattern = []string{"5m", "15m", "30m", "1h", "3h", "6h", "12h", "24h"}
@@ -286,18 +291,62 @@ func (w *queueWorker) suppress(ctx context.Context, e *entities.OutboxEmail, rec
 }
 
 func (w *queueWorker) updateOutbox(ctx context.Context, e *entities.OutboxEmail) {
-	if err := w.outboxRepo.Update(ctx, e); err != nil {
-		slog.Error("failed to update outbox email status", "error", err, "id", e.ID, "status", e.Status)
-	}
+	bookkeep(ctx, "update outbox email status", e.ID, func(c context.Context) error {
+		return w.outboxRepo.Update(c, e)
+	})
 }
 
 func (w *queueWorker) deleteOutbox(ctx context.Context, id string) {
-	delCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bookkeepingTimeout)
-	defer cancel()
+	bookkeep(ctx, "delete outbox email", id, func(c context.Context) error {
+		return w.outboxRepo.Delete(c, id)
+	})
+}
 
-	if err := w.outboxRepo.Delete(delCtx, id); err != nil {
-		slog.Error("failed to delete outbox email", "error", err, "id", id)
+// bookkeep runs the write that records what has already happened to a message.
+//
+// By the time this runs the send is over, so a failure here does not fail the
+// message — it loses the record of it. The row keeps its old state, the lease
+// expires, another worker claims it, and the recipient gets a second copy of an
+// email that was already delivered.
+//
+// One attempt turned out not to be enough. Two gateways against one database
+// exhausted the server's connections, every write in that window failed with
+// "sorry, too many clients already", and the duplicates showed up at the far
+// end. The connection bound in pkg/db is the fix for that particular cause;
+// this is the fix for the shape of it, because any transient database error has
+// the same consequence. A few short retries turn a hiccup into a non-event.
+//
+// It is still at-least-once — nothing here can make it exactly-once, since the
+// send and the record of it are not one transaction — but the window shrinks
+// from "one failed query" to "the database was unreachable for a second".
+func bookkeep(ctx context.Context, what, id string, write func(context.Context) error) {
+	// WithoutCancel, because a cancelled batch is exactly when this matters:
+	// on shutdown the send has happened and the row still has to be settled.
+	base := context.WithoutCancel(ctx)
+
+	var err error
+	for attempt := range bookkeepingAttempts {
+		if attempt > 0 {
+			time.Sleep(bookkeepingBackoff << (attempt - 1))
+		}
+
+		attemptCtx, cancel := context.WithTimeout(base, bookkeepingTimeout)
+		err = write(attemptCtx)
+		cancel()
+
+		if err == nil {
+			if attempt > 0 {
+				slog.Warn("outbox bookkeeping succeeded on retry",
+					"operation", what, "id", id, "attempts", attempt+1)
+			}
+			return
+		}
 	}
+
+	// Naming the consequence, because "failed to delete outbox email" reads as
+	// a stale row and the real cost is a second copy in someone's inbox.
+	slog.Error("failed to "+what+"; the message may be sent again when the lease expires",
+		"error", err, "id", id, "attempts", bookkeepingAttempts)
 }
 
 func (w *queueWorker) getRetryPattern(ctx context.Context, tenantID string) []string {
