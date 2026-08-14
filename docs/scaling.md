@@ -297,3 +297,23 @@ concurrent sends contending for twenty-five connections produces a large
 What is not normal is `wait_seconds_total` growing much faster than
 `wait_total`, which means the waits have stopped being brief. That is when to
 raise `max_open_conns`, or add an instance if the server cannot take more.
+
+### Diagnosing a leak
+
+`panmail_goroutines` climbing over a week says something is accumulating. It
+does not say what. Profiling is served alongside metrics, under the same
+loopback rule as the backup endpoint:
+
+```sh
+curl 'http://127.0.0.1:9090/debug/pprof/goroutine?debug=1' > goroutines.txt
+go tool pprof -http=: 'http://127.0.0.1:9090/debug/pprof/heap'
+```
+
+Both are withheld when `--metrics-addr` is not loopback, and the startup log
+says so. A heap profile is a dump of whatever the process is holding — message
+bodies, decrypted provider credentials — and `/debug/pprof/profile` will spend
+thirty seconds of CPU for whoever asks. Neither belongs on a port other
+machines can reach.
+
+If you need profiles from a gateway whose metrics are exposed for scraping,
+reach it over an SSH tunnel or a sidecar rather than binding it wider.

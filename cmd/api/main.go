@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -156,6 +157,10 @@ var (
 )
 
 func main() {
+	// Before anything: net/http/pprof registered its handlers on the default
+	// mux when this package was imported. See discardDefaultMux.
+	discardDefaultMux()
+
 	// Check for build command before parsing other flags
 	if len(os.Args) > 1 && os.Args[1] == "build" {
 		handleBuildCommand()
@@ -521,12 +526,24 @@ func main() {
 		// Metrics need to be scrapable remotely. This does not. So the two
 		// part company when the listener is not loopback.
 		if !isLoopbackAddr(*metricsAddrFlag) {
-			slog.Warn("backup endpoint not mounted: the metrics listener is reachable from outside this machine",
+			slog.Warn("backup and profiling endpoints not mounted: the metrics listener is reachable from outside this machine",
 				"addr", *metricsAddrFlag,
-				"detail", "/admin/backup takes no credentials and writes the database, the stores and the auth signing key to a path the caller names",
+				"detail", "/admin/backup takes no credentials and writes the database, the stores and the auth signing key to a path the caller names; /debug/pprof dumps memory and can be made to burn CPU on request",
 				"fix", "take backups with `panmail backup`, or run a second gateway with --metrics-addr on loopback")
 		} else {
 			mountBackupEndpoint(metricsMux, conn, cfg, keyring, eventRepo, inboundRepo, logStore)
+
+			// The other half of the leak story. panmail_goroutines climbing
+			// over a week says something is accumulating; it does not say
+			// what, and without this the only way to find out is to rebuild
+			// with profiling and wait for it to happen again — by which time
+			// the process holding the evidence has been restarted.
+			//
+			// Same gate as the backup endpoint, and for a comparable reason: a
+			// heap profile is a dump of whatever the process is holding, which
+			// includes message bodies and decrypted credentials, and /profile
+			// will spend thirty seconds of CPU for anyone who asks.
+			mountProfiling(metricsMux)
 		}
 
 		metricsServer = &http.Server{
@@ -846,6 +863,34 @@ func mountBackupEndpoint(
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(manifest)
 	})
+}
+
+// discardDefaultMux throws away the routes net/http/pprof registers on import.
+//
+// Importing that package by name rather than as `_` does not avoid this, which
+// is the trap: Go runs a package's init whichever form the import takes, and
+// pprof's init wires five handlers into http.DefaultServeMux. The `_` form only
+// satisfies the unused-import rule. So merely depending on pprof puts profiling
+// on the default mux, and it stays there whether or not anything is meant to
+// serve it.
+//
+// Nothing here serves DefaultServeMux today. That is a fact about the current
+// code rather than a property of it, and the cost of it changing — a heap dump
+// of message bodies and decrypted credentials on the public listener — is too
+// high to leave resting on nobody ever writing http.ListenAndServe(addr, nil).
+// Emptying it makes the guarantee structural, and mountProfiling then puts the
+// handlers exactly where the loopback gate can see them.
+func discardDefaultMux() {
+	http.DefaultServeMux = http.NewServeMux()
+}
+
+// mountProfiling serves the standard Go profiles on the mux it is given.
+func mountProfiling(mux *http.ServeMux) {
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 }
 
 // isLoopbackAddr reports whether a listen address is reachable only from this

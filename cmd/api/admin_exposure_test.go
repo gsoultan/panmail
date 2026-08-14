@@ -49,6 +49,40 @@ func TestOnlyLoopbackCountsAsLoopback(t *testing.T) {
 	}
 }
 
+// Profiling sits behind the same gate, for a comparable reason: a heap profile
+// is a dump of whatever the process is holding — message bodies, decrypted
+// credentials — and /debug/pprof/profile will spend thirty seconds of CPU for
+// anyone who asks.
+func TestProfilingIsMountedAndScopedToTheGatedMux(t *testing.T) {
+	mux := http.NewServeMux()
+	mountProfiling(mux)
+
+	for _, path := range []string{
+		"/debug/pprof/",
+		"/debug/pprof/cmdline",
+		"/debug/pprof/symbol",
+	} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code == http.StatusNotFound {
+			t.Errorf("%s is not served; a leak would have to be diagnosed by rebuilding", path)
+		}
+	}
+
+	// And the default mux is empty. Importing net/http/pprof registers five
+	// handlers there whichever form the import takes — naming the package
+	// rather than aliasing it to `_` does not avoid the init. Nothing here
+	// serves DefaultServeMux today, but that is a fact about the current code
+	// and not a property of it, so main empties it. This asserts that.
+	discardDefaultMux()
+	rec := httptest.NewRecorder()
+	http.DefaultServeMux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("DefaultServeMux serves /debug/pprof/ (%d); profiling would escape the gate "+
+			"onto any server built from it", rec.Code)
+	}
+}
+
 // The mux the gate protects: when the endpoint is not mounted, a request for it
 // has to 404 rather than reach a handler.
 func TestAnUnmountedBackupEndpointIsNotThere(t *testing.T) {
