@@ -43,7 +43,12 @@ func parseStoredTime(v sql.NullString) time.Time {
 
 	// Go's String() appends the monotonic reading after the wall clock; it is
 	// meaningless outside the process that wrote it.
-	if i := strings.Index(raw, " m=+"); i != -1 {
+	//
+	// The sign matters and was missed: a time built by subtracting from now
+	// renders as "m=-59.9", not "m=+". Stripping only the positive form left
+	// every such value unparseable, so the age gauge reported nothing for
+	// exactly the rows an operator would be alerting on.
+	if i := strings.Index(raw, " m="); i != -1 {
 		raw = raw[:i]
 	}
 

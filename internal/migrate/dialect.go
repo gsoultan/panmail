@@ -16,6 +16,15 @@ const (
 	tokenJSON      = "{{JSON}}"
 	tokenUUID      = "{{UUID}}"
 	tokenTimestamp = "{{TIMESTAMP}}"
+
+	// tokenPGOnly begins a statement that only PostgreSQL needs. It renders as
+	// a comment everywhere else, and splitStatements drops comment lines, so
+	// the statement simply does not exist for the other engines.
+	//
+	// SQLite has no ALTER COLUMN ... TYPE and does not need one: it is
+	// dynamically typed, so a column declared TEXT already holds whatever a
+	// PostgreSQL column has to be widened to accept.
+	tokenPGOnly = "{{PG_ONLY}}"
 )
 
 // typesFor returns the column types for an engine.
@@ -26,12 +35,14 @@ func typesFor(dialect string) *strings.Replacer {
 			tokenJSON, "TEXT",
 			tokenUUID, "VARCHAR(36)",
 			tokenTimestamp, "DATETIME",
+			tokenPGOnly, "--",
 		)
 	default:
 		return strings.NewReplacer(
 			tokenJSON, "JSONB",
 			tokenUUID, "UUID",
 			tokenTimestamp, "TIMESTAMP WITH TIME ZONE",
+			tokenPGOnly, "",
 		)
 	}
 }

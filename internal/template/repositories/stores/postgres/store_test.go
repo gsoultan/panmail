@@ -20,6 +20,12 @@ func newRepo(t *testing.T) stores.TemplateRepository {
 var fixedTime = time.Date(2026, 8, 8, 10, 0, 0, 0, time.UTC)
 
 func template(id, tenantID, name string) *entities.Template {
+	// The fixture is named for readability; the column is a UUID on PostgreSQL
+	// and merely a VARCHAR on SQLite. Mapping here keeps call sites saying
+	// "k1" while the database gets something it will accept — the difference
+	// that let these fixtures pass for as long as only SQLite was run.
+	id = storetest.ID(id)
+
 	return &entities.Template{
 		ID:        id,
 		TenantID:  tenantID,
@@ -42,7 +48,7 @@ func TestCreateAndGetRoundTrip(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	got, err := repo.GetByID(ctx, storetest.TenantA, "t1")
+	got, err := repo.GetByID(ctx, storetest.TenantA, storetest.ID("t1"))
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -72,7 +78,7 @@ func TestTenantIsolation(t *testing.T) {
 	}
 
 	t.Run("GetByID cannot reach another tenant", func(t *testing.T) {
-		got, err := repo.GetByID(ctx, storetest.TenantA, "theirs")
+		got, err := repo.GetByID(ctx, storetest.TenantA, storetest.ID("theirs"))
 		if err == nil && got != nil {
 			t.Fatalf("tenant A read tenant B's template: %+v", got)
 		}
@@ -97,7 +103,7 @@ func TestTenantIsolation(t *testing.T) {
 		hijack := template("theirs", storetest.TenantA, "Hijacked")
 		_ = repo.Update(ctx, hijack)
 
-		victim, err := repo.GetByID(ctx, storetest.TenantB, "theirs")
+		victim, err := repo.GetByID(ctx, storetest.TenantB, storetest.ID("theirs"))
 		if err != nil {
 			t.Fatalf("get B: %v", err)
 		}
@@ -110,9 +116,9 @@ func TestTenantIsolation(t *testing.T) {
 	})
 
 	t.Run("Delete cannot remove another tenant's row", func(t *testing.T) {
-		_ = repo.Delete(ctx, storetest.TenantA, "theirs")
+		_ = repo.Delete(ctx, storetest.TenantA, storetest.ID("theirs"))
 
-		victim, err := repo.GetByID(ctx, storetest.TenantB, "theirs")
+		victim, err := repo.GetByID(ctx, storetest.TenantB, storetest.ID("theirs"))
 		if err != nil {
 			t.Fatalf("get B: %v", err)
 		}
@@ -136,7 +142,7 @@ func TestUpdateChangesTheStoredRow(t *testing.T) {
 		t.Fatalf("update: %v", err)
 	}
 
-	got, err := repo.GetByID(ctx, storetest.TenantA, "t1")
+	got, err := repo.GetByID(ctx, storetest.TenantA, storetest.ID("t1"))
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -152,11 +158,11 @@ func TestDeleteRemovesTheRow(t *testing.T) {
 	if err := repo.Create(ctx, template("t1", storetest.TenantA, "Doomed")); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := repo.Delete(ctx, storetest.TenantA, "t1"); err != nil {
+	if err := repo.Delete(ctx, storetest.TenantA, storetest.ID("t1")); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
-	got, err := repo.GetByID(ctx, storetest.TenantA, "t1")
+	got, err := repo.GetByID(ctx, storetest.TenantA, storetest.ID("t1"))
 	if err == nil && got != nil {
 		t.Errorf("template survived deletion: %+v", got)
 	}

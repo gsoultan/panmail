@@ -18,6 +18,12 @@ func newRepo(t *testing.T) stores.SuppressionRepository {
 }
 
 func suppression(id, tenantID, email string) *entities.Suppression {
+	// The fixture is named for readability; the column is a UUID on PostgreSQL
+	// and merely a VARCHAR on SQLite. Mapping here keeps call sites saying
+	// "k1" while the database gets something it will accept — the difference
+	// that let these fixtures pass for as long as only SQLite was run.
+	id = storetest.ID(id)
+
 	return &entities.Suppression{
 		ID:        id,
 		TenantID:  tenantID,

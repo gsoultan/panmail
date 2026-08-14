@@ -23,12 +23,22 @@ func newRepo(t *testing.T) repositories.ApiKeyRepository {
 }
 
 func apiKey(id, tenantID, hash string, scopes []entities.Scope) *entities.ApiKey {
+	// The fixture is named for readability; the column is a UUID on PostgreSQL
+	// and merely a VARCHAR on SQLite. Mapping here keeps call sites saying
+	// "k1" while the database gets something it will accept — the difference
+	// that let these fixtures pass for as long as only SQLite was run.
+	id = storetest.ID(id)
+
 	return &entities.ApiKey{
-		ID:        id,
-		TenantID:  tenantID,
-		Name:      "key-" + id,
-		KeyHash:   hash,
-		Prefix:    "pm_" + id,
+		ID:       id,
+		TenantID: tenantID,
+		Name:     "key-" + id,
+		KeyHash:  hash,
+		// Kept to the length production actually produces — plainKey[:7] — and
+		// therefore within the column. Deriving it from the id overflowed once
+		// the id became a UUID, which is a fixture problem rather than a sign
+		// the column is too narrow.
+		Prefix:    "pm_" + id[:4],
 		Scopes:    scopes,
 		IsEnabled: true,
 		CreatedAt: fixedTime,
@@ -129,7 +139,7 @@ func TestKeysAreScopedToTheirTenant(t *testing.T) {
 	}
 
 	t.Run("GetByID cannot reach another tenant's key", func(t *testing.T) {
-		got, err := repo.GetByID(ctx, "theirs", storetest.TenantA)
+		got, err := repo.GetByID(ctx, storetest.ID("theirs"), storetest.TenantA)
 		if err == nil && got != nil {
 			t.Errorf("tenant A read tenant B's key: %+v", got)
 		}
@@ -153,9 +163,9 @@ func TestKeysAreScopedToTheirTenant(t *testing.T) {
 	// Disabling is how a key is revoked. Reaching across tenants here would
 	// let one tenant revoke another's credential.
 	t.Run("UpdateStatus cannot disable another tenant's key", func(t *testing.T) {
-		_ = repo.UpdateStatus(ctx, "theirs", storetest.TenantA, false)
+		_ = repo.UpdateStatus(ctx, storetest.ID("theirs"), storetest.TenantA, false)
 
-		victim, err := repo.GetByID(ctx, "theirs", storetest.TenantB)
+		victim, err := repo.GetByID(ctx, storetest.ID("theirs"), storetest.TenantB)
 		if err != nil {
 			t.Fatalf("get B: %v", err)
 		}
@@ -168,9 +178,9 @@ func TestKeysAreScopedToTheirTenant(t *testing.T) {
 	})
 
 	t.Run("Delete cannot remove another tenant's key", func(t *testing.T) {
-		_ = repo.Delete(ctx, "theirs", storetest.TenantA)
+		_ = repo.Delete(ctx, storetest.ID("theirs"), storetest.TenantA)
 
-		victim, err := repo.GetByID(ctx, "theirs", storetest.TenantB)
+		victim, err := repo.GetByID(ctx, storetest.ID("theirs"), storetest.TenantB)
 		if err != nil {
 			t.Fatalf("get B: %v", err)
 		}
@@ -187,7 +197,7 @@ func TestUpdateStatusDisablesTheKey(t *testing.T) {
 	if err := repo.Create(ctx, apiKey("k1", storetest.TenantA, "hash-1", nil)); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := repo.UpdateStatus(ctx, "k1", storetest.TenantA, false); err != nil {
+	if err := repo.UpdateStatus(ctx, storetest.ID("k1"), storetest.TenantA, false); err != nil {
 		t.Fatalf("update status: %v", err)
 	}
 
@@ -212,7 +222,7 @@ func TestDeletedKeyNoLongerResolvesByHash(t *testing.T) {
 	if err := repo.Create(ctx, apiKey("k1", storetest.TenantA, "hash-1", nil)); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := repo.Delete(ctx, "k1", storetest.TenantA); err != nil {
+	if err := repo.Delete(ctx, storetest.ID("k1"), storetest.TenantA); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
@@ -247,7 +257,7 @@ func TestUpdateLastUsedIsRecorded(t *testing.T) {
 	if err := repo.Create(ctx, apiKey("k1", storetest.TenantA, "hash-1", nil)); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := repo.UpdateLastUsed(ctx, "k1"); err != nil {
+	if err := repo.UpdateLastUsed(ctx, storetest.ID("k1")); err != nil {
 		t.Fatalf("update last used: %v", err)
 	}
 

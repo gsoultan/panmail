@@ -21,6 +21,24 @@ jobs:
   backend:
     name: backend
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: panmail
+          POSTGRES_PASSWORD: panmail_test
+          POSTGRES_DB: panmail_test
+        ports:
+          - 5432:5432
+        # Without a health check the tests start before the server accepts
+        # connections and fail for a reason that has nothing to do with them.
+        options: >-
+          --health-cmd "pg_isready -U panmail -d panmail_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +59,17 @@ jobs:
       # that only shows up under production load.
       - name: Test
         run: go test -race ./...
+
+      # The same tests again against PostgreSQL, which is what a multi-tenant
+      # deployment actually runs. Running only on SQLite hid real faults for as
+      # long as it was the only engine: SQLite serialises writers, so the outbox
+      # claim appeared safe without the row locks PostgreSQL needs, and it
+      # validates neither UUID columns nor JSON ones, so values that PostgreSQL
+      # rejects outright were stored happily.
+      - name: Test against PostgreSQL
+        env:
+          PANMAIL_TEST_POSTGRES: postgres://panmail:panmail_test@127.0.0.1:5432/panmail_test?sslmode=disable
+        run: go test ./...
 
       - name: Check formatting
         run: |

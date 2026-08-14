@@ -25,6 +25,8 @@ var (
 	getOutboxByIDQuery string
 	//go:embed sql/list_pending_outbox.sql
 	listPendingOutboxQuery string
+	//go:embed sql/claim_pending_outbox_pg.sql
+	claimPendingOutboxPgQuery string
 	//go:embed sql/claim_pending_outbox.sql
 	claimPendingOutboxQuery string
 	//go:embed sql/list_claimed_outbox.sql
@@ -94,7 +96,7 @@ func (s *outboxStore) ClaimPending(ctx context.Context, limit int, leaseFor time
 	now := time.Now()
 	token := uuid.New().String()
 
-	res, err := dbConn.ExecContext(ctx, claimPendingOutboxQuery,
+	res, err := dbConn.ExecContext(ctx, claimQuery(dbConn),
 		token, now.Add(leaseFor), now, now, limit)
 	if err != nil {
 		return nil, err

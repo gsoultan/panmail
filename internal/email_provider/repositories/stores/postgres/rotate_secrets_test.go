@@ -47,6 +47,12 @@ func rotationFixture(t *testing.T) (db.Connection, string) {
 }
 
 func seedProvider(t *testing.T, repo stores.Repository, id, tenantID string) {
+	// The fixture is named for readability; the column is a UUID on PostgreSQL
+	// and merely a VARCHAR on SQLite. Mapping here keeps call sites saying
+	// "k1" while the database gets something it will accept — the difference
+	// that let these fixtures pass for as long as only SQLite was run.
+	id = storetest.ID(id)
+
 	t.Helper()
 	err := repo.Create(context.Background(), &entities.EmailProvider{
 		ID:            id,
@@ -82,7 +88,7 @@ func TestRotateSecretsMovesEverythingOntoTheNewKey(t *testing.T) {
 
 	// The real test: the old key is now genuinely unnecessary.
 	final := NewStore(conn, ring(t, newKeyHex))
-	p, err := final.GetByID(ctx, storetest.TenantA, "prov-1")
+	p, err := final.GetByID(ctx, storetest.TenantA, storetest.ID("prov-1"))
 	if err != nil {
 		t.Fatalf("read after rotation without the old key: %v", err)
 	}
@@ -162,7 +168,7 @@ func TestRotateSecretsStopsWhenAKeyIsMissing(t *testing.T) {
 		t.Errorf("rotated %d rows before failing; nothing should have been written", rotated)
 	}
 	// The error has to identify the row and say how to recover.
-	if !strings.Contains(err.Error(), "prov-1") {
+	if !strings.Contains(err.Error(), storetest.ID("prov-1")) {
 		t.Errorf("error %q does not say which provider stopped it", err)
 	}
 	if !strings.Contains(err.Error(), secrets.EnvRetiredKeysName) {
@@ -171,7 +177,7 @@ func TestRotateSecretsStopsWhenAKeyIsMissing(t *testing.T) {
 
 	// And crucially, the data is untouched: adding the key back recovers it.
 	recovered := NewStore(conn, ring(t, newKey(t), oldKey))
-	p, err := recovered.GetByID(ctx, storetest.TenantA, "prov-1")
+	p, err := recovered.GetByID(ctx, storetest.TenantA, storetest.ID("prov-1"))
 	if err != nil {
 		t.Fatalf("read after the failed rotation: %v", err)
 	}
@@ -197,8 +203,8 @@ func TestRotateSecretsCoversEveryTenant(t *testing.T) {
 
 	final := NewStore(conn, ring(t, newKeyHex))
 	for _, tc := range []struct{ tenant, id string }{
-		{storetest.TenantA, "prov-a"},
-		{storetest.TenantB, "prov-b"},
+		{storetest.TenantA, storetest.ID("prov-a")},
+		{storetest.TenantB, storetest.ID("prov-b")},
 	} {
 		if _, err := final.GetByID(ctx, tc.tenant, tc.id); err != nil {
 			t.Errorf("%s was left on the old key: %v", tc.id, err)

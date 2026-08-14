@@ -27,6 +27,12 @@ func newRepo(t *testing.T) stores.WebhookRepository {
 }
 
 func webhook(id, tenantID, name string, events []int32, active bool) *entities.Webhook {
+	// The fixture is named for readability; the column is a UUID on PostgreSQL
+	// and merely a VARCHAR on SQLite. Mapping here keeps call sites saying
+	// "k1" while the database gets something it will accept — the difference
+	// that let these fixtures pass for as long as only SQLite was run.
+	id = storetest.ID(id)
+
 	return &entities.Webhook{
 		ID:        id,
 		TenantID:  tenantID,
@@ -50,7 +56,7 @@ func TestCreateAndGetRoundTripsTheEventList(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	got, err := repo.GetByID(ctx, storetest.TenantA, "w1")
+	got, err := repo.GetByID(ctx, storetest.TenantA, storetest.ID("w1"))
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -77,7 +83,7 @@ func TestEmptyEventListRoundTrips(t *testing.T) {
 	if err := repo.Create(ctx, webhook("w1", storetest.TenantA, "None", []int32{}, true)); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	got, err := repo.GetByID(ctx, storetest.TenantA, "w1")
+	got, err := repo.GetByID(ctx, storetest.TenantA, storetest.ID("w1"))
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -103,7 +109,7 @@ func TestWebhooksAreScopedToTheirTenant(t *testing.T) {
 	}
 
 	t.Run("GetByID", func(t *testing.T) {
-		got, err := repo.GetByID(ctx, storetest.TenantA, "theirs")
+		got, err := repo.GetByID(ctx, storetest.TenantA, storetest.ID("theirs"))
 		if err == nil && got != nil {
 			t.Errorf("tenant A read tenant B's webhook: %+v", got)
 		}
@@ -139,8 +145,8 @@ func TestWebhooksAreScopedToTheirTenant(t *testing.T) {
 	})
 
 	t.Run("Delete", func(t *testing.T) {
-		_ = repo.Delete(ctx, storetest.TenantA, "theirs")
-		victim, err := repo.GetByID(ctx, storetest.TenantB, "theirs")
+		_ = repo.Delete(ctx, storetest.TenantA, storetest.ID("theirs"))
+		victim, err := repo.GetByID(ctx, storetest.TenantB, storetest.ID("theirs"))
 		if err != nil {
 			t.Fatalf("get B: %v", err)
 		}
@@ -168,7 +174,7 @@ func TestListActiveByEventFiltersOnBothActiveAndEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != "on" {
+	if len(got) != 1 || got[0].ID != storetest.ID("on") {
 		ids := make([]string, len(got))
 		for i, w := range got {
 			ids[i] = w.ID
@@ -209,7 +215,7 @@ func TestUpdateChangesTheStoredRow(t *testing.T) {
 		t.Fatalf("update: %v", err)
 	}
 
-	got, err := repo.GetByID(ctx, storetest.TenantA, "w1")
+	got, err := repo.GetByID(ctx, storetest.TenantA, storetest.ID("w1"))
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -232,7 +238,7 @@ func TestRotateSecretsMovesSigningSecretsOntoTheNewKey(t *testing.T) {
 
 	before := NewStore(conn, mustKeyring(t, oldKey))
 	if err := before.Create(ctx, &entities.Webhook{
-		ID: "wh-1", TenantID: storetest.TenantA, Name: "probe",
+		ID: storetest.ID("wh-1"), TenantID: storetest.TenantA, Name: "probe",
 		URL: "https://example.com/hook", Events: []int32{1}, Active: true,
 		Secret: "the-signing-secret",
 	}); err != nil {
@@ -252,7 +258,7 @@ func TestRotateSecretsMovesSigningSecretsOntoTheNewKey(t *testing.T) {
 
 	// The point of the rotation: the old key is now genuinely unnecessary.
 	final := NewStore(conn, mustKeyring(t, newKey))
-	w, err := final.GetByID(ctx, storetest.TenantA, "wh-1")
+	w, err := final.GetByID(ctx, storetest.TenantA, storetest.ID("wh-1"))
 	if err != nil {
 		t.Fatalf("read after rotation without the old key: %v", err)
 	}
@@ -268,7 +274,7 @@ func TestRotatingWebhookSecretsIsIdempotent(t *testing.T) {
 
 	before := NewStore(conn, mustKeyring(t, oldKey))
 	before.Create(ctx, &entities.Webhook{
-		ID: "wh-1", TenantID: storetest.TenantA, Name: "probe",
+		ID: storetest.ID("wh-1"), TenantID: storetest.TenantA, Name: "probe",
 		URL: "https://example.com/hook", Events: []int32{1}, Active: true, Secret: "s",
 	})
 

@@ -30,7 +30,9 @@ func parseStoredTime(v sql.NullString) time.Time {
 	if raw == "" {
 		return time.Time{}
 	}
-	if i := strings.Index(raw, " m=+"); i != -1 {
+	// The sign matters: a time built by subtracting from now renders as
+	// "m=-59.9", not "m=+".
+	if i := strings.Index(raw, " m="); i != -1 {
 		raw = raw[:i]
 	}
 	for _, layout := range timestampLayouts {

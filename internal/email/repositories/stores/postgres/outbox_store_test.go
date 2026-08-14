@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email/repositories/stores"
+	"github.com/gsoultan/panmail/internal/storetest"
 	"github.com/gsoultan/panmail/pkg/db"
 	_ "modernc.org/sqlite"
 )
@@ -25,30 +25,14 @@ import (
 func newOutboxTestStore(t *testing.T) (stores.OutboxRepository, *sql.DB) {
 	t.Helper()
 
-	path := filepath.Join(t.TempDir(), "outbox_test.db")
-	sqlDB, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
-	if err != nil {
-		t.Fatalf("failed to open sqlite: %v", err)
-	}
-	t.Cleanup(func() { sqlDB.Close() })
-
-	schema := `
-	CREATE TABLE outbox (
-		id VARCHAR(36) PRIMARY KEY,
-		tenant_id VARCHAR(36) NOT NULL,
-		request TEXT NOT NULL,
-		status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-		retry_count INTEGER NOT NULL DEFAULT 0,
-		next_retry_at DATETIME NOT NULL,
-		last_error TEXT,
-		created_at DATETIME NOT NULL,
-		updated_at DATETIME NOT NULL,
-		claim_token VARCHAR(36),
-		claimed_until DATETIME
-	);`
-	if _, err := sqlDB.Exec(schema); err != nil {
-		t.Fatalf("failed to create schema: %v", err)
-	}
+	// The shared harness rather than a hand-written schema.
+	//
+	// This test used to open its own SQLite database and CREATE TABLE the
+	// outbox itself. Two things followed: the schema could drift from the
+	// migrations the moment a column was added, and the test could never run
+	// against PostgreSQL however the environment was configured — so the
+	// engine actually recommended for production had no coverage here at all.
+	sqlDB := storetest.NewDB(t)
 
 	return NewOutboxStore(db.NewConnection(sqlDB)), sqlDB
 }
@@ -59,8 +43,8 @@ func seedPending(t *testing.T, repo stores.OutboxRepository, count int) {
 	past := time.Now().Add(-time.Minute)
 	for i := range count {
 		err := repo.Create(context.Background(), &entities.OutboxEmail{
-			ID:          fmt.Sprintf("message-%03d", i),
-			TenantID:    "tenant-1",
+			ID:          storetest.ID(fmt.Sprintf("message-%03d", i)),
+			TenantID:    storetest.TenantA,
 			Request:     []byte(`{"from":"a@example.com"}`),
 			Status:      entities.OutboxStatusPending,
 			NextRetryAt: past,
@@ -183,8 +167,8 @@ func TestClaimPendingSkipsFutureRetries(t *testing.T) {
 
 	future := time.Now().Add(time.Hour)
 	err := repo.Create(context.Background(), &entities.OutboxEmail{
-		ID:          "deferred-1",
-		TenantID:    "tenant-1",
+		ID:          storetest.ID("deferred-1"),
+		TenantID:    storetest.TenantA,
 		Request:     []byte(`{}`),
 		Status:      entities.OutboxStatusDeferred,
 		NextRetryAt: future,
@@ -248,23 +232,23 @@ func TestPruneTerminalRemovesOnlyOldFailures(t *testing.T) {
 	seed := func(id string, status entities.OutboxStatus, updated time.Time) {
 		t.Helper()
 		err := repo.Create(ctx, &entities.OutboxEmail{
-			ID: id, TenantID: "tenant-1", Request: []byte(`{}`),
+			ID: id, TenantID: storetest.TenantA, Request: []byte(`{}`),
 			Status: status, NextRetryAt: updated, CreatedAt: updated, UpdatedAt: updated,
 		})
 		if err != nil {
 			t.Fatalf("seed %s: %v", id, err)
 		}
 		// Create stamps its own timestamps, so the age has to be forced.
-		if _, err := sqlDB.Exec(`UPDATE outbox SET status = ?, updated_at = ? WHERE id = ?`, string(status), updated, id); err != nil {
+		if _, err := sqlDB.Exec(`UPDATE outbox SET status = $1, updated_at = $2 WHERE id = $3`, string(status), updated, id); err != nil {
 			t.Fatalf("age %s: %v", id, err)
 		}
 	}
 
-	seed("old-failed", entities.OutboxStatusFailed, old)
-	seed("recent-failed", entities.OutboxStatusFailed, recent)
-	seed("old-pending", entities.OutboxStatusPending, old)
-	seed("old-deferred", entities.OutboxStatusDeferred, old)
-	seed("old-sending", entities.OutboxStatusSending, old)
+	seed(storetest.ID("old-failed"), entities.OutboxStatusFailed, old)
+	seed(storetest.ID("recent-failed"), entities.OutboxStatusFailed, recent)
+	seed(storetest.ID("old-pending"), entities.OutboxStatusPending, old)
+	seed(storetest.ID("old-deferred"), entities.OutboxStatusDeferred, old)
+	seed(storetest.ID("old-sending"), entities.OutboxStatusSending, old)
 
 	removed, err := repo.PruneTerminal(ctx, now.Add(-24*time.Hour))
 	if err != nil {
@@ -287,16 +271,16 @@ func TestPruneTerminalRemovesOnlyOldFailures(t *testing.T) {
 		return e != nil
 	}
 
-	if survives("old-failed") {
+	if survives(storetest.ID("old-failed")) {
 		t.Error("an old failure should have been pruned")
 	}
 	// The recent one is the record an operator consults when asking why
 	// something never arrived.
-	if !survives("recent-failed") {
+	if !survives(storetest.ID("recent-failed")) {
 		t.Error("a recent failure was pruned; it is still worth reading")
 	}
 	// These are all still live work. Deleting any of them loses mail.
-	for _, id := range []string{"old-pending", "old-deferred", "old-sending"} {
+	for _, id := range []string{storetest.ID("old-pending"), storetest.ID("old-deferred"), storetest.ID("old-sending")} {
 		if !survives(id) {
 			t.Errorf("%s was pruned, which loses a message that was never delivered", id)
 		}
@@ -311,5 +295,48 @@ func TestPruneTerminalOnAnEmptyTableIsHarmless(t *testing.T) {
 	}
 	if removed != 0 {
 		t.Errorf("removed %d from an empty table", removed)
+	}
+}
+
+// Stats feeds the metrics gauges, and had no test on either engine — which is
+// how a query that reads a timestamp as text got shipped without anyone
+// noticing that PostgreSQL hands back a timestamptz instead.
+func TestStatsReportsDepthAndTheAgeOfTheOldest(t *testing.T) {
+	repo, _ := newOutboxTestStore(t)
+	ctx := context.Background()
+
+	seedPending(t, repo, 3)
+
+	pending, oldest, err := repo.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if pending != 3 {
+		t.Errorf("pending = %d, want 3", pending)
+	}
+	// The age is the signal an alert is written against; a zero timestamp
+	// means the gauge would publish a nonsense age or none at all.
+	if oldest.IsZero() {
+		t.Fatal("no oldest timestamp, so the age gauge cannot be computed")
+	}
+	if age := time.Since(oldest); age < 0 || age > time.Hour {
+		t.Errorf("oldest is %v ago, which is not a plausible age", age)
+	}
+}
+
+func TestStatsOnAnEmptyQueue(t *testing.T) {
+	repo, _ := newOutboxTestStore(t)
+
+	pending, oldest, err := repo.Stats(context.Background())
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if pending != 0 {
+		t.Errorf("pending = %d, want 0", pending)
+	}
+	// Nothing queued means no oldest item; a caller reads the zero time as
+	// "no age to report" rather than as the epoch.
+	if !oldest.IsZero() {
+		t.Errorf("oldest = %v, want the zero time on an empty queue", oldest)
 	}
 }
