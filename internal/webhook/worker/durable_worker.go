@@ -57,6 +57,12 @@ const (
 	// A receiver that sends a novel back gets read this far and no further;
 	// the body is only kept to make the failure diagnosable.
 	maxErrorBodyBytes = 2048
+
+	// How long a delivery already in flight gets to finish once shutdown
+	// begins. Comfortably above defaultDeliveryTimeout, so a request that was
+	// going to complete does, and well inside a default termination grace
+	// period.
+	drainGrace = 20 * time.Second
 )
 
 func NewDurableWorker(deliveries stores.DeliveryRepository, webhookUsecase usecases.WebhookUsecase) *DurableWorker {
@@ -170,13 +176,30 @@ func (w *DurableWorker) processDue(ctx context.Context) int {
 		return 0
 	}
 
+	// The same reasoning as the outbox worker, and the same shape. A POST
+	// cancelled in flight may already have been received and acted on, and
+	// panmail cannot tell — it records a failure and delivers again, so the
+	// endpoint sees the event twice. Signatures let a receiver deduplicate, but
+	// making it their problem on every deploy is not a design.
+	//
+	// Deliveries here are sequential, so this is one request rather than the
+	// two hundred the outbox had in flight. Worth the same treatment anyway:
+	// it is the same bug, and it costs nothing to not have it.
+	attemptCtx, cancelAttempt := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelAttempt()
+	stopDrainTimer := context.AfterFunc(ctx, func() {
+		time.AfterFunc(drainGrace, cancelAttempt)
+	})
+	defer stopDrainTimer()
+
 	for _, d := range due {
+		// Still the parent context: this decides whether to *start* another
+		// delivery, and one not yet attempted cannot be duplicated by leaving
+		// it. The rest stay claimed until the lease expires.
 		if ctx.Err() != nil {
-			// Leave the rest claimed; the lease expires and another pass takes
-			// them, which is better than delivering during a shutdown.
 			return len(due)
 		}
-		w.attempt(ctx, d)
+		w.attempt(attemptCtx, d)
 	}
 	return len(due)
 }
