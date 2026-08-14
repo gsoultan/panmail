@@ -29,6 +29,13 @@ const (
 	// The point is to ride out a blip, not to block a worker.
 	bookkeepingAttempts = 3
 	bookkeepingBackoff  = 200 * time.Millisecond
+
+	// How long a send that is already in progress gets to finish after
+	// shutdown begins. Long enough for an SMTP exchange that has started, and
+	// short enough to sit inside both the worker drain timeout and a default
+	// Kubernetes termination grace period — a drain that outlasts either is
+	// not a drain, it is a SIGKILL with extra steps.
+	drainGrace = 10 * time.Second
 )
 
 var defaultRetryPattern = []string{"5m", "15m", "30m", "1h", "3h", "6h", "12h", "24h"}
@@ -141,6 +148,28 @@ func (w *queueWorker) processPending(ctx context.Context) int {
 
 	slog.Info("queue worker processing batch", "count", count)
 
+	// A send that has started must be allowed to finish.
+	//
+	// Shutting down used to cancel this context, which cancelled every send
+	// with it — mid-SMTP, mid-conversation with a provider. A deploy signalled
+	// while the queue was busy cut off everything in flight: measured at 188
+	// messages abandoned and 184 more deferred out of one signal. Nothing was
+	// lost, because the lease brings a claimed row back, but the cost is worse
+	// than a delay. A send cancelled after DATA was accepted and before the
+	// reply arrived has been delivered, and panmail cannot know it, so it goes
+	// out again. Every deploy was a chance to send the same email twice.
+	//
+	// So the batch runs on a context shutdown does not reach, with a bounded
+	// grace once it starts: in-flight sends finish, and anything still going
+	// after that is cut rather than holding the process open.
+	batchCtx, cancelBatch := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelBatch()
+	stopDrainTimer := context.AfterFunc(ctx, func() {
+		slog.Info("draining in-flight sends before shutdown", "grace", drainGrace)
+		time.AfterFunc(drainGrace, cancelBatch)
+	})
+	defer stopDrainTimer()
+
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, outboxConcurrency)
 
@@ -153,7 +182,12 @@ func (w *queueWorker) processPending(ctx context.Context) int {
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
-				w.processEmail(ctx, email)
+				w.processEmail(batchCtx, email)
+			// Deliberately the parent context, not the batch one: a message
+			// that has not started has not been attempted, so dropping it
+			// risks nothing. It stays claimed, the lease expires, and it is
+			// picked up again. Waiting for the whole batch would turn every
+			// shutdown into a full drain of 500 messages.
 			case <-ctx.Done():
 			}
 		}(e)
