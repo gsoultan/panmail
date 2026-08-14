@@ -226,6 +226,15 @@ of instances, and remember to revisit it when that number changes.
 The bound worth keeping exact is the queue depth ceiling, which is a count of
 rows and therefore already shared. It is only the rate that multiplies.
 
+This is a deliberate choice rather than an unfinished one. Making the bucket
+shared would put a database write on every accepted message — the admission
+path is entirely in memory today, since both the tenant's limit and its backlog
+count are cached — and would force a decision about what happens when that
+write fails. Failing open makes the limit stop applying without saying so;
+failing closed stops all outbound mail because of a database blip. Neither is
+better than doing the division. Revisit it if you autoscale, where there is no
+fixed number to divide by.
+
 ## Inbound
 
 Inbound polling and IMAP IDLE run in every instance, and they do not coordinate:
