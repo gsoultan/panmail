@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -75,7 +76,16 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.usecase.Process(r.Context(), email); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Logged, not returned. This endpoint is public and unauthenticated —
+		// it has to be, since the provider posting to it cannot hold a
+		// credential — and Process writes to the inbound store, the outbox and
+		// any webhook subscriptions, so its error can carry filesystem paths,
+		// the database user and host, or an internal endpoint's address. The
+		// provider on the other end needs a status code to decide whether to
+		// retry; it has no use for any of that.
+		slog.Error("failed to process an inbound email",
+			"error", err, "tenant_id", email.TenantId, "id", email.Id)
+		http.Error(w, "Could not process the message", http.StatusInternalServerError)
 		return
 	}
 

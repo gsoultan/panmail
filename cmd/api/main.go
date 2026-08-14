@@ -827,6 +827,10 @@ func mountBackupEndpoint(
 		manifest, err := backup.Run(r.Context(), opts)
 		if err != nil {
 			slog.Error("backup failed", "error", err)
+			// The full error, deliberately, unlike every public handler: this
+			// is mounted only on a loopback listener, the caller is an operator
+			// asking why their backup did not happen, and "internal error"
+			// would send them to the log for something they asked for directly.
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
