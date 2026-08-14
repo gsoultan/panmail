@@ -86,3 +86,16 @@ and a decryption error nobody can place.
    across, the second proves the data key did.
 
 Step 4 is the test. A restore that has not been checked is a hypothesis.
+
+The mechanism is checked on every run of the suite —
+`internal/backup/restore_test.go` takes a backup of a Pebble store and a SQLite
+database while both are being written to, then opens the output and reads every
+key and row back. That covers whether the snapshots are coherent. It does not
+cover your deployment: steps 2 and 3 are about keys this machine does not have,
+and only signing in against a restored copy proves those came across.
+
+One thing that test also establishes: the snapshot succeeds under concurrent
+writes *because* the gateway's SQLite connection carries a busy timeout and
+WAL. Against a database opened without them, `VACUUM INTO` fails outright with
+`SQLITE_BUSY` the moment anything else is writing. If you are backing up by
+some other route, use `pkg/db.Connect` rather than opening the file yourself.
