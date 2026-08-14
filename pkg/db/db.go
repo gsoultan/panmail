@@ -1,8 +1,13 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"net"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +28,16 @@ type Config struct {
 	// Zero takes defaultMaxOpenConns. The other fields are matched by their
 	// lowercased names; this one is two words, so it says so.
 	MaxOpenConns int `yaml:"max_open_conns"`
+
+	// SSLMode is passed to PostgreSQL verbatim: disable, allow, prefer,
+	// require, verify-ca or verify-full. Empty takes defaultSSLMode.
+	SSLMode string `yaml:"ssl_mode"`
 }
+
+// prefer, because it is the strongest default that cannot break a deployment
+// that already works: a server offering TLS gets it, one that does not still
+// connects. See sslMode for why that is a floor rather than a destination.
+const defaultSSLMode = "prefer"
 
 // A gateway is stateless so that several can be run against one database, and
 // this is the number that decides whether that actually works. The pool used to
@@ -50,8 +64,7 @@ func Connect(cfg Config) (*sql.DB, error) {
 	switch cfg.Type {
 	case "postgres":
 		driverName = "pgx"
-		dataSourceName = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&default_query_exec_mode=simple_protocol",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName)
+		dataSourceName = postgresDSN(cfg)
 	case "mysql", "mariadb":
 		// Refused rather than connected. The DDL layer is multi-vendor — the
 		// migrations swap types per engine — but the DML layer is not: the
@@ -99,7 +112,99 @@ func Connect(cfg Config) (*sql.DB, error) {
 		return nil, err
 	}
 
+	if cfg.Type == "postgres" {
+		warnIfInTheClear(db, cfg)
+	}
+
 	return db, nil
+}
+
+// postgresDSN builds the connection URL.
+//
+// This was a Sprintf with the password interpolated straight into the string,
+// which works right up until someone uses a generated password. A password
+// containing "@" ends the userinfo early and the rest of it becomes the host,
+// so the connection either fails with an error naming a host nobody configured
+// or, on a machine where that name resolves, succeeds against the wrong server.
+// url.URL escapes each part for what it is.
+func postgresDSN(cfg Config) string {
+	q := url.Values{}
+	q.Set("sslmode", sslMode(cfg))
+	// The pgx extended protocol prepares statements server-side, which
+	// transaction-mode poolers such as PgBouncer do not support.
+	q.Set("default_query_exec_mode", "simple_protocol")
+
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.User, cfg.Password),
+		Host:     net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		Path:     "/" + cfg.DBName,
+		RawQuery: q.Encode(),
+	}
+	return u.String()
+}
+
+// sslMode resolves what the connection should negotiate.
+//
+// It used to be "disable", hard-coded, so there was no way to encrypt the
+// database connection at all. Everything panmail stores crosses that socket:
+// message bodies, recipient addresses, API keys and session material as they
+// are read back. Stored credentials are encrypted at rest under their own key,
+// which is worth having and does nothing for the wire.
+//
+// The default is "prefer" rather than "require" because it cannot break a
+// working deployment — a server without TLS still connects — while every
+// managed PostgreSQL offers TLS and will now be used over it. That is a real
+// improvement and an incomplete one: "prefer" falls back silently and verifies
+// nothing, so anyone crossing a network they do not own wants "verify-full".
+// warnIfInTheClear says so when it applies.
+func sslMode(cfg Config) string {
+	if cfg.SSLMode != "" {
+		return cfg.SSLMode
+	}
+	return defaultSSLMode
+}
+
+// warnIfInTheClear reports a connection that ended up unencrypted to somewhere
+// other than this machine.
+//
+// "prefer" is silent about falling back, which is what makes it safe to default
+// to and also what makes it easy to believe a connection is protected when it
+// is not. Asking the server settles it.
+func warnIfInTheClear(db *sql.DB, cfg Config) {
+	if isLoopback(cfg.Host) {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var encrypted bool
+	// pg_stat_ssl describes this backend, so this is the connection actually
+	// in use rather than what was requested.
+	err := db.QueryRowContext(ctx,
+		"SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()").Scan(&encrypted)
+	if err != nil {
+		// Not worth failing a startup over: a pooler may not expose it.
+		slog.Debug("could not determine whether the database connection is encrypted", "error", err)
+		return
+	}
+	if encrypted {
+		return
+	}
+
+	slog.Warn("the database connection is not encrypted",
+		"host", cfg.Host, "sslmode", sslMode(cfg),
+		"detail", "every query crosses the network in the clear, including message bodies and recipient addresses",
+		"fix", "set database.ssl_mode to verify-full, or require if the server has no certificate you can verify")
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 type Connection interface {

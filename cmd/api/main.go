@@ -41,6 +41,7 @@ import (
 	eventservices "github.com/gsoultan/panmail/internal/event/services"
 	eventhttp "github.com/gsoultan/panmail/internal/event/transports/http"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
+	"github.com/gsoultan/panmail/internal/health"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores/pebble"
 	inboundservices "github.com/gsoultan/panmail/internal/inbound/services"
 	inboundhttp "github.com/gsoultan/panmail/internal/inbound/transports/http"
@@ -603,9 +604,11 @@ func main() {
 		return panmailv1connect.NewLogServiceHandler(logService, o)
 	})
 	mux.Handle(grpchealth.NewHandler(healthChecker))
+
+	// Liveness: is this process still working? The answer being no means
+	// restart it, so this deliberately checks nothing external — a database
+	// outage must not be answered by restarting every instance at once.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		// Respond with 200 OK if the service is serving, otherwise 503
-		// Using empty string for service name checks the overall server health
 		res, err := healthChecker.Check(r.Context(), &grpchealth.CheckRequest{Service: ""})
 		if err != nil || res.Status != grpchealth.StatusServing {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -615,6 +618,15 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+
+	// Readiness: can this instance serve a request right now? The answer being
+	// no means stop sending it traffic. Until this existed, /healthz was the
+	// only endpoint and it reported the process, so an instance whose database
+	// was unreachable stayed in the load balancer and failed every request it
+	// was given.
+	readiness := health.New()
+	readiness.Register("database", health.SQL(conn.GetDB()))
+	mux.HandleFunc("/readyz", readiness.ReadyHandler())
 	mux.Handle("/webhooks/", webhookHandler)
 	mux.Handle("/inbound/", inboundWebhookHandler)
 	mux.HandleFunc("/track/open/", trackingHandler.HandleOpen)

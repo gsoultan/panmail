@@ -75,6 +75,71 @@ transaction, and nothing can make them one — but a transient database error no
 longer costs a duplicate. The bookkeeping writes after a send retry briefly
 before falling back to the lease.
 
+## Health checks
+
+Two endpoints, and pointing the wrong one at the wrong probe causes an outage
+rather than preventing one.
+
+| Endpoint | Asks | Failing means |
+| --- | --- | --- |
+| `/healthz` | Is this process still working? | Restart it |
+| `/readyz` | Can it serve a request right now? | Stop sending it traffic |
+
+`/healthz` deliberately checks nothing external. A database failover fails
+every instance's dependency check at the same moment; if that were wired to
+liveness, the orchestrator would restart the whole fleet against a database
+that is already struggling, and every pool and cache would come back cold.
+
+`/readyz` pings the database and answers with what failed:
+
+```
+$ curl -s localhost:8080/readyz
+{"status":"ready"}
+
+$ curl -s localhost:8080/readyz          # database down
+{"status":"not ready","failed":["database"],
+ "details":{"database":"... connect: connection refused"}}
+```
+
+It returns 503 in that state and 200 again once the database is back, with no
+restart in between. In Kubernetes:
+
+```yaml
+livenessProbe:
+  httpGet: { path: /healthz, port: 8080 }
+readinessProbe:
+  httpGet: { path: /readyz, port: 8080 }
+  periodSeconds: 5
+```
+
+Because readiness takes a connection from the pool, it also reports the case
+where the server is fine and this instance cannot reach it because its own pool
+is saturated. That is the intended answer: an instance that cannot get a
+connection within two seconds cannot serve a request either.
+
+## Encrypting the database connection
+
+`sslmode` defaults to `prefer`: TLS wherever the server offers it — which every
+managed PostgreSQL does — and a plain connection to one that does not. That is
+a floor, not a destination. `prefer` falls back silently and verifies no
+certificate, so anything crossing a network you do not own wants:
+
+```yaml
+database:
+  ssl_mode: verify-full
+```
+
+On startup, a connection that ends up unencrypted to a non-loopback host logs:
+
+```
+WARN the database connection is not encrypted host=db.internal sslmode=prefer
+```
+
+Everything panmail stores crosses that socket: message bodies, recipient
+addresses, and API keys and session material as they are read back. Stored
+credentials are separately encrypted at rest under `PANMAIL_SECRET_KEY`, which
+is worth having and does nothing for the wire.
+
 ## What each instance needs of its own
 
 Shared, and must be the same everywhere:
