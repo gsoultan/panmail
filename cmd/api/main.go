@@ -15,8 +15,10 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -101,6 +103,13 @@ const (
 
 	shutdownTimeout    = 15 * time.Second
 	workerDrainTimeout = 30 * time.Second
+
+	// How long to wait before bringing a panicked worker back, doubling up to
+	// the maximum. Short at first because the common cause is transient and
+	// mail is stopped meanwhile; bounded because a worker that panics on every
+	// pass must not become a busy loop writing stack traces.
+	workerRestartDelay    = time.Second
+	workerRestartMaxDelay = time.Minute
 )
 
 func (m *multiHandler) WithGroup(name string) slog.Handler {
@@ -334,7 +343,7 @@ func main() {
 	// bounced is silent, unrecoverable loss.
 	webhookDeliveryRepo := webhookstores.NewDeliveryStore(conn)
 	outboundWebhookWorker := webhookworker.NewDurableWorker(webhookDeliveryRepo, webhookUsecase)
-	runWorker(&workers, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
+	runWorker(&workers, workerCtx, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
 
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
 	eventService := eventservices.NewEventService(processEventUsecase)
@@ -345,7 +354,7 @@ func main() {
 	if cfg != nil && cfg.App.LogRetentionDays > 0 {
 		retentionDays = cfg.App.LogRetentionDays
 	}
-	runWorker(&workers, "log-retention", func() {
+	runWorker(&workers, workerCtx, "log-retention", func() {
 		processEventUsecase.StartCleanupTask(workerCtx, 24*time.Hour, retentionDays)
 	})
 
@@ -389,7 +398,7 @@ func main() {
 		slog.Info("outbox retention configured", "days", days)
 	}
 	sendEmailUsecase.RegisterQueueWorker(queueWorker)
-	runWorker(&workers, "outbox-queue", func() { queueWorker.Start(workerCtx) })
+	runWorker(&workers, workerCtx, "outbox-queue", func() { queueWorker.Start(workerCtx) })
 
 	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase, trackingSigner)
 
@@ -401,7 +410,7 @@ func main() {
 		manageSuppressionsUsecase, processEventUsecase, trackingSigner)
 
 	poller := inboundworker.NewPoller(tenantRepo, providerRepo, inboundUsecase, providerFactory, 30*time.Second)
-	runWorker(&workers, "inbound-poller", func() { poller.Start(workerCtx) })
+	runWorker(&workers, workerCtx, "inbound-poller", func() { poller.Start(workerCtx) })
 
 	// IDLE alongside the poll, not instead of it. A hung IDLE is silent — the
 	// connection looks open, the server has nothing to say, and inbound stops
@@ -410,7 +419,7 @@ func main() {
 	// identifies a message by its own Message-ID, so whichever path sees it
 	// first wins and the other is a no-op.
 	idleSupervisor := inboundworker.NewIdleSupervisor(poller)
-	runWorker(&workers, "inbound-idle", func() { idleSupervisor.Start(workerCtx) })
+	runWorker(&workers, workerCtx, "inbound-idle", func() { idleSupervisor.Start(workerCtx) })
 
 	// What an operator needs to see. Every failure this system has is a quiet
 	// one — a stalled outbox still answers 200, a webhook queue that stops
@@ -461,6 +470,17 @@ func main() {
 	if err := metrics.ObserveGauge("imap_idle_sessions", "Open IMAP IDLE connections",
 		func() int64 { return int64(idleSupervisor.Sessions()) }); err != nil {
 		slog.Error("failed to register idle metrics", "error", err)
+	}
+
+	// A worker that had to be restarted is a worker that stopped, and until it
+	// came back nothing it was responsible for was happening. The process stays
+	// up and both health endpoints stay green throughout, so this number is the
+	// only thing that distinguishes a gateway sending mail from one that has
+	// been failing to for the last ten minutes. Any non-zero value deserves a
+	// look; a rising one is an outage.
+	if err := metrics.ObserveGauge("worker_restarts_total", "Background workers restarted after a panic",
+		workerRestarts.Load); err != nil {
+		slog.Error("failed to register worker metrics", "error", err)
 	}
 
 	// Its own listener rather than a route on the API. Keeping it off the
@@ -788,19 +808,70 @@ func (r *rpcRegistrar) register(build func(connect.Option) (string, http.Handler
 	r.mux.Handle(pattern, handler)
 }
 
-// runWorker starts a background worker, tracking it so shutdown can wait for
-// it and recovering panics so one worker cannot take the process down.
-func runWorker(wg *sync.WaitGroup, name string, fn func()) {
+// workerRestarts counts how many times a worker had to be brought back, so a
+// process that is quietly limping is visible as something other than healthy.
+var workerRestarts atomic.Int64
+
+// runWorker starts a background worker and keeps it running.
+//
+// Recovering the panic is not enough on its own, which is what this used to do:
+// it logged and let the goroutine end, and a worker that has ended is
+// indistinguishable from one with nothing to do. The gateway stays up, /healthz
+// and /readyz both stay green because the process and the database are fine,
+// and mail simply stops. The queue worker already recovers per message, so
+// reaching here means the panic was in the loop itself — claiming, pruning,
+// reading a tenant's retry pattern — and none of those get better by being left
+// alone.
+//
+// So it restarts, with a backoff, until the context says to stop. A worker
+// panicking in a tight loop then costs one log line per second rather than a
+// spin, and the restart count is published for anything watching.
+func runWorker(wg *sync.WaitGroup, ctx context.Context, name string, fn func()) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Error("background worker panicked", "worker", name, "panic", r)
+
+		delay := workerRestartDelay
+		for {
+			if ctx.Err() != nil {
+				return
 			}
-		}()
-		fn()
+
+			if panicked := runOnce(name, fn); !panicked {
+				// A clean return means the worker finished on purpose, which
+				// for all of these means the context was cancelled.
+				return
+			}
+
+			workerRestarts.Add(1)
+			slog.Warn("restarting a worker that panicked", "worker", name, "in", delay)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+			if delay < workerRestartMaxDelay {
+				delay *= 2
+			}
+		}
 	}()
+}
+
+// runOnce runs a worker to completion, reporting whether it panicked.
+func runOnce(name string, fn func()) (panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			// With the stack, because the log line is the only artefact left:
+			// "background worker panicked" names the worker and nothing about
+			// where, which is the wrong half of the information.
+			slog.Error("background worker panicked",
+				"worker", name, "panic", r, "stack", string(debug.Stack()))
+			panicked = true
+		}
+	}()
+	fn()
+	return false
 }
 
 // waitForWorkers reports whether every worker finished within the timeout.
