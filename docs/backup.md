@@ -32,7 +32,8 @@ without downtime:
 curl -X POST 'http://127.0.0.1:9090/admin/backup?out=/var/backups/panmail-2026-08-14'
 ```
 
-The endpoint is on the loopback-only admin listener, alongside `/metrics`. It
+The endpoint is on the metrics listener, and is mounted only when that listener
+is loopback — see the last section. It
 returns the manifest it wrote.
 
 **With the gateway stopped** — for a cold copy:
