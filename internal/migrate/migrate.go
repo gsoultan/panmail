@@ -7,6 +7,7 @@
 package migrate
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"errors"
@@ -35,6 +36,22 @@ func Run(db *sql.DB, dialect string) error {
 	if db == nil {
 		return errors.New("database not connected")
 	}
+
+	// One instance migrates; the rest wait and then find nothing to do.
+	//
+	// A rolling deploy starts the new instances while the old ones are still
+	// serving, so on any release carrying a migration this runs several times
+	// at once. Without a lock each one reads the same set of applied versions,
+	// concludes the same steps are outstanding, and executes the same DDL
+	// against the same tables. The visible half of that is the loser failing on
+	// "applied but could not be recorded" — version is a primary key — and
+	// refusing to start. The half that matters is two ALTERs on one table at
+	// the same time.
+	unlock, err := lockForMigration(db, dialect)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	if err := ensureVersionTable(db, dialect); err != nil {
 		return fmt.Errorf("failed to prepare the migration table: %w", err)
@@ -135,6 +152,52 @@ func appliedVersions(db *sql.DB) (map[int]struct{}, error) {
 func recordVersion(db *sql.DB, version int) error {
 	_, err := db.Exec("INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)", version, time.Now())
 	return err
+}
+
+// migrationLockKey identifies this lock among any other advisory locks in the
+// database. Arbitrary but fixed: every instance has to name the same number or
+// they do not exclude each other.
+const migrationLockKey = 0x70616e6d // "panm"
+
+// lockForMigration blocks until this process is the one allowed to migrate.
+//
+// PostgreSQL advisory locks are held by a session, so this takes a dedicated
+// connection out of the pool and keeps it for the duration. Using db.Exec would
+// acquire the lock on whichever connection the pool handed over and release it
+// on whichever one it handed over next — that is, not at all reliably.
+//
+// The wait is deliberately unbounded. A migration that is genuinely running can
+// take as long as it takes, and an instance that gave up waiting would carry on
+// and start serving against a schema halfway through changing, which is the
+// thing this exists to prevent.
+func lockForMigration(db *sql.DB, dialect string) (func(), error) {
+	// SQLite has no advisory locks and does not need them: it is a single file
+	// with one writer, and two instances cannot share one anyway — Pebble takes
+	// an exclusive lock on the store directories long before this matters.
+	if strings.ToLower(dialect) != DialectPostgres {
+		return func() {}, nil
+	}
+
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to take a connection for the migration lock: %w", err)
+	}
+
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("failed to acquire the migration lock: %w", err)
+	}
+
+	return func() {
+		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey); err != nil {
+			// Not fatal, and not silent: closing the connection ends the
+			// session and drops the lock regardless, so the next instance is
+			// not stuck — but an operator should know it happened.
+			slog.Warn("failed to release the migration lock; closing the connection will drop it", "error", err)
+		}
+		_ = conn.Close()
+	}, nil
 }
 
 // loadMigrations reads the embedded files, ordered by their numeric prefix.
