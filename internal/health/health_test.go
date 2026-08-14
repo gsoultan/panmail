@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,11 +11,18 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 type pinger struct{ err error }
 
 func (p pinger) PingContext(context.Context) error { return p.err }
+
+// conn stands in for db.Connection: a handle that can change, or not exist yet.
+type conn struct{ db *sql.DB }
+
+func (c *conn) GetDB() *sql.DB { return c.db }
 
 func get(t *testing.T, h http.HandlerFunc) (int, map[string]any) {
 	t.Helper()
@@ -33,7 +41,7 @@ func get(t *testing.T, h http.HandlerFunc) (int, map[string]any) {
 // traffic it could not serve.
 func TestAnUnreachableDatabaseMeansNotReady(t *testing.T) {
 	c := New()
-	c.Register("database", SQL(pinger{err: errors.New("connection refused")}))
+	c.Register("database", SQLPinger(pinger{err: errors.New("connection refused")}))
 
 	code, body := get(t, c.ReadyHandler())
 
@@ -56,7 +64,7 @@ func TestAnUnreachableDatabaseMeansNotReady(t *testing.T) {
 // asserted that text was present, which is how the disclosure got written.
 func TestReadinessDoesNotPublishWhatItKnows(t *testing.T) {
 	c := New()
-	c.Register("database", SQL(pinger{err: errors.New(
+	c.Register("database", SQLPinger(pinger{err: errors.New(
 		"failed to connect to `user=panmail database=panmail`: db.internal:5432 (10.0.0.7): connect: connection refused")}))
 
 	_, body := get(t, c.ReadyHandler())
@@ -82,7 +90,7 @@ func TestReadinessDoesNotPublishWhatItKnows(t *testing.T) {
 
 func TestAReachableDatabaseMeansReady(t *testing.T) {
 	c := New()
-	c.Register("database", SQL(pinger{}))
+	c.Register("database", SQLPinger(pinger{}))
 
 	if code, _ := get(t, c.ReadyHandler()); code != http.StatusOK {
 		t.Errorf("status %d with a healthy database", code)
@@ -93,7 +101,7 @@ func TestAReachableDatabaseMeansReady(t *testing.T) {
 // not mask it.
 func TestOneFailedDependencyIsEnough(t *testing.T) {
 	c := New()
-	c.Register("database", SQL(pinger{}))
+	c.Register("database", SQLPinger(pinger{}))
 	c.Register("events", func(context.Context) error { return errors.New("pebble: closed") })
 
 	code, body := get(t, c.ReadyHandler())
@@ -155,7 +163,7 @@ func TestAHangingProbeIsBounded(t *testing.T) {
 // after the instance has stopped being able to serve it.
 func TestReadinessIsNotCacheable(t *testing.T) {
 	c := New()
-	c.Register("database", SQL(pinger{}))
+	c.Register("database", SQLPinger(pinger{}))
 
 	rec := httptest.NewRecorder()
 	c.ReadyHandler()(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
@@ -195,4 +203,53 @@ func rawJSON(t *testing.T, v any) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// A gateway starts before it necessarily has a database — that is how the
+// first-run setup screen is served — so readiness runs against a nil handle on
+// every fresh install. Pinging a nil *sql.DB dereferences it and kills the
+// handler mid-response, so the caller sees a reset connection rather than a
+// 503, exactly when "there is no database" is the thing being reported.
+//
+// Found by running the container against a database that was not there.
+func TestNoDatabaseYetIsNotReadyRatherThanACrash(t *testing.T) {
+	c := New()
+	c.Register("database", SQL(&conn{db: nil}))
+
+	code, body := get(t, c.ReadyHandler())
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d with no database configured", code)
+	}
+	failed, _ := body["failed"].([]any)
+	if len(failed) != 1 || failed[0] != "database" {
+		t.Errorf("failed = %v, want [database]", failed)
+	}
+}
+
+// The handle is not fixed for the life of the process: setup installs a
+// database after startup. A probe that captured the handle it was given would
+// report the old one forever, so a freshly configured gateway would never
+// become ready until someone restarted it.
+func TestTheProbeFollowsTheConnectionRatherThanCapturingIt(t *testing.T) {
+	live, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer live.Close()
+
+	c := New()
+	shared := &conn{} // nothing configured yet, as at first boot
+	c.Register("database", SQL(shared))
+
+	if code, _ := get(t, c.ReadyHandler()); code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d before a database was configured", code)
+	}
+
+	// What setup does.
+	shared.db = live
+
+	if code, _ := get(t, c.ReadyHandler()); code != http.StatusOK {
+		t.Error("still not ready after a database was configured; the probe is " +
+			"holding the handle it was built with")
+	}
 }

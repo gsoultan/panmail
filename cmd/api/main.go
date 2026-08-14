@@ -665,7 +665,10 @@ func main() {
 	// was unreachable stayed in the load balancer and failed every request it
 	// was given.
 	readiness := health.New()
-	readiness.Register("database", health.SQL(conn.GetDB()))
+	// The connection, not the handle: setup installs a database after
+	// startup, and a probe holding the handle it was given would report
+	// the old one forever.
+	readiness.Register("database", health.SQL(conn))
 	mux.HandleFunc("/readyz", readiness.ReadyHandler())
 	mux.Handle("/webhooks/", webhookHandler)
 	mux.Handle("/inbound/", inboundWebhookHandler)

@@ -16,7 +16,9 @@ package health
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -136,12 +138,46 @@ type Pinger interface {
 	PingContext(ctx context.Context) error
 }
 
-// SQL probes the database.
+// Handle yields whichever database the gateway is currently using.
+//
+// An interface rather than a *sql.DB because the handle is not fixed for the
+// life of the process. A gateway starts before it necessarily has a database —
+// that is how the first-run setup screen can be served at all — and setup
+// installs one afterwards. A probe holding the handle it was given at startup
+// would go on reporting the state of a database that has since been replaced,
+// so a freshly configured instance would never become ready until someone
+// restarted it.
+type Handle interface {
+	GetDB() *sql.DB
+}
+
+// SQL probes whatever database the gateway currently has.
 //
 // PingContext takes a connection from the pool, so this also reports the case
 // where the server is fine and this instance cannot reach it anyway because its
 // own pool is exhausted. That is the right answer: an instance that cannot get
 // a connection within the timeout cannot serve a request either.
-func SQL(db Pinger) Probe {
-	return func(ctx context.Context) error { return db.PingContext(ctx) }
+func SQL(h Handle) Probe {
+	return func(ctx context.Context) error {
+		db := h.GetDB()
+		// Not ready, rather than a panic. Pinging a nil *sql.DB dereferences
+		// it, and the handler that does so dies mid-response — so the caller
+		// sees a reset connection instead of a 503, exactly when the database
+		// being absent is the thing readiness exists to report.
+		if db == nil {
+			return errors.New("no database is configured")
+		}
+		return db.PingContext(ctx)
+	}
+}
+
+// SQLPinger probes a database handle that will not change, for callers holding
+// one directly.
+func SQLPinger(db Pinger) Probe {
+	return func(ctx context.Context) error {
+		if db == nil {
+			return errors.New("no database is configured")
+		}
+		return db.PingContext(ctx)
+	}
 }
