@@ -17,6 +17,7 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"maps"
 	"net/http"
 	"slices"
@@ -87,8 +88,20 @@ func (c *Checker) Check(ctx context.Context) map[string]string {
 // ReadyHandler serves readiness: 200 when every dependency answers, 503 with
 // the names of those that did not.
 //
-// The body is the point. A bare 503 at three in the morning says only that
-// something is wrong; {"database":"connection refused"} says where to look.
+// The names, and only the names. This handler is mounted on the public
+// listener — a load balancer has to reach it — so the body reaches anyone who
+// asks, and the underlying errors are not fit to publish. A driver reports a
+// failed connection as
+//
+//	failed to connect to `user=panmail database=panmail`:
+//	  db.internal:5432 ... connect: connection refused
+//
+// which hands an unauthenticated caller the database's user, name, host and
+// port. Returning that was a diagnostic written without noticing where it would
+// be served from.
+//
+// The detail still exists, in the log, where the operator debugging at three in
+// the morning is looking anyway and an internet caller is not.
 func (c *Checker) ReadyHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		failures := c.Check(r.Context())
@@ -105,11 +118,15 @@ func (c *Checker) ReadyHandler() http.HandlerFunc {
 			return
 		}
 
+		failed := slices.Sorted(maps.Keys(failures))
+		for _, name := range failed {
+			slog.Warn("readiness check failed", "dependency", name, "error", failures[name])
+		}
+
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":  "not ready",
-			"failed":  slices.Sorted(maps.Keys(failures)),
-			"details": failures,
+			"status": "not ready",
+			"failed": failed,
 		})
 	}
 }

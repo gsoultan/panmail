@@ -42,12 +42,41 @@ func TestAnUnreachableDatabaseMeansNotReady(t *testing.T) {
 	}
 	// Naming the dependency is the difference between a page that says "look
 	// at the database" and one that says "something is wrong".
-	if !strings.Contains(strings.ToLower(rawJSON(t, body)), "connection refused") {
-		t.Errorf("body %v does not say what failed", body)
-	}
 	failed, _ := body["failed"].([]any)
 	if len(failed) != 1 || failed[0] != "database" {
 		t.Errorf("failed = %v, want [database]", failed)
+	}
+}
+
+// The name, and not the error behind it.
+//
+// This handler is on the public listener, because a load balancer has to reach
+// it, so the body reaches anyone who asks. The driver's error names the
+// database's user, database, host and port — an earlier version of this test
+// asserted that text was present, which is how the disclosure got written.
+func TestReadinessDoesNotPublishWhatItKnows(t *testing.T) {
+	c := New()
+	c.Register("database", SQL(pinger{err: errors.New(
+		"failed to connect to `user=panmail database=panmail`: db.internal:5432 (10.0.0.7): connect: connection refused")}))
+
+	_, body := get(t, c.ReadyHandler())
+	published := strings.ToLower(rawJSON(t, body))
+
+	for _, secret := range []string{
+		"user=panmail", // the database user
+		"db.internal",  // the internal hostname
+		"10.0.0.7",     // and its address
+		"5432",         // and its port
+		"connection refused",
+	} {
+		if strings.Contains(published, strings.ToLower(secret)) {
+			t.Errorf("readiness published %q to an unauthenticated caller: %s", secret, published)
+		}
+	}
+
+	// It still has to be useful: the dependency is named.
+	if !strings.Contains(published, "database") {
+		t.Errorf("body %s does not name the failed dependency", published)
 	}
 }
 
