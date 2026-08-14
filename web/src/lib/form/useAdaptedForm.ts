@@ -20,6 +20,41 @@ import { useForm, useStore } from '@tanstack/react-form';
 
 export type FieldErrors = Record<string, string | undefined>;
 
+/**
+ * What an input hands back when it changes.
+ *
+ * `unknown` rather than a union, because the union is not closed: TextInput
+ * passes the DOM event, NumberInput a number or a bigint, TagsInput a string
+ * array, Switch a boolean, and a component added next year will pass something
+ * else. Enumerating them makes this type wrong every time Mantine gains a
+ * component, and wrong in a way that shows up as an error on the input rather
+ * than here.
+ *
+ * It is also the right variance: a handler accepting `unknown` is assignable to
+ * every one of those, which is what lets one props bag spread onto all of them.
+ */
+export type InputChangeArg = unknown;
+
+/** Whether an input handed back the DOM event rather than the value. */
+function isChangeEvent(e: unknown): e is React.ChangeEvent<HTMLInputElement> {
+  return typeof e === 'object' && e !== null && 'currentTarget' in e;
+}
+
+/**
+ * The props bag spread onto a Mantine input.
+ *
+ * The index signature is what makes the spread work, since the members differ
+ * by input type — `checked` for a checkbox, `value` and `error` otherwise. It
+ * used to be the whole type, which meant `onChange` came back as `unknown` and
+ * calling it was a type error: fine while every caller only ever spread the
+ * result, and a wall the moment anything wanted to drive an input directly, as
+ * a test does. Naming the two members every branch returns costs nothing and
+ * keeps the spread.
+ */
+export type InputProps = Record<string, unknown> & {
+  onChange: (eventOrValue: InputChangeArg) => void;
+};
+
 /** Validates the whole value set, returning errors keyed by field path. */
 export type Validate<T> = (values: T) => FieldErrors;
 
@@ -97,7 +132,7 @@ export interface AdaptedForm<T> {
   reset: () => void;
   insertListItem: (path: string, item: unknown, index?: number) => void;
   removeListItem: (path: string, index: number) => void;
-  getInputProps: (path: string, options?: { type?: 'checkbox' | 'input' }) => Record<string, unknown>;
+  getInputProps: (path: string, options?: { type?: 'checkbox' | 'input' }) => InputProps;
   onSubmit: (handler?: (values: T) => void) => (e: React.FormEvent) => void;
   /**
    * Checks every rule now and reveals any failures, reporting whether the form
@@ -261,20 +296,21 @@ export const useAdaptedForm = <T extends object>({
       if (options?.type === 'checkbox') {
         return {
           checked: Boolean(value),
-          onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
-            setFieldValue(path, e.currentTarget.checked),
+          // Checkbox and Switch pass the event; SegmentedControl and a plain
+          // programmatic call pass the boolean. Same split as below.
+          onChange: (e: InputChangeArg) => {
+            setFieldValue(path, isChangeEvent(e) ? e.currentTarget.checked : Boolean(e));
+          },
         };
       }
 
       return {
         value: value ?? '',
         error,
-        onChange: (e: React.ChangeEvent<HTMLInputElement> | string | number | null) => {
+        onChange: (e: InputChangeArg) => {
           // Mantine's NumberInput and Select hand back a bare value; TextInput
           // hands back the event.
-          const next =
-            e !== null && typeof e === 'object' && 'currentTarget' in e ? e.currentTarget.value : e;
-          setFieldValue(path, next);
+          setFieldValue(path, isChangeEvent(e) ? e.currentTarget.value : e);
         },
         onBlur: () => {
           form.setFieldMeta(path, (m: Record<string, unknown>) => ({ ...m, isTouched: true }));
