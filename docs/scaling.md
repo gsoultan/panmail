@@ -162,6 +162,37 @@ the instance serving the request has seen. Point Prometheus at every instance's
 `/metrics` and aggregate there rather than expecting one instance to hold the
 whole picture.
 
+## Deploys
+
+A rolling deploy signals each instance in turn, and SIGTERM always lands while
+the queue is busy. What happens then:
+
+1. The listener stops accepting, and readiness starts failing.
+2. The queue worker stops claiming new batches.
+3. Sends **already in progress** are given ten seconds to finish.
+4. Messages that were claimed but never started are left alone. They keep their
+   claim, the lease expires, and the next instance to look picks them up.
+
+Step 3 is the one that matters. A send cut off after the provider accepted DATA
+but before its reply arrived has been delivered, and panmail has no way to know
+— so the retry sends it a second time. Draining is what keeps a deploy from
+being a duplicate-mail event. Measured on a 40,000-message queue: the same
+signal used to cut off 184 in-flight sends, and now cuts off none.
+
+Give the container at least 30 seconds to terminate, which is the Kubernetes
+default:
+
+```yaml
+terminationGracePeriodSeconds: 30
+```
+
+Less than about 15 and SIGKILL arrives during the drain, which puts the
+behaviour back where it was.
+
+Delivery remains at-least-once across a restart, because the send and the
+record of it are not one transaction. Draining shrinks the window; it does not
+close it.
+
 ## Send rate limits are per instance
 
 `send_rate_per_minute` is enforced by an in-memory token bucket, so each
