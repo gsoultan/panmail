@@ -262,3 +262,33 @@ scripts/soak/sink.py 2599
 `scripts/soak/README.md` has the details. A run that drains with equal batch
 counts across instances and no duplicates at the far end is the property this
 page is about.
+
+## Watching a running gateway
+
+`/metrics` publishes the queues and the process. The ones that answer "is this
+still healthy in a week":
+
+| Metric | Healthy | Not |
+| --- | --- | --- |
+| `panmail_goroutines` | spikes under load, returns to baseline | climbs and never returns |
+| `panmail_heap_in_use_bytes` | a flat band | a rising floor |
+| `panmail_db_connections_in_use` | below `max_open_conns` | pinned at it |
+| `panmail_db_connections_wait_seconds_total` | grows slowly, or in step with wait_total | grows far faster than wait_total |
+| `panmail_worker_restarts_total` | zero | anything else |
+| `panmail_outbox_oldest_seconds` | seconds | minutes and rising |
+
+Two of those need explaining, because the obvious reading is wrong.
+
+**Do not alert on RSS.** Go returns freed memory to the OS lazily, so RSS
+climbs under load and comes back later. Measured over a 16-minute run of 57,500
+messages: RSS peaked at 251 MB and settled at 26 MB once the load stopped,
+while heap in use never left a 19–31 MB band. Alerting on RSS would have paged
+for a leak that did not exist. `heap_in_use_bytes` is the one to watch.
+
+**Connection waits are normal.** A send holds no database connection while it
+is talking to SMTP — it takes one only to record the result — so two hundred
+concurrent sends contending for twenty-five connections produces a large
+`wait_total` while the queue still drains to zero. That is the pool working.
+What is not normal is `wait_seconds_total` growing much faster than
+`wait_total`, which means the waits have stopped being brief. That is when to
+raise `max_open_conns`, or add an instance if the server cannot take more.
