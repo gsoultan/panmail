@@ -86,6 +86,24 @@ func (u *domainHealthUsecase) Check(ctx context.Context, tenantID string, req *p
 		Mx:     toDnsCheck(health.MX),
 	}
 
+	// Alignment, reported alongside DMARC because that is the check it decides.
+	//
+	// Everything else here asks whether the records are published and correct.
+	// This asks the question they cannot: whether the domain being signed is
+	// the domain recipients will see. A provider signing for one domain and
+	// permitted to send as another produces mail that passes every check above
+	// and fails DMARC at the receiver, which is the worst shape a fault can
+	// have — nothing anywhere says anything is wrong.
+	if summary := CheckAlignment(target.domain, target.allowedDomains, false).Summary(target.domain); summary != "" {
+		if res.Dmarc == nil {
+			res.Dmarc = &panmailv1.DnsCheck{}
+		}
+		if res.Dmarc.Details != "" {
+			res.Dmarc.Details += " "
+		}
+		res.Dmarc.Details += summary
+	}
+
 	// Map iteration order is random and this list is rendered, so sort it —
 	// otherwise the panel reshuffles on every refresh.
 	selectors := make([]string, 0, len(health.DKIM))
@@ -117,6 +135,11 @@ type healthTarget struct {
 	domain     string
 	selectors  []string
 	privateKey string
+
+	// The From domains this provider will accept, so alignment can be judged
+	// against them. A signature proves who signed; DMARC asks whether that is
+	// the domain the recipient sees, and the two are configured separately.
+	allowedDomains []string
 }
 
 // resolveTarget works out what to check, from a saved provider or from the
@@ -168,6 +191,7 @@ func (u *domainHealthUsecase) resolveTarget(ctx context.Context, tenantID string
 			}
 			target.privateKey = dkim.GetPrivateKey()
 		}
+		target.allowedDomains = provider.AllowedDomains
 	}
 
 	// Falling back to the first allowed domain means a provider that sends but
