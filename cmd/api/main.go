@@ -484,6 +484,13 @@ func main() {
 		slog.Error("failed to register worker metrics", "error", err)
 	}
 
+	// Goroutines, heap and the connection pool. Everything above measures the
+	// work; this measures whether the process doing it is growing, which is
+	// what decides whether it survives a month rather than an afternoon.
+	if err := metrics.ObserveProcess(conn.GetDB()); err != nil {
+		slog.Error("failed to register process metrics", "error", err)
+	}
+
 	// Its own listener rather than a route on the API. Keeping it off the
 	// public surface is the point, and a separate server also means a metrics
 	// scrape cannot be starved by the API's own timeouts.
