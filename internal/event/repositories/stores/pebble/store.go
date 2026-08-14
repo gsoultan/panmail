@@ -1011,3 +1011,13 @@ func (s *store) Close() error {
 	s.wg.Wait()
 	return s.db.Close()
 }
+
+// Checkpoint writes a consistent snapshot of this store into dir.
+//
+// Copying the directory is not equivalent: a live store has writes in
+// memtables that have not been flushed and SSTables mid-compaction, so a
+// filesystem copy opens cleanly and is quietly missing data. Pebble's
+// checkpoint hard-links what it can, so this stays cheap.
+func (s *store) Checkpoint(dir string) error {
+	return s.db.Checkpoint(dir)
+}

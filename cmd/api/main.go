@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -26,6 +27,7 @@ import (
 	authstores "github.com/gsoultan/panmail/internal/auth/repositories/stores/postgres"
 	authservices "github.com/gsoultan/panmail/internal/auth/services"
 	authusecases "github.com/gsoultan/panmail/internal/auth/usecases"
+	"github.com/gsoultan/panmail/internal/backup"
 	"github.com/gsoultan/panmail/internal/config"
 	emailstores "github.com/gsoultan/panmail/internal/email/repositories/stores/postgres"
 	emailservices "github.com/gsoultan/panmail/internal/email/services"
@@ -147,6 +149,11 @@ func main() {
 	// result.
 	if len(os.Args) > 1 && os.Args[1] == "rotate-secrets" {
 		handleRotateSecretsCommand()
+		return
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "backup" {
+		handleBackupCommand()
 		return
 	}
 
@@ -453,6 +460,63 @@ func main() {
 	if *metricsAddrFlag != "" {
 		metricsMux := http.NewServeMux()
 		metricsMux.Handle("/metrics", metrics.Handler())
+
+		// Backup lives here because this is the process that can actually do
+		// it: the Pebble stores are held exclusively while the gateway runs,
+		// so an external command cannot snapshot them without downtime. The
+		// listener is loopback-only, which is the right audience for an
+		// operator action and keeps it off the public surface.
+		metricsMux.HandleFunc("/admin/backup", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "POST required", http.StatusMethodNotAllowed)
+				return
+			}
+			out := r.URL.Query().Get("out")
+			if out == "" {
+				http.Error(w, "out= is required", http.StatusBadRequest)
+				return
+			}
+
+			opts := backup.Options{
+				OutDir:     out,
+				SQLDB:      conn.GetDB(),
+				SQLEngine:  cfg.Database.Type,
+				SQLitePath: cfg.Database.FilePath,
+				Version:    Version,
+				Stores:     map[string]backup.Checkpointer{},
+			}
+			if path, err := config.GetConfigPath(); err == nil {
+				opts.ConfigPath = path
+			}
+			opts.SecretKeyID = keyring.PrimaryKeyID()
+
+			// Every store, or none. A backup missing one of them restores into
+			// a gateway that has lost its events or its inbound mail, which is
+			// worse than a backup that refused to be taken.
+			for name, store := range map[string]any{
+				"events.db":  eventRepo,
+				"inbound.db": inboundRepo,
+				"logs.db":    logStore,
+			} {
+				cp, ok := store.(backup.Checkpointer)
+				if !ok {
+					http.Error(w, fmt.Sprintf("%s cannot snapshot itself", name), http.StatusInternalServerError)
+					return
+				}
+				opts.Stores[name] = cp
+			}
+
+			manifest, err := backup.Run(r.Context(), opts)
+			if err != nil {
+				slog.Error("backup failed", "error", err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			slog.Info("backup written", "out", out, "contents", manifest.Stores)
+
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(manifest)
+		})
 		metricsServer = &http.Server{
 			Addr:              *metricsAddrFlag,
 			Handler:           metricsMux,
@@ -914,5 +978,115 @@ func handleRotateSecretsCommand() {
 	}
 	if len(retired) > 0 {
 		fmt.Printf("you can now remove %s and restart\n", secrets.EnvRetiredKeysName)
+	}
+}
+
+// handleBackupCommand writes a consistent snapshot of everything a gateway
+// would need to be rebuilt.
+//
+// Run against a live installation. Both store engines can snapshot themselves
+// while being written to, which is the reason this exists rather than a line in
+// a runbook telling someone to copy directories: a filesystem copy of an open
+// Pebble store or a SQLite file in WAL mode opens cleanly and is quietly
+// missing writes.
+func handleBackupCommand() {
+	fs := flag.NewFlagSet("backup", flag.ExitOnError)
+	configFlag := fs.String("config", "", "Path to configuration file")
+	outFlag := fs.String("out", "", "Directory to write the backup into (required)")
+	logDirFlag := fs.String("log-dir", "logs.db", "Directory for logs database")
+	eventDirFlag := fs.String("event-dir", "events.db", "Directory for events database")
+	inboundDirFlag := fs.String("inbound-dir", "inbound.db", "Directory for inbound database")
+	_ = fs.Parse(os.Args[2:])
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+	if *outFlag == "" {
+		fmt.Fprintln(os.Stderr, "backup: --out is required")
+		os.Exit(1)
+	}
+	if *configFlag != "" {
+		config.SetConfigPath(*configFlag)
+	}
+
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		fmt.Fprintf(os.Stderr, "backup: no configuration found (%v)\n", err)
+		os.Exit(1)
+	}
+
+	sqlDB, err := db.Connect(cfg.Database)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "backup: cannot connect to the database: %v\n", err)
+		os.Exit(1)
+	}
+	defer sqlDB.Close()
+
+	opts := backup.Options{
+		OutDir:     *outFlag,
+		SQLDB:      sqlDB,
+		SQLEngine:  cfg.Database.Type,
+		SQLitePath: cfg.Database.FilePath,
+		Version:    Version,
+		Stores:     map[string]backup.Checkpointer{},
+	}
+
+	if path, err := config.GetConfigPath(); err == nil {
+		opts.ConfigPath = path
+	}
+
+	// Recorded rather than included: a restore that lands on the wrong key
+	// produces unreadable credentials and an error nobody can place, and the
+	// fingerprint turns that into a sentence.
+	if key, err := config.ResolveDataKey(cfg); err == nil {
+		if keyring, err := secrets.NewKeyring(key); err == nil {
+			opts.SecretKeyID = keyring.PrimaryKeyID()
+		}
+	}
+
+	// A running gateway holds these open exclusively, so this only works with
+	// it stopped. Silently skipping a store that cannot be opened is how a
+	// backup comes to report success while containing a quarter of the data —
+	// the failure that this whole command exists to prevent.
+	type pebbleStore struct {
+		name string
+		open func() (interface{ Close() error }, error)
+	}
+	for _, st := range []pebbleStore{
+		{"events.db", func() (interface{ Close() error }, error) { return eventstores.NewStore(*eventDirFlag) }},
+		{"inbound.db", func() (interface{ Close() error }, error) { return inboundstores.NewStore(*inboundDirFlag) }},
+		{"logs.db", func() (interface{ Close() error }, error) { return logging.NewPebbleStore(*logDirFlag) }},
+	} {
+		store, err := st.open()
+		if err != nil {
+			fmt.Fprintf(os.Stderr,
+				"backup: cannot open %s: %v\n\n"+
+					"These stores are held exclusively by a running gateway. Either stop it and\n"+
+					"run this again, or take the backup from the gateway itself:\n"+
+					"  curl -X POST 'http://127.0.0.1:9090/admin/backup?out=%s'\n",
+				st.name, err, *outFlag)
+			os.Exit(1)
+		}
+		if cp, ok := store.(backup.Checkpointer); ok {
+			opts.Stores[st.name] = cp
+		} else {
+			fmt.Fprintf(os.Stderr, "backup: %s cannot snapshot itself\n", st.name)
+			os.Exit(1)
+		}
+		defer store.Close()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	manifest, err := backup.Run(ctx, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "backup failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("backup written to %s\n", *outFlag)
+	fmt.Printf("  contents: %s\n", strings.Join(manifest.Stores, ", "))
+	for _, note := range manifest.Notes {
+		fmt.Printf("  note: %s\n", note)
 	}
 }

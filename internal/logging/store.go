@@ -207,3 +207,9 @@ func (s *pebbleStore) Close() error {
 	})
 	return err
 }
+
+// Checkpoint writes a consistent snapshot of the log store into dir. A
+// filesystem copy of a live store silently omits unflushed writes.
+func (s *pebbleStore) Checkpoint(dir string) error {
+	return s.db.Checkpoint(dir)
+}

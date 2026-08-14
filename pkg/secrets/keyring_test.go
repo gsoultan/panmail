@@ -1,7 +1,9 @@
 package secrets
 
 import (
+	"encoding/base64"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -104,9 +106,39 @@ func TestTamperedCiphertextIsRejected(t *testing.T) {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
 
-	tampered := encrypted[:len(encrypted)-1] + "A"
+	// Tamper the ciphertext bytes, not the text that encodes them.
+	//
+	// Changing the last base64 character does not reliably change anything:
+	// under RawStdEncoding the final character carries only two to four
+	// significant bits and the rest are discarded, so a different character
+	// can decode to identical bytes. The original test substituted a fixed
+	// letter and passed either way — sometimes because the ciphertext was
+	// rejected, sometimes because it had not actually been altered.
+	raw, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(encrypted, cipherPrefixV2))
+	if err != nil {
+		// v2 carries a key id before the payload.
+		_, payload, splitErr := split(encrypted)
+		if splitErr != nil {
+			t.Fatalf("could not read the ciphertext back: %v", splitErr)
+		}
+		raw = payload
+	}
+	if len(raw) == 0 {
+		t.Fatal("empty ciphertext")
+	}
+
+	// The last byte is inside the GCM tag, so this is a forgery attempt.
+	flipped := append([]byte(nil), raw...)
+	flipped[len(flipped)-1] ^= 0xFF
+
+	id, _, err := split(encrypted)
+	if err != nil {
+		t.Fatalf("split: %v", err)
+	}
+	tampered := cipherPrefixV2 + id + ":" + base64.RawStdEncoding.EncodeToString(flipped)
+
 	if _, err := k.Decrypt(tampered); err == nil {
-		t.Error("expected a tampered ciphertext to be rejected")
+		t.Error("a forged ciphertext was accepted")
 	}
 }
 

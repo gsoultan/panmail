@@ -1,0 +1,88 @@
+# Backup and restore
+
+Verified end to end on 2026-08-14: a backup taken from a running gateway was
+restored into a fresh location, and the restored instance signed in with the
+original credentials and decrypted its provider secrets.
+
+## What has to be kept
+
+Four things, and a backup missing any one of them restores into something that
+starts but does not work:
+
+| | |
+|---|---|
+| The SQL database | tenants, users, API keys, providers, templates, webhooks, suppressions, the outbox, webhook deliveries |
+| `events.db` | delivery events and analytics |
+| `inbound.db` | received mail |
+| `logs.db` | the log history the UI reads |
+| `config.yaml` | the auth signing key — without it every existing session and API key is void |
+| **The data encryption key** | `PANMAIL_SECRET_KEY`. Without it every provider password, DKIM private key, OAuth token and webhook secret is permanently unreadable. |
+
+The key is the one that cannot be recovered. Everything else can be rebuilt
+from a replica or, at worst, re-entered; a lost data key means re-entering every
+credential by hand, from the customer, one at a time.
+
+## Taking one
+
+**From a running gateway** — the normal case. The Pebble stores are held
+exclusively by the process, so it is the only thing that can snapshot them
+without downtime:
+
+```bash
+curl -X POST 'http://127.0.0.1:9090/admin/backup?out=/var/backups/panmail-2026-08-14'
+```
+
+The endpoint is on the loopback-only admin listener, alongside `/metrics`. It
+returns the manifest it wrote.
+
+**With the gateway stopped** — for a cold copy:
+
+```bash
+panmail backup --config /etc/panmail/config.yaml --out /var/backups/panmail-2026-08-14
+```
+
+This refuses rather than proceeding if any store is locked. A backup that
+quietly contains a quarter of the data is worse than one that failed.
+
+Neither path copies a PostgreSQL database: run `pg_dump` and keep the output
+alongside. `pg_dump` understands roles, sequences and extensions, and a worse
+reimplementation here would be a liability.
+
+## Why not just copy the directories
+
+Both engines are being written to while you copy them. A filesystem copy of an
+open Pebble store captures memtables that were never flushed and SSTables
+mid-compaction; the result opens cleanly and is missing writes. SQLite in WAL
+mode has the same problem. The backup uses each engine's own snapshot mechanism
+— `Checkpoint` and `VACUUM INTO` — which is the whole reason it exists as a
+command rather than a line in a runbook telling someone to use `cp`.
+
+## The manifest
+
+`manifest.json` is written last, so a directory without one is an unfinished
+backup rather than a usable one. It records the **fingerprint** of the key the
+credentials are encrypted under — never the key itself, since a backup carrying
+its own key protects nothing:
+
+```json
+{
+  "secret_key_id": "f29d0772",
+  "stores": ["panmail.sqlite", "events.db", "inbound.db", "logs.db", "config.yaml"]
+}
+```
+
+Check that fingerprint against the key you hold before restoring. Restoring
+onto the wrong one produces a working gateway full of unreadable credentials
+and a decryption error nobody can place.
+
+## Restoring
+
+1. Put the four stores where the new instance expects them.
+2. Restore `config.yaml`, or copy the `auth.symmetric_key` from it into the
+   new one. Skipping this invalidates every session and API key.
+3. Set `PANMAIL_SECRET_KEY` to the key named in the manifest.
+4. Start the gateway and check two things — that you can sign in, and that a
+   provider's host still reads correctly. The first proves the auth key came
+   across, the second proves the data key did.
+
+Step 4 is the test. A restore that has not been checked is a hypothesis.
