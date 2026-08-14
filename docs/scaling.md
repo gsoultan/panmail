@@ -97,9 +97,14 @@ $ curl -s localhost:8080/readyz
 {"status":"ready"}
 
 $ curl -s localhost:8080/readyz          # database down
-{"status":"not ready","failed":["database"],
- "details":{"database":"... connect: connection refused"}}
+{"status":"not ready","failed":["database"]}
 ```
+
+The name of the dependency, and deliberately nothing more. This endpoint is on
+the public listener because a load balancer has to reach it, so its body
+reaches anyone who asks — and the driver's error names the database's user,
+host and port. The detail goes to the log instead, where the person debugging
+is already looking.
 
 It returns 503 in that state and 200 again once the database is back, with no
 restart in between. In Kubernetes:
