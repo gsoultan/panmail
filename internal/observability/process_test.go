@@ -40,6 +40,7 @@ func TestProcessMetricsArePublished(t *testing.T) {
 		"panmail_db_connections_in_use",
 		"panmail_db_connections_open",
 		"panmail_db_connections_wait_total",
+		"panmail_db_connections_wait_seconds_total",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("%s is not published; an operator cannot see it", want)

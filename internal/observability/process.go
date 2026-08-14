@@ -50,6 +50,16 @@ func (m *Metrics) ObserveProcess(db *sql.DB) error {
 			// — or, if the server cannot take more, to add an instance.
 			m.ObserveGauge("db_connections_wait_total", "Requests that had to wait for a connection",
 				func() int64 { return db.Stats().WaitCount }),
+			// The count alone does not say whether waiting costs anything.
+			// A send holds no connection while it is talking to SMTP and takes
+			// one only to record the result, so brief contention among two
+			// hundred concurrent sends is normal and harmless — the queue
+			// still drains. This is the number that separates that from a pool
+			// that is actually throttling delivery: total time waited, which
+			// grows in step with the count when it is fine and far faster than
+			// it when it is not.
+			m.ObserveGauge("db_connections_wait_seconds_total", "Total time spent waiting for a connection",
+				func() int64 { return int64(db.Stats().WaitDuration.Seconds()) }),
 		)
 	}
 
