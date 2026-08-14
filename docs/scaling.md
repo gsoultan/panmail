@@ -162,6 +162,20 @@ the instance serving the request has seen. Point Prometheus at every instance's
 `/metrics` and aggregate there rather than expecting one instance to hold the
 whole picture.
 
+## Send rate limits are per instance
+
+`send_rate_per_minute` is enforced by an in-memory token bucket, so each
+instance keeps its own. Three instances give a tenant configured for 1000/min
+an actual ceiling of 3000/min.
+
+That matters because the limit usually exists to stay inside somebody else's:
+a provider that starts deferring or blocking above a rate does not care that
+the excess came from three processes. Divide the configured limit by the number
+of instances, and remember to revisit it when that number changes.
+
+The bound worth keeping exact is the queue depth ceiling, which is a count of
+rows and therefore already shared. It is only the rate that multiplies.
+
 ## Inbound
 
 Inbound polling and IMAP IDLE run in every instance, and they do not coordinate:
