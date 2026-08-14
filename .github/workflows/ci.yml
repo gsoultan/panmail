@@ -174,7 +174,36 @@ jobs:
       - name: Smoke test the binary
         run: ./panmail --version
 
-# Deliberately not checked here: whether `buf generate` output is committed and
-# current. The generated TypeScript client under web/src/api is presently behind
-# the .proto files, so a drift gate would fail on day one. Add one once the two
-# are back in sync — it is the check that would have caught that drift.
+  generated:
+    # Whether the committed output of `buf generate` still matches the .proto
+    # files. This was deliberately unchecked while the TypeScript client under
+    # web/src/api had drifted behind them; both sides are back in sync, so the
+    # gate that would have caught that drift can exist.
+    #
+    # Drift is quiet in a way that matters here. Go fails to compile against a
+    # stale message, so the backend notices. The generated client does not: the
+    # UI keeps compiling against a field the server no longer sends, and the
+    # first sign is a value arriving undefined at runtime.
+    name: generated code is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - uses: bufbuild/buf-setup-action@v1
+
+      - name: Regenerate
+        run: buf generate
+
+      - name: Check for drift
+        run: |
+          if ! git diff --quiet; then
+            echo "The committed generated code does not match the .proto files."
+            echo "Run 'buf generate' and commit the result."
+            git diff --stat
+            exit 1
+          fi
