@@ -100,6 +100,17 @@ jobs:
             exit 1
           fi
 
+      # Nothing was watching for this, so the answer was whatever the toolchain
+      # happened to be on the day someone last built. It had drifted to seven
+      # standard-library advisories, every one of them fixed in a patch release
+      # already available — an upgrade nobody knew to make.
+      #
+      # govulncheck reports what this code actually reaches rather than every
+      # advisory against every module in the graph, so a failure here is a call
+      # path that exists and not a line in a dependency tree.
+      - name: Check for known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   frontend:
     name: frontend
     runs-on: ubuntu-latest
