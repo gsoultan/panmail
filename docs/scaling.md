@@ -342,3 +342,27 @@ The image keeps the metrics listener on loopback, so `/metrics`, `/admin/backup`
 and `/debug/pprof` are all reachable only from inside the pod. Scrape with a
 sidecar or a port-forward rather than binding it wider — the latter two take no
 credentials.
+
+## base_url is a deliverability setting
+
+`app.base_url` builds the unsubscribe links that go into messages, and RFC 8058
+requires that endpoint to be **https**. Anything else and the `List-Unsubscribe`
+pair is omitted from every message — Gmail and Yahoo have required it from bulk
+senders since February 2024, and they judge a whole sending domain by it, so
+this is not one bad campaign.
+
+The mistake this invites is specific to running behind a TLS-terminating proxy:
+the gateway's own address is http, and configuring that here looks right. It is
+not. `base_url` must be the public URL a recipient's mail client will open, not
+the address the proxy dials.
+
+```yaml
+app:
+  base_url: https://mail.example.com   # public, https
+```
+
+A gateway started with anything else says so once at startup:
+
+```
+WARN messages will be sent without one-click unsubscribe: app.base_url is not https
+```

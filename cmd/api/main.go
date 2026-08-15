@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -372,6 +373,7 @@ func main() {
 	if cfg != nil {
 		baseURL = cfg.App.BaseURL
 	}
+	warnIfUnsubscribeLinksWillNotWork(baseURL)
 	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo)
 	templateRenderer := emailusecases.NewTemplateRenderer()
 	// One limiter shared by the API path and the outbox worker, so a tenant
@@ -912,6 +914,58 @@ func isLoopbackAddr(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// warnIfUnsubscribeLinksWillNotWork checks the one setting that silently costs
+// bulk deliverability.
+//
+// RFC 8058 requires the one-click endpoint to be HTTPS, and gsmail refuses to
+// build the header pair otherwise, so an http base_url means every message goes
+// out without List-Unsubscribe. Gmail and Yahoo have required that pair from
+// bulk senders since February 2024 and measure compliance across a sending
+// domain, so this does not degrade one campaign — it degrades everything sent
+// from that domain.
+//
+// It is an easy setting to get wrong in exactly the deployment this ships for.
+// Behind a TLS-terminating proxy the gateway's own address is http, and
+// configuring that here is the natural mistake; base_url has to be the public
+// URL a recipient's mail client will open, not the one the proxy dials.
+//
+// Said once, at startup. The send path already warns, but it warns per message
+// — a load run produced ten thousand identical lines, which is not a signal,
+// it is what buries one.
+// unsubscribeLinksBroken reports whether this base URL yields no one-click
+// header. Separate from the warning so the rule can be tested directly.
+func unsubscribeLinksBroken(baseURL string) bool {
+	if baseURL == "" {
+		return true
+	}
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Host == "" {
+		return true
+	}
+	return !strings.EqualFold(u.Scheme, "https")
+}
+
+func warnIfUnsubscribeLinksWillNotWork(baseURL string) {
+	if !unsubscribeLinksBroken(baseURL) {
+		return
+	}
+
+	reason := "is not https"
+	switch {
+	case baseURL == "":
+		reason = "is not configured"
+	case !strings.Contains(baseURL, "://"):
+		reason = "has no scheme"
+	}
+
+	slog.Warn("messages will be sent without one-click unsubscribe: app.base_url "+reason,
+		"base_url", baseURL,
+		"detail", "RFC 8058 requires an https endpoint, so the List-Unsubscribe pair is omitted entirely. "+
+			"Gmail and Yahoo have required it from bulk senders since February 2024 and judge a whole sending domain by it.",
+		"fix", "set app.base_url to the public https URL a recipient's mail client will open, "+
+			"not the address a TLS-terminating proxy dials")
 }
 
 // rpcRegistrar mounts ConnectRPC handlers with a fixed interceptor chain.

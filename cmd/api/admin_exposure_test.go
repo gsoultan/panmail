@@ -107,3 +107,38 @@ func TestAnUnmountedBackupEndpointIsNotThere(t *testing.T) {
 		t.Errorf("GET /metrics returned %d; the gate should not cost scraping", rec.Code)
 	}
 }
+
+// One-click unsubscribe needs an https base_url: RFC 8058 requires it, and
+// gsmail refuses to build the header pair without it, so the message goes out
+// with no List-Unsubscribe at all. Gmail and Yahoo have required that pair from
+// bulk senders since February 2024 and judge a whole sending domain by it, so
+// this is not one bad campaign — it degrades everything sent from the domain.
+//
+// The setting is easy to get wrong in exactly the deployment this ships for:
+// behind a TLS-terminating proxy the gateway's own address is http, and
+// configuring that here is the natural mistake.
+func TestBaseURLsThatSilentlyDisableUnsubscribe(t *testing.T) {
+	compliant := []string{
+		"https://mail.example.com",
+		"HTTPS://mail.example.com",
+		"https://mail.example.com:8443/base",
+	}
+	for _, u := range compliant {
+		if unsubscribeLinksBroken(u) {
+			t.Errorf("%s is a usable one-click base; warning about it is noise", u)
+		}
+	}
+
+	broken := []string{
+		"",                        // never configured
+		"http://mail.example.com", // the proxy's inside address
+		"http://localhost:8080",   // a development value left in place
+		"mail.example.com",        // no scheme at all
+		"://nonsense",             // unparseable
+	}
+	for _, u := range broken {
+		if !unsubscribeLinksBroken(u) {
+			t.Errorf("%q produces no one-click header and was not reported", u)
+		}
+	}
+}
