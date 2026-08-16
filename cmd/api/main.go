@@ -578,6 +578,7 @@ func main() {
 
 	setupUsecase := setupusecases.NewSetupUsecase(authUsecase, conn, swappableTokenMaker, migrate)
 	setupService := setupservices.NewSetupService(setupUsecase)
+	warnIfSetupIsStillOpen(setupUsecase)
 
 	// 5. Setup Health Check
 	healthChecker := grpchealth.NewStaticChecker()
@@ -966,6 +967,50 @@ func warnIfUnsubscribeLinksWillNotWork(baseURL string) {
 			"Gmail and Yahoo have required it from bulk senders since February 2024 and judge a whole sending domain by it.",
 		"fix", "set app.base_url to the public https URL a recipient's mail client will open, "+
 			"not the address a TLS-terminating proxy dials")
+}
+
+// warnIfSetupIsStillOpen names the window between deploying and configuring.
+//
+// Setup has to be reachable without credentials — there is no account to
+// authenticate against until it has run — so the only thing standing between a
+// stranger and this instance is that nobody has configured it yet. Whoever
+// completes setup chooses the admin account and the database, which is to say
+// they own it. TestDatabaseConnection is open for the same reason and until the
+// same moment, and it will dial any host and port it is given, so it also
+// answers "does this internal address run PostgreSQL" for anyone who asks.
+//
+// Both close permanently the moment setup completes. The exposure is real
+// because that moment is whenever an operator gets round to it, and a container
+// that came up an hour ago behind a public ingress has been open the whole time.
+//
+// This cannot be fixed by a log line — the fix is a setup token, which is a
+// change to first-run for everyone. Saying it plainly at least means the
+// operator knows the clock is running.
+// setupIsStillOpen reports whether anyone reaching this instance could complete
+// setup. Separate from the warning so the rule can be tested.
+func setupIsStillOpen(u setupusecases.SetupUsecase) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	isSetup, err := u.IsSetup(ctx)
+	if err != nil {
+		// Not knowing is not the same as being open, and a database that is
+		// not reachable yet is reported by readiness.
+		return false
+	}
+	return !isSetup
+}
+
+func warnIfSetupIsStillOpen(u setupusecases.SetupUsecase) {
+	if !setupIsStillOpen(u) {
+		return
+	}
+
+	slog.Warn("this instance is not set up, and setup needs no credentials",
+		"detail", "anyone who can reach this gateway can complete setup, which chooses the "+
+			"administrator account and the database. Until then TestDatabaseConnection will also "+
+			"dial any host and port it is given.",
+		"fix", "complete setup before exposing this instance, or keep it behind an allowlist until you have")
 }
 
 // rpcRegistrar mounts ConnectRPC handlers with a fixed interceptor chain.
