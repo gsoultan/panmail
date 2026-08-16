@@ -113,9 +113,56 @@ See [docs/development.md](docs/development.md) for the database options,
 
 ### Health Checks
 
-Panmail provides both HTTP and gRPC health checks:
-- **HTTP**: `GET /healthz` returns `200 OK` when serving.
+Two endpoints, asking different questions. Pointing the wrong probe at the
+wrong one causes an outage rather than preventing one.
+
+| Endpoint | Asks | Failing means |
+| --- | --- | --- |
+| `GET /healthz` | Is this process working? | Restart it |
+| `GET /readyz` | Can it serve a request now? | Stop sending it traffic |
+
+`/healthz` deliberately checks nothing external. A database failover fails every
+instance's dependency check at once, and wiring that to liveness would restart
+the whole fleet against a database already struggling.
+
+`/readyz` pings the database and names what failed, without describing it — the
+endpoint is public, so the body is the dependency name and nothing more:
+
+```json
+{"status":"not ready","failed":["database"]}
+```
+
 - **gRPC**: Implements the standard [gRPC Health Checking Protocol](https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
+
+### Deploying
+
+```bash
+docker build -t panmail .
+```
+
+The image embeds the UI, runs unprivileged, and keeps the metrics listener on
+loopback. `deploy/kubernetes/panmail.yaml` is a worked StatefulSet — a
+StatefulSet rather than a Deployment because each replica needs its own Pebble
+directories, and Pebble takes an exclusive lock on one.
+
+`deploy/prometheus/alerts.yaml` covers the failures this gateway actually has,
+all of which are quiet: a stalled outbox still returns 200 to every caller, a
+worker that died looks like an idle one.
+
+**[docs/scaling.md](docs/scaling.md) is the one to read before running more than
+one instance.** It has the connection arithmetic — getting it wrong sends
+duplicate mail rather than failing cleanly — plus what a deploy does to messages
+in flight, and why you should not alert on RSS.
+
+Configuration worth knowing:
+
+```yaml
+database:
+  ssl_mode: verify-full   # defaults to prefer; the connection carries everything
+  max_open_conns: 25      # instances × this + headroom ≤ server max_connections
+app:
+  base_url: https://...   # must be https, or one-click unsubscribe is omitted
+```
 
 ### Webhooks (Incoming)
 
