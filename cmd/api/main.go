@@ -398,7 +398,11 @@ func main() {
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
 	queueWorker := emailusecases.NewQueueWorker(outboxRepo, sendEmailUsecase, manageSuppressionsUsecase, tenantUsecase, 5*time.Second)
-	if days := cfg.App.OutboxRetentionDays; days > 0 {
+	// cfg is nil until setup has written a config file, and every other read
+	// of it in this function is guarded. This one was not, which on a first run
+	// dereferences nil at the one point where nothing has been configured yet.
+	if cfg != nil && cfg.App.OutboxRetentionDays > 0 {
+		days := cfg.App.OutboxRetentionDays
 		// Failures are the only outbox rows that accumulate, and each carries
 		// the whole serialised request. Without a cutoff this becomes the
 		// largest table in the database holding nothing anyone will read.
