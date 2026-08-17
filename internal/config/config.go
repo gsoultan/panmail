@@ -38,17 +38,56 @@ type SecretsConfig struct {
 	DataKey string `yaml:"data_key,omitempty"`
 }
 
+// AppConfig holds the global settings an administrator edits, whether through
+// the settings page or by hand in the config file.
+//
+// Every retention is a whole number of days and **zero means keep forever**.
+// The two pointer fields are the ones whose default is not zero: an absent
+// value resolves to 14 days for delivery events and 7 for webhook
+// notifications, while an explicit zero from an operator means forever. A
+// plain int cannot tell those apart, and treating a configured zero as
+// "unset, use the default" is how a retention setting quietly stops meaning
+// anything. Resolution lives in internal/retention, not here.
 type AppConfig struct {
-	BaseURL          string `yaml:"base_url"`
-	LogRetentionDays int    `yaml:"log_retention_days"`
+	BaseURL string `yaml:"base_url"`
+
+	// RetentionSchema records which encoding the fields below use, and exists
+	// for one upgrade. Before per-class retention, LogRetentionDays was a
+	// plain int written on every save whether or not anyone had set it, and a
+	// zero meant "not configured, use the default" — so every deployment that
+	// went through the setup wizard has log_retention_days: 0 on disk. Read
+	// with the pointer rule that zero means forever, those files would
+	// silently switch from a fortnight of events to keeping them for good.
+	//
+	// A file without this marker is one of those, and Load drops its zero so
+	// the default applies. Everything Save writes carries the marker, so a
+	// zero an administrator chose survives.
+	RetentionSchema int `yaml:"retention_schema,omitempty"`
+
+	LogRetentionDays     *int `yaml:"log_retention_days,omitempty"`
+	WebhookRetentionDays *int `yaml:"webhook_retention_days,omitempty"`
+
+	// Message bodies and attachments. These are deleted outright rather than
+	// archived: an archive of the content is the content, so archiving it
+	// would defeat the retention it exists to enforce.
+	MessageRetentionDays int `yaml:"message_retention_days"`
 
 	// How long a permanently failed message is kept before being pruned.
 	// Failures are the only outbox rows that accumulate — a delivered message
 	// is deleted outright — and each carries the whole serialised request,
 	// body included, so without a cutoff this becomes the largest table in the
-	// database holding nothing anyone will read. Zero disables pruning.
-	OutboxRetentionDays int      `yaml:"outbox_retention_days"`
-	RetryPattern        []string `yaml:"retry_pattern"`
+	// database holding nothing anyone will read.
+	OutboxRetentionDays int `yaml:"outbox_retention_days"`
+
+	AppLogRetentionDays int `yaml:"app_log_retention_days"`
+
+	// Received mail, and the JSONL archives written when delivery events
+	// expire. Both default to forever because both are the only copy panmail
+	// holds of what they contain.
+	InboundRetentionDays int `yaml:"inbound_retention_days"`
+	ArchiveRetentionDays int `yaml:"archive_retention_days"`
+
+	RetryPattern []string `yaml:"retry_pattern"`
 }
 
 var explicitConfigPath string
@@ -87,6 +126,7 @@ func Load() (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	migrateRetention(&cfg)
 
 	// Decrypt database password if encrypted
 	if cfg.Auth.SymmetricKey != "" && strings.HasPrefix(cfg.Database.Password, "enc:") {
@@ -101,6 +141,25 @@ func Load() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// currentRetentionSchema is the encoding Save writes. See
+// AppConfig.RetentionSchema.
+const currentRetentionSchema = 2
+
+// migrateRetention reads a retention written before the per-class fields
+// existed.
+//
+// Only a zero is dropped, and only when the marker is absent. A pre-upgrade
+// file with an explicit 14 meant fourteen days and still does; it is the zero
+// that changed meaning, from "nobody configured this" to "keep forever".
+func migrateRetention(cfg *Config) {
+	if cfg.App.RetentionSchema >= currentRetentionSchema {
+		return
+	}
+	if cfg.App.LogRetentionDays != nil && *cfg.App.LogRetentionDays == 0 {
+		cfg.App.LogRetentionDays = nil
+	}
 }
 
 func Save(cfg *Config) error {
@@ -118,6 +177,9 @@ func Save(cfg *Config) error {
 
 	// Create a copy to encrypt the password without modifying the original
 	cfgCopy := *cfg
+	// Stamped on every write, so that from here on a zero retention is read as
+	// the deliberate "keep forever" it is.
+	cfgCopy.App.RetentionSchema = currentRetentionSchema
 	if cfgCopy.Auth.SymmetricKey != "" && cfgCopy.Database.Password != "" && !strings.HasPrefix(cfgCopy.Database.Password, "enc:") {
 		encrypted, err := encrypt(cfgCopy.Database.Password, cfgCopy.Auth.SymmetricKey)
 		if err != nil {
