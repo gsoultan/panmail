@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
-	"github.com/gsoultan/panmail/internal/config"
 	emailstores "github.com/gsoultan/panmail/internal/email/repositories/stores"
 	providerstores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 	evententities "github.com/gsoultan/panmail/internal/event/repositories/entities"
@@ -487,40 +486,6 @@ func (u *processEventUsecase) SaveMessage(ctx context.Context, m *panmailv1.Emai
 		CreatedAt:   time.Now(),
 	}
 	return u.repo.WriteMessage(ctx, msg)
-}
-
-func (u *processEventUsecase) StartCleanupTask(ctx context.Context, interval time.Duration, defaultRetentionDays int) {
-	slog.Info("starting event log cleanup task", "interval", interval, "default_retention_days", defaultRetentionDays)
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	// Run once at start
-	u.runCleanup(ctx, defaultRetentionDays)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			u.runCleanup(ctx, defaultRetentionDays)
-		}
-	}
-}
-
-func (u *processEventUsecase) runCleanup(ctx context.Context, defaultRetentionDays int) {
-	retentionDays := defaultRetentionDays
-	if cfg, err := config.Load(); err == nil && cfg != nil && cfg.App.LogRetentionDays > 0 {
-		retentionDays = cfg.App.LogRetentionDays
-	}
-
-	before := time.Now().AddDate(0, 0, -retentionDays)
-	slog.Info("running event log cleanup", "before", before.Format(time.RFC3339), "retention_days", retentionDays)
-	if err := u.repo.TruncateBefore(ctx, before); err != nil {
-		slog.Error("failed to truncate event logs", "error", err)
-	} else {
-		slog.Info("event log cleanup successful")
-	}
 }
 
 func (u *processEventUsecase) ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {

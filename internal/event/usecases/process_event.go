@@ -52,8 +52,6 @@ type ProcessEventUsecase interface {
 
 	SaveMessage(ctx context.Context, message *panmailv1.EmailMessage) error
 
-	StartCleanupTask(ctx context.Context, interval time.Duration, retentionDays int)
-
 	GetPerformanceMetrics(ctx context.Context) (PerformanceMetrics, error)
 
 	ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error)
