@@ -281,8 +281,48 @@ still healthy in a week":
 | `panmail_db_connections_wait_seconds_total` | grows slowly, or in step with wait_total | grows far faster than wait_total |
 | `panmail_worker_restarts_total` | zero | anything else |
 | `panmail_outbox_oldest_seconds` | seconds | minutes and rising |
+| `panmail_retention_last_run_seconds` | under a day | over two |
+| `panmail_retention_failures_total` | zero | anything else |
 
-Two of those need explaining, because the obvious reading is wrong.
+Three of those need explaining, because the obvious reading is wrong.
+
+**Retention fails by not happening.** A pass runs daily and deletes what the
+policy says; the way it goes wrong in production is not deleting the wrong
+thing but quietly ceasing to run, which nothing else notices until a disk fills.
+`retention_last_run_seconds` measures from process start until the first pass
+completes, so it fires for a gateway where retention never ran at all rather
+than reading as "ran just now". Each instance prunes its own Pebble stores, so
+alert per instance.
+
+#### What a retention pass costs, measured
+
+`go test -tags soak -run TestRetentionSoak -timeout 30m -v
+./internal/event/repositories/stores/pebble/` builds a store and expires 90% of
+it. On a laptop, against 300,000 events and 60,000 messages with 8 KiB bodies —
+474 MiB on disk:
+
+| | |
+| :--- | :--- |
+| 270,000 events expired and archived | **6.0 s** |
+| 54,000 message bodies deleted | **2.0 s** |
+| Heap growth during the pass | **none measurable** |
+| Live data (sstables) | 103.5 MiB → **9.8 MiB** |
+
+The scan is bounded — it commits every 1,000 keys and does not hold the store —
+so a pass costs seconds and a flat amount of memory whatever the store's size.
+
+**But the directory will not shrink to match.** A Pebble store is sstables plus
+write-ahead log, and in the same run the WAL was 370 MiB of the 474. The
+memtable is 64 MiB and the writer commits without syncing, so most recent data
+sits in a WAL rather than in any file a compaction can rewrite — and Pebble
+recycles those files instead of deleting them, so they survive a restart. In
+that run the settled total was 256 MiB, of which 246 MiB was WAL holding 9.8 MiB
+of live data.
+
+So: **size the disk for the WAL high-water mark, not for the retained data.**
+Retention returns the live data and nothing else. If the floor is too high for
+your disk, the lever is Pebble's `MemTableSize` in the store options, not a
+retention setting.
 
 **Do not alert on RSS.** Go returns freed memory to the OS lazily, so RSS
 climbs under load and comes back later. Measured over a 16-minute run of 57,500

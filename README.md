@@ -50,7 +50,7 @@ Panmail is designed with a "Security First" mindset:
 - **Unified Analytics**: Real-time visualization of delivery trends (Sent, Delivered, Opened, Clicked, Bounced) with historical archiving.
 - **Security First**: Integrated **Two-Factor Authentication (TOTP)**, login rate limiting, and role-based access control (RBAC).
 - **Outbound Webhooks**: Standardized HTTP hooks for delivery events and inbound emails.
-- **Automated Maintenance**: Configurable log retention (default 14 days) with automatic JSONL archiving for long-term auditability.
+- **Automated Maintenance**: Per-class data retention set from the UI — events, message content, archives, queues, logs and inbound mail — with automatic JSONL archiving of delivery events for long-term auditability.
 - **Database Support**: PostgreSQL and SQLite, with automatic migrations. MySQL/MariaDB are not currently supported: the query layer uses PostgreSQL-style positional parameters, so those drivers connect but every query fails.
 - **Production Ready**: Structured logging, gRPC health checking (`/healthz`), and graceful shutdown.
 
@@ -185,20 +185,53 @@ Panmail can notify your external applications when email events occur or when ne
    }
    ```
 
-### API Integration
+### Sending from another application
 
-Other applications can integrate with Panmail using a secure HTTP/ConnectRPC API. The API is **asynchronous** by default: once a request is received and queued in the outbox, the server returns a `PENDING` status immediately, and delivery happens in the background.
+Panmail exposes the same ConnectRPC API the dashboard uses. It is **asynchronous**: a successful call means the gateway has written the message to its outbox and taken responsibility for delivering it, returning `PENDING` and a `message_id`. Delivery itself is reported afterwards through events and webhooks, all keyed by that id — so store it next to whatever prompted the send.
 
-1. **Generate API Key**: Go to the **API Keys** section in the Panmail dashboard and generate a new key.
-2. **Authenticate**: Include the API key in the `X-API-Key` header of your requests.
+Two things to set up first:
 
-#### Example: Send Basic Email (cURL)
+1. **An API key.** Dashboard → **API Keys**. Give it the **`email:send`** scope; without it the send is refused with `permission_denied`. The key carries the tenant, so there is nothing else to configure.
+2. **A provider id.** Dashboard → **Email Providers**. `provider_id` is **required** on every send: panmail will not guess which of a tenant's providers a message goes out through, because the wrong guess sends from the wrong domain.
+
+Authenticate with the `X-API-Key` header — *not* `Authorization`, which carries a dashboard session and will reject a key as a malformed token.
+
+#### Go
+
+```go
+import "github.com/gsoultan/panmail/pkg/panmail"
+
+client, err := panmail.New("https://mail.example.com", os.Getenv("PANMAIL_API_KEY"))
+if err != nil {
+    return err
+}
+
+result, err := client.Send(ctx, panmail.Message{
+    ProviderID: "0f8b8f4e-0000-4000-8000-000000000000",
+    From:       "noreply@yourdomain.com",
+    To:         []string{"recipient@example.com"},
+    Subject:    "Hello from panmail",
+    HTML:       "<h1>Welcome</h1>",
+    Text:       "Welcome",
+})
+if err != nil {
+    return err
+}
+log.Printf("queued as %s", result.MessageID)
+```
+
+`go get github.com/gsoultan/panmail` brings it in. Only the packages you import are compiled, so this pulls in the generated API and ConnectRPC — not the gateway's database or storage engines. Templates, attachments and the error handling below are covered by the runnable examples in `pkg/panmail/example_test.go`.
+
+**The client does not retry a send whose outcome it does not know.** Sending is not idempotent and there is no de-duplication key, so retrying after a timeout is retrying a message that may already be on its way. The one safe case is a refusal, where the gateway says plainly that it did not accept the message — `panmail.WithRateLimitRetries(n)` turns that on.
+
+#### cURL
 
 ```bash
-curl -X POST http://localhost:8080/panmail.v1.EmailService/SendEmail \
+curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
   -H "Content-Type: application/json" \
   -H "X-API-Key: pm_your_api_key_here" \
   -d '{
+    "provider_id": "0f8b8f4e-0000-4000-8000-000000000000",
     "from": "sender@yourdomain.com",
     "to": ["recipient@example.com"],
     "subject": "Hello from Panmail",
@@ -207,15 +240,14 @@ curl -X POST http://localhost:8080/panmail.v1.EmailService/SendEmail \
   }'
 ```
 
-#### Example: Use Templates with Variables
-
-Panmail supports Handlebars templates. You can send an email by referencing a template ID and providing data for variables.
+With a stored Handlebars template instead of a body:
 
 ```bash
-curl -X POST http://localhost:8080/panmail.v1.EmailService/SendEmail \
+curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
   -H "Content-Type: application/json" \
   -H "X-API-Key: pm_your_api_key_here" \
   -d '{
+    "provider_id": "0f8b8f4e-0000-4000-8000-000000000000",
     "from": "support@yourdomain.com",
     "to": ["user@example.com"],
     "template_id": "welcome-template-uuid",
@@ -226,6 +258,17 @@ curl -X POST http://localhost:8080/panmail.v1.EmailService/SendEmail \
     }
   }'
 ```
+
+#### What the refusals mean
+
+| Response | Meaning | What to do |
+| :--- | :--- | :--- |
+| `resource_exhausted` **with** `Retry-After` | Over the tenant's configured send rate. Not accepted. | Wait the stated delay and send again. Safe to repeat. |
+| `resource_exhausted` **without** `Retry-After` | The tenant's queue is already deeper than its rate can drain. Not accepted. | Stop sending. There is no delay to wait out, and retrying makes the wait longer for everything queued. |
+| `unauthenticated` | Key missing, unknown or revoked. | Fix the key. Retrying never helps. |
+| `permission_denied` | The key lacks the `email:send` scope. | Add the scope. |
+
+The presence of `Retry-After` is what separates the two capacity refusals — they deliberately share a status code, because they are the same answer to the caller: you are asking for more than you may have. The Go client turns them into `panmail.RateLimitedError` and `panmail.BacklogFullError` so you do not have to read headers.
 
 ### 🧬 Advanced Templating
 
@@ -345,6 +388,22 @@ Panmail also supports gRPC for high-performance integrations.
     - **Soft Bounce**: Temporary failures (e.g., mailbox full, rate limited) are retried using a tenant-specific backoff pattern.
     - **Hard Bounce**: Permanent failures (e.g., invalid address) are immediately suppressed to protect your sender reputation.
 - **Automated Archiving**: To maintain performance, delivery logs are truncated after a retention period (default 14 days) and archived into compressed JSONL files in the `archives/` directory.
+
+#### Data retention
+
+Every class of data panmail stores has its own retention, set in **Settings → Data Retention** or in the config file. Retention is in whole days and **zero means keep forever**; a change saved in the UI applies immediately rather than at the next daily pass.
+
+| Setting | Data | Default | On expiry |
+| :--- | :--- | :--- | :--- |
+| `log_retention_days` | Delivery events | 14 days | Archived to JSONL, then removed |
+| `message_retention_days` | Subjects, bodies, attachments | forever | Deleted outright |
+| `archive_retention_days` | The JSONL archives above | forever | Deleted outright |
+| `outbox_retention_days` | Permanently failed sends | forever | Deleted outright |
+| `webhook_retention_days` | Finished notifications | 7 days | Deleted outright |
+| `app_log_retention_days` | The gateway's own logs | forever | Deleted outright |
+| `inbound_retention_days` | Received mail | forever | Deleted outright |
+
+Only the two defaults that panmail has always enforced are non-zero, so upgrading does not start deleting anything. Message content is the one worth setting deliberately: bodies and attachments are never archived, and until you give them a retention they outlive the delivery events that explain them.
 
 ### Inbound Processing
 
