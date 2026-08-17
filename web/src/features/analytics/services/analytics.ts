@@ -1,4 +1,4 @@
-import { Timestamp } from '@bufbuild/protobuf';
+import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import { eventClient } from '../../../services/client';
 
 export const analyticsService = {
@@ -8,8 +8,8 @@ export const analyticsService = {
       pageToken,
       recipient,
       eventType,
-      startTime: startTime ? Timestamp.fromDate(startTime) : undefined,
-      endTime: endTime ? Timestamp.fromDate(endTime) : undefined,
+      startTime: startTime ? timestampFromDate(startTime) : undefined,
+      endTime: endTime ? timestampFromDate(endTime) : undefined,
       messageId,
       latestOnly,
       recipientExact,
@@ -19,15 +19,15 @@ export const analyticsService = {
   },
   getMetrics: async (startTime?: Date, endTime?: Date) => {
     const res = await eventClient.getMetrics({
-      startTime: startTime ? Timestamp.fromDate(startTime) : undefined,
-      endTime: endTime ? Timestamp.fromDate(endTime) : undefined,
+      startTime: startTime ? timestampFromDate(startTime) : undefined,
+      endTime: endTime ? timestampFromDate(endTime) : undefined,
     });
     return res;
   },
   getTimeSeriesMetrics: async (startTime?: Date, endTime?: Date, granularity = 'day') => {
     const res = await eventClient.getTimeSeriesMetrics({
-      startTime: startTime ? Timestamp.fromDate(startTime) : undefined,
-      endTime: endTime ? Timestamp.fromDate(endTime) : undefined,
+      startTime: startTime ? timestampFromDate(startTime) : undefined,
+      endTime: endTime ? timestampFromDate(endTime) : undefined,
       granularity,
     });
     return res;

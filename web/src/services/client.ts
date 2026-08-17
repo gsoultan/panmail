@@ -1,16 +1,16 @@
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { createPromiseClient, Interceptor, ConnectError, Code } from "@connectrpc/connect";
-import { AuthService, ApiKeyService, UserService, TenantService } from "../api/panmail/v1/auth_connect";
-import { SetupService } from "../api/panmail/v1/setup_connect";
-import { EmailProviderService } from "../api/panmail/v1/email_provider_service_connect";
-import { EmailService } from "../api/panmail/v1/email_service_connect";
-import { EventService } from "../api/panmail/v1/event_service_connect";
-import { LogService } from "../api/panmail/v1/log_connect";
-import { InboundService } from "../api/panmail/v1/inbound_service_connect";
-import { WebhookService } from "../api/panmail/v1/webhook_service_connect";
-import { TemplateService } from "../api/panmail/v1/template_service_connect";
-import { SuppressionService } from "../api/panmail/v1/suppression_service_connect";
-import { SystemSettingsService } from "../api/panmail/v1/system_settings_connect";
+import { createClient, Interceptor, ConnectError, Code } from "@connectrpc/connect";
+import { AuthService, ApiKeyService, UserService, TenantService } from "../api/panmail/v1/auth_pb";
+import { SetupService } from "../api/panmail/v1/setup_pb";
+import { EmailProviderService } from "../api/panmail/v1/email_provider_service_pb";
+import { EmailService } from "../api/panmail/v1/email_service_pb";
+import { EventService } from "../api/panmail/v1/event_service_pb";
+import { LogService } from "../api/panmail/v1/log_pb";
+import { InboundService } from "../api/panmail/v1/inbound_service_pb";
+import { WebhookService } from "../api/panmail/v1/webhook_service_pb";
+import { TemplateService } from "../api/panmail/v1/template_service_pb";
+import { SuppressionService } from "../api/panmail/v1/suppression_service_pb";
+import { SystemSettingsService } from "../api/panmail/v1/system_settings_pb";
 import { useAuthStore } from "../store/authStore";
 
 const errorInterceptor: Interceptor = (next) => async (req) => {
@@ -44,17 +44,17 @@ const transport = createConnectTransport({
   interceptors: [errorInterceptor, authInterceptor],
 });
 
-export const authClient = createPromiseClient(AuthService, transport);
-export const setupClient = createPromiseClient(SetupService, transport);
-export const providerClient = createPromiseClient(EmailProviderService, transport);
-export const emailClient = createPromiseClient(EmailService, transport);
-export const eventClient = createPromiseClient(EventService, transport);
-export const logClient = createPromiseClient(LogService, transport);
-export const apiKeyClient = createPromiseClient(ApiKeyService, transport);
-export const userClient = createPromiseClient(UserService, transport);
-export const tenantClient = createPromiseClient(TenantService, transport);
-export const inboundClient = createPromiseClient(InboundService, transport);
-export const webhookClient = createPromiseClient(WebhookService, transport);
-export const templateClient = createPromiseClient(TemplateService, transport);
-export const suppressionClient = createPromiseClient(SuppressionService, transport);
-export const settingsClient = createPromiseClient(SystemSettingsService, transport);
+export const authClient = createClient(AuthService, transport);
+export const setupClient = createClient(SetupService, transport);
+export const providerClient = createClient(EmailProviderService, transport);
+export const emailClient = createClient(EmailService, transport);
+export const eventClient = createClient(EventService, transport);
+export const logClient = createClient(LogService, transport);
+export const apiKeyClient = createClient(ApiKeyService, transport);
+export const userClient = createClient(UserService, transport);
+export const tenantClient = createClient(TenantService, transport);
+export const inboundClient = createClient(InboundService, transport);
+export const webhookClient = createClient(WebhookService, transport);
+export const templateClient = createClient(TemplateService, transport);
+export const suppressionClient = createClient(SuppressionService, transport);
+export const settingsClient = createClient(SystemSettingsService, transport);

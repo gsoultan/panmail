@@ -8,9 +8,14 @@ plugins:
   - remote: buf.build/connectrpc/go
     out: api
     opt: paths=source_relative
-  - remote: buf.build/bufbuild/es:v1.10.0
+  # protoc-gen-es v2 emits the service descriptors as well as the messages, so
+  # there is no separate connect-es plugin and no *_connect.ts files any more:
+  # a Connect client is built from the descriptor in the same _pb.ts.
+  - remote: buf.build/bufbuild/es:v2.14.0
     out: web/src/api
-    opt: target=ts
-  - remote: buf.build/connectrpc/es:v1.6.1
-    out: web/src/api
-    opt: target=ts
+    opt:
+      - target=ts
+      # The app is bundled by Vite with bundler resolution, which resolves
+      # extensionless imports. Emitting .js extensions here would be correct
+      # for plain ESM and wrong for every import in this codebase.
+      - import_extension=none

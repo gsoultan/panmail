@@ -1,5 +1,4 @@
 import { apiKeyClient } from "../../../services/client";
-import { CreateApiKeyRequest, ListApiKeysRequest, DeleteApiKeyRequest } from "../../../api/panmail/v1/auth_pb";
 
 export const apiKeyService = {
   createApiKey: async (name: string) => {
