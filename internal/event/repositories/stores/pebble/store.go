@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -149,12 +148,9 @@ func (s *store) worker() {
 }
 
 func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchLatestTs map[string]string) error {
-	timestampDesc := math.MaxInt64 - e.Timestamp.UnixNano()
-	tsDescStr := strconv.FormatInt(timestampDesc, 10)
-	// Ensure 19 digits for sorting
-	if len(tsDescStr) < 19 {
-		tsDescStr = strings.Repeat("0", 19-len(tsDescStr)) + tsDescStr
-	}
+	// Retention rebuilds these same index keys to delete them, so both sides
+	// go through descendingTimestamp.
+	tsDescStr := descendingTimestamp(e.Timestamp)
 
 	buf := s.bufPool.Get().([]byte)
 	defer func() {
@@ -305,40 +301,15 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 }
 
 func (s *store) performWriteMessage(batch *pebble.Batch, m *entities.EmailMessage) error {
-	key := []byte(fmt.Sprintf("messages:%s:%s", m.TenantID, m.ID))
 	val, err := json.Marshal(m)
 	if err != nil {
 		return err
 	}
-	_ = batch.Set(key, val, nil)
+	_ = batch.Set(messageKey(m.TenantID, m.ID), val, nil)
 
-	// Index by recipient for lookup
-	// Note: We use timestamp_desc to find the latest message quickly
-	timestampDesc := math.MaxInt64 - m.CreatedAt.UnixNano()
-	tsDescStr := strconv.FormatInt(timestampDesc, 10)
-	if len(tsDescStr) < 19 {
-		tsDescStr = strings.Repeat("0", 19-len(tsDescStr)) + tsDescStr
-	}
-
-	recipients := make(map[string]struct{})
-	for _, r := range m.To {
-		if r != "" {
-			recipients[r] = struct{}{}
-		}
-	}
-	for _, r := range m.Cc {
-		if r != "" {
-			recipients[r] = struct{}{}
-		}
-	}
-	for _, r := range m.Bcc {
-		if r != "" {
-			recipients[r] = struct{}{}
-		}
-	}
-
-	for r := range recipients {
-		idxKey := []byte(fmt.Sprintf("recipient_messages:%s:%s:%s:%s", m.TenantID, r, tsDescStr, m.ID))
+	// Index by recipient for lookup, newest first. Retention rebuilds these
+	// same keys to delete them, so both sides go through recipientMessageKeys.
+	for _, idxKey := range recipientMessageKeys(m) {
 		_ = batch.Set(idxKey, []byte(m.ID), nil)
 	}
 	return nil
@@ -447,95 +418,6 @@ func (s *store) GetLatestMessageForRecipient(ctx context.Context, tenantID strin
 		return s.GetMessage(ctx, tenantID, messageID)
 	}
 	return nil, nil
-}
-
-func (s *store) TruncateBefore(ctx context.Context, before time.Time) error {
-	timestampDesc := math.MaxInt64 - before.UnixNano()
-
-	prefix := []byte("events:")
-	upper := []byte("events;") // ';' is next char after ':'
-
-	iter, err := s.db.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return err
-	}
-	defer iter.Close()
-
-	// Archives are written per tenant. A single shared file would let anyone
-	// who can download an archive read every other tenant's mail history.
-	filename := fmt.Sprintf("archive_%s.jsonl", time.Now().Format("20060102_150405"))
-	archives := newTenantArchiveSet(filename)
-	defer archives.closeAll()
-
-	batch := s.db.NewBatch()
-	count := 0
-	archivedCount := 0
-	for iter.SeekGE(prefix); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		parts := strings.Split(string(key), ":")
-		if len(parts) < 4 {
-			continue
-		}
-
-		// Key: events:{tenant_id}:{timestamp_desc}:{id}
-		ts, _ := strconv.ParseInt(parts[2], 10, 64)
-		if ts > timestampDesc {
-			var e entities.EmailEvent
-			if err := json.Unmarshal(iter.Value(), &e); err == nil {
-				// Write to this tenant's archive
-				data, _ := json.Marshal(e)
-				if err := archives.write(parts[1], data); err != nil {
-					return err
-				}
-				archivedCount++
-
-				// Cleanup msg_events index
-				if e.MessageID != "" {
-					_ = batch.Delete([]byte(fmt.Sprintf("msg_events:%s:%s:%s:%s:%s", parts[1], e.MessageID, e.Recipient, parts[2], parts[3])), nil)
-
-					// Cleanup latest_events if this is the latest one
-					latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s:%s", parts[1], e.MessageID, e.Recipient))
-					if currentTsVal, closer, err := s.db.Get(latestTsKey); err == nil {
-						if string(currentTsVal) == parts[2] {
-							// This IS the latest event being deleted
-							_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s", parts[1], parts[2], e.MessageID, e.Recipient)), nil)
-							_ = batch.Delete(latestTsKey, nil)
-						}
-						_ = closer.Close()
-					}
-				}
-			}
-
-			id := parts[3]
-			_ = batch.Delete(key, nil)
-			_ = batch.Delete([]byte(fmt.Sprintf("event_id:%s", id)), nil)
-			count++
-		}
-
-		// Commit every 1000 deletions to keep memory low
-		if count >= 1000 {
-			if err := batch.Commit(pebble.Sync); err != nil {
-				return err
-			}
-			batch = s.db.NewBatch()
-			count = 0
-		}
-	}
-
-	if count > 0 {
-		if err := batch.Commit(pebble.Sync); err != nil {
-			return err
-		}
-	} else {
-		batch.Close()
-	}
-
-	_ = archivedCount
-
-	return nil
 }
 
 func (s *store) WriteResourceMetric(ctx context.Context, cpuUsage float64, memUsage uint64, load15 float64) error {

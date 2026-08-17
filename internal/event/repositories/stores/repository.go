@@ -33,7 +33,10 @@ type EventRepository interface {
 	GetMessage(ctx context.Context, tenantID string, messageID string) (*entities.EmailMessage, error)
 	GetLatestMessageForRecipient(ctx context.Context, tenantID string, recipient string) (*entities.EmailMessage, error)
 
-	TruncateBefore(ctx context.Context, before time.Time) error
+	// Retention is embedded rather than listed here: it is a policy of its
+	// own, driven by internal/retention on a schedule, and a caller reaching
+	// for one of its passes wants all three.
+	RetentionRepository
 
 	ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error)
 	GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error)
