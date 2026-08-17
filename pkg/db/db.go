@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -81,7 +82,11 @@ func Connect(cfg Config) (*sql.DB, error) {
 			cfg.Type, cfg.Type)
 	case "sqlite":
 		driverName = "sqlite"
-		dataSourceName = sqliteDSN(cfg.FilePath)
+		dsn, err := sqliteDSN(cfg.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		dataSourceName = dsn
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", cfg.Type)
 	}
@@ -256,13 +261,24 @@ func (c *connection) IsConnected() bool {
 //
 // The test harness has always set these, which is why nothing caught it: the
 // tests were configured more carefully than the code they exercise.
-func sqliteDSN(path string) string {
+// An empty path is refused rather than defaulted. SQLite will happily open a
+// DSN that is nothing but the query string — the file it creates is called
+// "?_pragma=busy_timeout(5000)&..." and sits in whatever directory the process
+// started in. The gateway then works: it migrates, it accepts mail, it reports
+// healthy. What it does not do is keep any of that where the operator thinks it
+// is, and a restart from a different working directory silently begins with an
+// empty database and an empty outbox. Failing here is the only point at which
+// that is still a configuration mistake rather than lost mail.
+func sqliteDSN(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", errors.New("sqlite requires a database file path: set database.filepath")
+	}
 	if strings.Contains(path, "?") {
 		// The operator has supplied their own parameters; respect them rather
 		// than producing a malformed DSN with two query strings.
-		return path
+		return path, nil
 	}
-	return path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+	return path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", nil
 }
 
 // tuneSQLitePool sizes the pool for an engine that serialises writes.

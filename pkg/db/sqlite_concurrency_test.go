@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -130,11 +131,56 @@ func TestForeignKeysAreEnforced(t *testing.T) {
 // a DSN with two query strings.
 func TestAnExplicitDSNIsLeftAlone(t *testing.T) {
 	custom := "/tmp/x.db?_pragma=busy_timeout(1000)"
-	if got := sqliteDSN(custom); got != custom {
+	got, err := sqliteDSN(custom)
+	if err != nil {
+		t.Fatalf("sqliteDSN(%q): %v", custom, err)
+	}
+	if got != custom {
 		t.Errorf("a caller-supplied DSN was rewritten: %q", got)
 	}
+
 	plain := "/tmp/x.db"
-	if got := sqliteDSN(plain); !strings.Contains(got, "busy_timeout") {
+	got, err = sqliteDSN(plain)
+	if err != nil {
+		t.Fatalf("sqliteDSN(%q): %v", plain, err)
+	}
+	if !strings.Contains(got, "busy_timeout") {
 		t.Errorf("a plain path did not gain the pragmas: %q", got)
+	}
+}
+
+// An unset path used to produce a DSN that was nothing but the query string.
+// SQLite opens that: it creates a file literally named
+// "?_pragma=busy_timeout(5000)&..." in whatever directory the process started
+// in, and the gateway then migrates, accepts mail and reports healthy while
+// keeping none of it where the operator believes it is. Restarting from another
+// directory begins again with an empty outbox.
+//
+// One of those files was sitting in this repository, which is how it was found.
+func TestAnEmptyPathIsRefused(t *testing.T) {
+	for _, path := range []string{"", "   ", "\t"} {
+		t.Run(fmt.Sprintf("%q", path), func(t *testing.T) {
+			dsn, err := sqliteDSN(path)
+			if err == nil {
+				t.Fatalf("an empty path produced the DSN %q instead of an error", dsn)
+			}
+			// The error has to name the setting, because the symptom — a
+			// working gateway with a database nobody can find — gives no clue
+			// which one it is.
+			if !strings.Contains(err.Error(), "database.filepath") {
+				t.Errorf("error %q does not name the setting to fix", err)
+			}
+		})
+	}
+}
+
+// The same refusal, through the connection path an operator actually reaches.
+func TestConnectRefusesSQLiteWithNoPath(t *testing.T) {
+	_, err := Connect(Config{Type: "sqlite"})
+	if err == nil {
+		t.Fatal("connected to a sqlite database with no path")
+	}
+	if !strings.Contains(err.Error(), "database.filepath") {
+		t.Errorf("error %q does not name the setting to fix", err)
 	}
 }
