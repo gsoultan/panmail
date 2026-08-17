@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, Table, ActionIcon, Badge, TextInput, Textarea, useComputedColorScheme, Select } from '@mantine/core';
+import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, Table, ActionIcon, TextInput, Textarea, Select } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconShieldCancel, IconPlus, IconTrash, IconSearch, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -19,7 +19,7 @@ export const SuppressionsPage: React.FC = () => {
     setHistory([]);
   }, [pageSize]);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['suppressions', pageToken, pageSize],
     queryFn: () => suppressionService.listSuppressions(Number(pageSize), pageToken),
   });

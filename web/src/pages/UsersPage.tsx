@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, Badge, ActionIcon, Menu, Avatar, Button, Modal, TextInput, PasswordInput, Select, Switch } from '@mantine/core';
-import { IconUsers, IconUserCircle, IconDotsVertical, IconTrash, IconEdit, IconShieldLock, IconPlus, IconCheck, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { IconUsers, IconUserCircle, IconDotsVertical, IconTrash, IconShieldLock, IconPlus, IconCheck, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userClient } from '../services/client';
 import { UserRole } from '../api/panmail/v1/auth_pb';
@@ -32,7 +32,7 @@ export const UsersPage: React.FC = () => {
     setHistory([]);
   }, [pageSize]);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['users', pageToken, pageSize],
     queryFn: () => userClient.listUsers({ pageSize: Number(pageSize), pageToken }),
   });

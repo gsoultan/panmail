@@ -16,10 +16,9 @@ import {
   Button,
   Modal,
   Alert,
-  Center,
-  Loader
+  Center
 } from '@mantine/core';
-import { IconUser, IconShieldLock, IconMail, IconQrcode, IconDeviceMobile, IconAlertCircle, IconCheck } from '@tabler/icons-react';
+import { IconUser, IconShieldLock, IconMail, IconQrcode, IconAlertCircle, IconCheck } from '@tabler/icons-react';
 import { useAuthStore } from '../store/authStore';
 import { authClient } from '../services/client';
 import { notifications } from '@mantine/notifications';

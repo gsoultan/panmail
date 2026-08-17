@@ -1,5 +1,5 @@
 import React, { useRef, useImperativeHandle, forwardRef } from 'react';
-import { Box, rem } from '@mantine/core';
+import { Box } from '@mantine/core';
 import { CustomEmailBuilder, CustomEmailBuilderHandle } from './builder/CustomEmailBuilder';
 
 interface TemplateEditorProps {
@@ -16,7 +16,7 @@ export interface TemplateEditorHandle {
 
 export const TemplateEditor = forwardRef<TemplateEditorHandle, TemplateEditorProps>(({
   initialDesign,
-  onReady,
+  onReady: _onReady,
   minHeight = '80vh',
   onChange
 }, ref) => {

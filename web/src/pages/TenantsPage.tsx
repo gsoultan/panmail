@@ -23,7 +23,7 @@ export const TenantsPage: React.FC = () => {
     setHistory([]);
   }, [pageSize]);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['tenants', pageToken, pageSize],
     queryFn: () => tenantService.listTenants(Number(pageSize), pageToken),
   });

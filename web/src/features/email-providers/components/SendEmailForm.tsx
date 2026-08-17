@@ -1,31 +1,5 @@
 import React, { useState } from 'react';
-import { 
-  TextInput, 
-  Textarea, 
-  TagsInput,
-  Button, 
-  Stack, 
-  Group, 
-  Select, 
-  Text, 
-  JsonInput, 
-  Tabs, 
-  Paper, 
-  rem, 
-  ThemeIcon, 
-  Code, 
-  ActionIcon, 
-  CopyButton, 
-  Tooltip,
-  SimpleGrid,
-  Divider,
-  Badge,
-  FileButton,
-  Box,
-  CloseButton,
-  ScrollArea,
-  Alert
-} from '@mantine/core';
+import { TextInput, Textarea, TagsInput, Button, Stack, Group, Select, Text, JsonInput, Tabs, Paper, rem, ThemeIcon, Code, ActionIcon, CopyButton, Tooltip, SimpleGrid, Badge, FileButton, Box, ScrollArea, Alert } from '@mantine/core';
 import { useAdaptedForm } from '../../../lib/form/useAdaptedForm';
 import { useQuery } from '@tanstack/react-query';
 import { templateService } from '../../templates/services/template';
@@ -46,7 +20,8 @@ import {
   IconFileZip,
   IconPlus
 } from '@tabler/icons-react';
-import { Attachment } from '../../../api/panmail/v1/common_pb';
+import { create, toJson } from '@bufbuild/protobuf';
+import { AttachmentSchema } from '../../../api/panmail/v1/common_pb';
 
 interface SendEmailFormProps {
   onSubmit: (values: any) => void;
@@ -101,7 +76,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
         try {
           JSON.parse(value);
           return null;
-        } catch (e) {
+        } catch (_e) {
           return 'Invalid JSON';
         }
       },
@@ -248,7 +223,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
       data.templateId = values.templateId;
       try {
         data.templateData = JSON.parse(values.templateData);
-      } catch (e) {
+      } catch (_e) {
         data.templateData = {};
       }
     } else {
@@ -258,10 +233,11 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     }
 
     if (values.attachments.length > 0) {
-      data.attachments = values.attachments.map(a => {
-        const att = new Attachment(a as any);
-        return att.toJson();
-      });
+      // Through the schema so the preview matches the JSON the gateway
+      // actually receives — base64 for the bytes, camelCase for the fields.
+      data.attachments = values.attachments.map((a) =>
+        toJson(AttachmentSchema, create(AttachmentSchema, a as any)),
+      );
     }
 
     return JSON.stringify(data, null, 2);

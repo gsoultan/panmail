@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table, Group, Text, Badge, ActionIcon, Stack, Paper, rem, useComputedColorScheme, CopyButton } from '@mantine/core';
+import { Table, Group, Text, Badge, ActionIcon, Paper, rem, CopyButton } from '@mantine/core';
 import { IconTrash, IconEdit, IconPlayerPlay, IconSend, IconCheck, IconCopy } from '@tabler/icons-react';
 import type { EmailProvider } from '../../../api/panmail/v1/email_provider_pb';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Stack, Group, Text, Badge, Divider, Box, Paper, ScrollArea, Tabs, ThemeIcon, Table, Button, Grid, rem, Alert, SegmentedControl, Timeline } from '@mantine/core';
-import { IconMail, IconUser, IconCalendar, IconPaperclip, IconCode, IconBrowser, IconInfoCircle, IconDownload, IconAlertCircle, IconHistory } from '@tabler/icons-react';
+import { Modal, Stack, Group, Text, Badge, Divider, Box, Paper, ScrollArea, Tabs, ThemeIcon, Table, Button, Grid, Alert, SegmentedControl, Timeline } from '@mantine/core';
+import { IconUser, IconCalendar, IconPaperclip, IconBrowser, IconInfoCircle, IconDownload, IconAlertCircle, IconHistory } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsService } from '../services/analytics';
 import { EmailEventType } from '../../../api/panmail/v1/event_pb';
@@ -160,7 +160,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ eventId, ope
                 <Box py="md" px="lg">
                   {timelineEvents.length > 0 ? (
                     <Timeline active={timelineEvents.length - 1} bulletSize={24} lineWidth={2}>
-                      {timelineEvents.map((te, index) => {
+                      {timelineEvents.map((te, _index) => {
                         const teConfig = eventTypeConfig[te.type] || eventTypeConfig[EmailEventType.UNSPECIFIED];
                         const TeIcon = teConfig.icon;
                         return (

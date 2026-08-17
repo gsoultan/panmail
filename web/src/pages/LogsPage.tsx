@@ -1,5 +1,6 @@
+import { timestampDate } from '@bufbuild/protobuf/wkt';
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Table, ScrollArea, Badge, Text, Group, Box, rem, ThemeIcon, Stack, Paper, useComputedColorScheme, Switch, ActionIcon, Button, Select } from '@mantine/core';
+import { Container, Title, Table, ScrollArea, Badge, Text, Group, Box, rem, ThemeIcon, Stack, Paper, Switch, Button, Select } from '@mantine/core';
 import { IconHistory, IconBroadcast, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { logClient } from '../services/client';
@@ -12,7 +13,7 @@ export const LogsPage: React.FC = () => {
   const [history, setHistory] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<string | null>('100');
 
-  const { data: logsData, isLoading, refetch } = useQuery({
+  const { data: logsData, isLoading } = useQuery({
     queryKey: ['logs', pageToken, pageSize],
     queryFn: async () => {
       const response = await logClient.listLogs({
@@ -157,7 +158,7 @@ export const LogsPage: React.FC = () => {
                 ) : displayLogs?.map((log) => (
                   <Table.Tr key={log.id} style={{ borderBottom: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))' }}>
                     <Table.Td>
-                      <Text size="sm" fw={500} c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1))">{log.timestamp?.toDate().toLocaleString()}</Text>
+                      <Text size="sm" fw={500} c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1))">{log.timestamp && timestampDate(log.timestamp).toLocaleString()}</Text>
                     </Table.Td>
                     <Table.Td>
                       <Badge color={getLevelColor(log.level)} variant="light" size="sm" radius="sm">

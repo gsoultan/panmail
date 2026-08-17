@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, 
-  Table, ActionIcon, Badge, TextInput, Switch, MultiSelect, useComputedColorScheme, Paper, Select
-} from '@mantine/core';
+import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, Table, ActionIcon, Badge, TextInput, Switch, MultiSelect, Select } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconWebhook, IconPlus, IconEdit, IconTrash, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -44,7 +41,7 @@ export const WebhooksPage: React.FC = () => {
     setHistory([]);
   }, [pageSize]);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['webhooks', pageToken, pageSize],
     queryFn: () => webhookService.listWebhooks(Number(pageSize), pageToken),
   });
