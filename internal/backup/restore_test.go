@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	pkgdb "github.com/gsoultan/panmail/pkg/db"
@@ -119,6 +120,10 @@ func TestABackupOfALiveSystemRestores(t *testing.T) {
 		}
 	}()
 	var sqlWrites, sqlErrs int64
+	// Closed once a write has actually landed, so the backup below starts
+	// against a database that is provably being written to.
+	writing := make(chan struct{})
+	var writingOnce sync.Once
 	go func() {
 		defer writers.Done()
 		for i := 0; ; i++ {
@@ -132,8 +137,30 @@ func TestABackupOfALiveSystemRestores(t *testing.T) {
 				continue
 			}
 			atomic.AddInt64(&sqlWrites, 1)
+			writingOnce.Do(func() { close(writing) })
 		}
 	}()
+
+	// Wait for the write path to prove itself before snapshotting.
+	//
+	// This is the guard that used to sit after the backup, moved earlier and
+	// made deterministic. It exists because an earlier version wrote to a
+	// table that did not exist: every insert failed and what got snapshotted
+	// was an idle database. Checking afterwards also failed when the writer
+	// goroutine simply never got a turn inside a 200ms backup -- observed in
+	// CI with both counters at zero, which is a scheduler artifact and not a
+	// bug in the code under test. Waiting here distinguishes the two: a broken
+	// insert path never signals and reports its error count, while a slow
+	// scheduler just makes us wait a moment longer.
+	select {
+	case <-writing:
+	case <-time.After(10 * time.Second):
+		close(stop)
+		writers.Wait()
+		t.Fatalf("no write landed in 10s (%d failed); the insert path is broken, "+
+			"so this would have snapshotted an idle database",
+			atomic.LoadInt64(&sqlErrs))
+	}
 
 	out := filepath.Join(t.TempDir(), "backup")
 	manifest, err := Run(context.Background(), Options{
@@ -152,15 +179,11 @@ func TestABackupOfALiveSystemRestores(t *testing.T) {
 		t.Fatalf("backup: %v", err)
 	}
 
-	// Without this the test still passes while proving nothing: an earlier
-	// version wrote to a table that did not exist, every insert failed, and
-	// what it actually snapshotted was an idle database.
-	if w := atomic.LoadInt64(&sqlWrites); w == 0 {
-		t.Fatalf("no writes landed during the backup (%d failed); "+
-			"this snapshotted an idle database", atomic.LoadInt64(&sqlErrs))
-	} else {
-		t.Logf("backup taken across %d concurrent database writes", w)
-	}
+	// The barrier above already proved the write path works, so this reports
+	// rather than asserts. The number is still worth printing: it says how
+	// much concurrency the snapshot was actually taken across.
+	t.Logf("backup taken across %d concurrent database writes (%d failed)",
+		atomic.LoadInt64(&sqlWrites), atomic.LoadInt64(&sqlErrs))
 
 	// The restore. Nothing below touches the live stores.
 	t.Run("the pebble checkpoint opens and holds what was written", func(t *testing.T) {
