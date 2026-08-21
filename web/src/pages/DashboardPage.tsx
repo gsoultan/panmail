@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Container, Grid, Paper, Text, Group, ThemeIcon, Title, Stack, rem, Box, Tabs, SegmentedControl, Tooltip, SimpleGrid, RingProgress, ActionIcon, Badge, Select, Modal, Button } from '@mantine/core';
+import { Container, Grid, Paper, Text, Group, ThemeIcon, Title, Stack, rem, Box, Tabs, Tooltip, SimpleGrid, RingProgress, ActionIcon, Badge, Select, Modal, Button } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { IconSend, IconMail, IconBan, IconClick, IconEye, IconAlertCircle, IconClock, IconActivity, IconCpu, IconServer, IconInfoCircle, IconCalendar, IconDatabase, IconChartBar, IconDownload, IconUpload, IconChevronDown, IconAdjustmentsHorizontal } from '@tabler/icons-react';
-import { AreaChart, DonutChart, BarChart } from '@mantine/charts';
+import { IconSend, IconMail, IconBan, IconClick, IconEye, IconClock, IconActivity, IconCpu, IconServer, IconInfoCircle, IconCalendar, IconDatabase, IconChartBar, IconDownload, IconChevronDown } from '@tabler/icons-react';
+import { AreaChart, BarChart } from '@mantine/charts';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsService } from '../features/analytics/services/analytics';
 import { EmailEventType } from '../api/panmail/v1/event_pb';

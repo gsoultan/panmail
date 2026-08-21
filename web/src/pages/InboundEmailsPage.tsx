@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, Modal, Badge, Paper, ActionIcon, Button, useComputedColorScheme, Select } from '@mantine/core';
+import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, Modal, Paper, ActionIcon, Button, Select } from '@mantine/core';
 import { IconDownload, IconEye, IconInbox, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { inboundService } from '../features/inbound/services/inbound';
@@ -16,7 +16,7 @@ export const InboundEmailsPage: React.FC = () => {
     setHistory([]);
   }, [pageSize]);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['inboundEmails', pageToken, pageSize],
     queryFn: () => inboundService.listInboundEmails(Number(pageSize), pageToken),
   });

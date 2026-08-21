@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found — Panmail</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/css/styles.css">
+<style>
+  .oops { min-height: 100vh; display: grid; place-items: center; position: relative; overflow: hidden; text-align: center; }
+  .oops__code {
+    font-family: var(--mono); font-size: clamp(4.5rem, 16vw, 9rem); font-weight: 500; line-height: 1;
+    letter-spacing: -.05em; margin-bottom: 18px;
+    background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .oops h1 { font-size: clamp(1.5rem, 4vw, 2.2rem); margin-bottom: 14px; }
+  .oops p { color: var(--tx-2); max-width: 44ch; margin: 0 auto 30px; }
+</style>
+</head>
+<body>
+<section class="oops">
+  <div class="hero__aurora" aria-hidden="true">
+    <span class="blob blob--violet"></span>
+    <span class="blob blob--cyan"></span>
+  </div>
+  <div class="hero__grid" aria-hidden="true"></div>
+
+  <div class="shell shell--narrow" style="position:relative">
+    <a class="brand" href="/" style="justify-content:center;margin-bottom:40px">
+      <img class="brand__mark" src="/assets/img/logo.svg" alt="" width="28" height="27">
+      <span class="brand__word">Panmail</span>
+    </a>
+    <p class="oops__code">404</p>
+    <h1>This address bounced.</h1>
+    <p>The page you asked for isn't here. Unlike your email, we can't retry this one — but the front door still works.</p>
+    <div class="hero__cta">
+      <a class="btn btn--primary btn--lg" href="/">Back to Panmail</a>
+      <a class="btn btn--ghost btn--lg" href="https://github.com/gsoultan/panmail" rel="noopener">View the source</a>
+    </div>
+  </div>
+</section>
+</body>
+</html>

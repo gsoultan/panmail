@@ -23,8 +23,37 @@ message UpdateSettingsResponse {
   SystemSettings settings = 1;
 }
 
+// SystemSettings holds the global, admin-editable configuration.
+//
+// Every *_retention_days field is a whole number of days, and zero always
+// means "keep forever" — a retention nobody has configured must never delete
+// anything. The UI says so on each field; do not add a field whose zero value
+// means something else.
 message SystemSettings {
   string base_url = 1;
   int32 log_retention_days = 2;
   repeated string retry_pattern = 3;
+
+  // Message bodies and attachments, deleted outright rather than archived:
+  // an archive of the content is the content, so archiving it would defeat
+  // the retention it is meant to enforce.
+  int32 message_retention_days = 4;
+
+  // Permanently failed outbox rows. Only FAILED qualifies — pending,
+  // deferred and claimed rows are live work.
+  int32 outbox_retention_days = 5;
+
+  // Delivered and permanently failed webhook notifications.
+  int32 webhook_retention_days = 6;
+
+  // Application logs from the Pebble log store.
+  int32 app_log_retention_days = 7;
+
+  // Received mail. Deleting inbound mail destroys the only copy panmail
+  // holds, so this defaults to keeping it forever.
+  int32 inbound_retention_days = 8;
+
+  // The JSONL archives written when delivery events expire. This is the
+  // escape hatch for log_retention_days, so it also defaults to forever.
+  int32 archive_retention_days = 9;
 }

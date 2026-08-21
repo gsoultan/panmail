@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
@@ -50,11 +51,15 @@ type QueueWorker interface {
 }
 
 type queueWorker struct {
-	// How long a permanently failed message is kept. Zero disables pruning,
-	// which is what a deployment that has not configured it gets — deleting
-	// someone's delivery history because a default said so would be worse
-	// than the table growing.
-	retention time.Duration
+	// How long a permanently failed message is kept, in nanoseconds. Zero
+	// disables pruning, which is what a deployment that has not configured it
+	// gets — deleting someone's delivery history because a default said so
+	// would be worse than the table growing.
+	//
+	// Atomic because the retention worker rewrites it whenever an
+	// administrator saves the settings page, while this worker is reading it
+	// between batches.
+	retention atomic.Int64
 	lastPrune time.Time
 
 	outboxRepo         stores.OutboxRepository
@@ -406,7 +411,8 @@ const prunePeriod = time.Hour
 // send batch, and only when the queue is already drained: housekeeping must
 // never be the reason mail is late.
 func (w *queueWorker) pruneIfDue(ctx context.Context) {
-	if w.retention <= 0 {
+	retention := time.Duration(w.retention.Load())
+	if retention <= 0 {
 		return
 	}
 	if !w.lastPrune.IsZero() && time.Since(w.lastPrune) < prunePeriod {
@@ -417,7 +423,7 @@ func (w *queueWorker) pruneIfDue(ctx context.Context) {
 	pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bookkeepingTimeout)
 	defer cancel()
 
-	cutoff := time.Now().Add(-w.retention)
+	cutoff := time.Now().Add(-retention)
 	removed, err := w.outboxRepo.PruneTerminal(pruneCtx, cutoff)
 	if err != nil {
 		// Housekeeping failing is not a reason to stop sending; it will be
@@ -430,5 +436,6 @@ func (w *queueWorker) pruneIfDue(ctx context.Context) {
 	}
 }
 
-// SetRetention configures how long a permanently failed message is kept.
-func (w *queueWorker) SetRetention(d time.Duration) { w.retention = d }
+// SetRetention configures how long a permanently failed message is kept. Safe
+// to call while the worker is running.
+func (w *queueWorker) SetRetention(d time.Duration) { w.retention.Store(int64(d)) }

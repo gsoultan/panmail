@@ -13,7 +13,7 @@ import {
   rem,
   Grid,
   Divider,
-  Alert,
+  Alert
 } from '@mantine/core';
 import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { useNavigate } from '@tanstack/react-router';
@@ -21,7 +21,7 @@ import { authClient } from '../services/client';
 import { useAuthStore } from '../store/authStore';
 import { notifications } from '@mantine/notifications';
 import { motion } from 'framer-motion';
-import { IconMail, IconCheck, IconArrowRight, IconQrcode, IconAlertCircle } from '@tabler/icons-react';
+import { IconMail, IconCheck, IconArrowRight, IconAlertCircle } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 export const SignInPage: React.FC = () => {

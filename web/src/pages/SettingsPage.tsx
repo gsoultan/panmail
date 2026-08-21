@@ -1,26 +1,71 @@
 import React from 'react';
-import { Container, Title, Text, Stack, Paper, Group, ThemeIcon, rem, Box, TextInput, NumberInput, Button, LoadingOverlay, Divider, Alert, TagsInput } from '@mantine/core';
-import { IconSettings, IconDeviceFloppy, IconInfoCircle, IconDatabase, IconWorld, IconRefresh } from '@tabler/icons-react';
+import {
+  Alert,
+  Box,
+  Button,
+  Container,
+  Divider,
+  Group,
+  List,
+  LoadingOverlay,
+  Modal,
+  Paper,
+  Stack,
+  TagsInput,
+  Text,
+  TextInput,
+  ThemeIcon,
+  Title,
+  rem,
+} from '@mantine/core';
+import {
+  IconAlertTriangle,
+  IconDatabase,
+  IconDeviceFloppy,
+  IconInfoCircle,
+  IconRefresh,
+  IconSettings,
+  IconWorld,
+} from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { settingsService } from '../services/settings';
 import { notifications } from '@mantine/notifications';
+import { RetentionSettings } from '../features/settings/components/RetentionSettings';
+import {
+  destructiveChanges,
+  describeRetention,
+  retentionValues,
+  type RetentionChange,
+  type RetentionKey,
+} from '../features/settings/components/retentionFields';
 
 export const SettingsPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const { data: settings, isLoading } = useQuery({
+  const {
+    data: settings,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['systemSettings'],
     queryFn: settingsService.getSettings,
   });
 
+  // Saving is blocked until the current settings have actually loaded.
+  //
+  // The form starts at its initial values, which are an empty base URL and
+  // zero for every retention. If the load fails, the overlay lifts and those
+  // placeholders look like real settings — so one click of Save would blank
+  // the base URL that one-click unsubscribe depends on and record all seven
+  // retentions as a deliberate "keep forever", which the config migration
+  // then has no way to tell from a real choice.
+  const loaded = settings !== undefined;
+
   const form = useAdaptedForm({
     initialValues: {
       baseUrl: '',
-      logRetentionDays: 14,
       retryPattern: [] as string[],
-    },
-    validate: {
-      logRetentionDays: (value) => (value < 1 ? 'Retention must be at least 1 day' : null),
+      ...retentionValues(undefined),
     },
   });
 
@@ -28,8 +73,8 @@ export const SettingsPage: React.FC = () => {
     if (settings) {
       form.setValues({
         baseUrl: settings.baseUrl || '',
-        logRetentionDays: settings.logRetentionDays || 14,
         retryPattern: settings.retryPattern || [],
+        ...retentionValues(settings),
       });
     }
   }, [settings]);
@@ -53,6 +98,29 @@ export const SettingsPage: React.FC = () => {
     },
   });
 
+  // Saving triggers a retention pass immediately, so a shortened policy is not
+  // a preference that takes effect quietly overnight — it deletes on save.
+  // Anything that destroys the only copy panmail holds gets confirmed first.
+  const [pending, setPending] = React.useState<{
+    values: typeof form.values;
+    changes: RetentionChange[];
+  } | null>(null);
+
+  const submit = (values: typeof form.values) => {
+    const changes = destructiveChanges(retentionValues(settings), values);
+    if (changes.length > 0) {
+      setPending({ values, changes });
+      return;
+    }
+    mutation.mutate(values);
+  };
+
+  const confirm = () => {
+    if (!pending) return;
+    mutation.mutate(pending.values);
+    setPending(null);
+  };
+
   return (
     <Container size="xl" py="xl">
       <Stack gap="xl">
@@ -61,19 +129,32 @@ export const SettingsPage: React.FC = () => {
             <ThemeIcon variant="light" color="brand" size="md">
               <IconSettings size={18} />
             </ThemeIcon>
-            <Title order={2} style={{ fontWeight: 800, letterSpacing: rem(-0.5) }}>Settings</Title>
+            <Title order={2} style={{ fontWeight: 800, letterSpacing: rem(-0.5) }}>
+              Settings
+            </Title>
           </Group>
-          <Text c="dimmed" fw={500}>Configure global application parameters and data retention policies.</Text>
+          <Text c="dimmed" fw={500}>
+            Configure global application parameters and data retention policies.
+          </Text>
         </Box>
+
+        {isError ? (
+          <Alert icon={<IconAlertTriangle size={16} />} color="red" variant="light" title="Settings could not be loaded">
+            Saving is disabled until they load, because the form would otherwise post its
+            placeholders over your real configuration. Reload the page to try again.
+          </Alert>
+        ) : null}
 
         <Paper withBorder p="xl" radius="md" pos="relative">
           <LoadingOverlay visible={isLoading || mutation.isPending} />
-          <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
+          <form onSubmit={form.onSubmit(submit)}>
             <Stack gap="lg">
               <Box>
                 <Group gap="xs" mb="xs">
                   <IconWorld size={18} color="var(--mantine-color-brand-6)" />
-                  <Text fw={700} size="sm" tt="uppercase">General Configuration</Text>
+                  <Text fw={700} size="sm" tt="uppercase">
+                    General Configuration
+                  </Text>
                 </Group>
                 <TextInput
                   label="Base URL"
@@ -88,7 +169,9 @@ export const SettingsPage: React.FC = () => {
               <Box>
                 <Group gap="xs" mb="xs">
                   <IconRefresh size={18} color="var(--mantine-color-brand-6)" />
-                  <Text fw={700} size="sm" tt="uppercase">Retry Configuration</Text>
+                  <Text fw={700} size="sm" tt="uppercase">
+                    Retry Configuration
+                  </Text>
                 </Group>
                 <TagsInput
                   label="Retry Pattern"
@@ -103,25 +186,40 @@ export const SettingsPage: React.FC = () => {
               <Box>
                 <Group gap="xs" mb="xs">
                   <IconDatabase size={18} color="var(--mantine-color-brand-6)" />
-                  <Text fw={700} size="sm" tt="uppercase">Data Retention</Text>
+                  <Text fw={700} size="sm" tt="uppercase">
+                    Data Retention
+                  </Text>
                 </Group>
-                <NumberInput
-                  label="Log Retention Period (Days)"
-                  description="Delivery event logs older than this will be archived and removed from the active database."
-                  min={1}
-                  max={365}
-                  {...form.getInputProps('logRetentionDays')}
+                <Text size="sm" c="dimmed" mb="lg">
+                  How long each kind of data is kept, in days. <strong>Zero keeps it forever</strong>
+                  , which is the default for everything panmail holds the only copy of. Changes
+                  apply as soon as they are saved.
+                </Text>
+
+                <RetentionSettings
+                  values={retentionValues(form.values as Partial<Record<RetentionKey, number>>)}
+                  onChange={(key, value) => form.setFieldValue(key, value)}
+                  disabled={isLoading || mutation.isPending}
                 />
-                <Alert icon={<IconInfoCircle size={16} />} title="Note" mt="md" color="blue" variant="light">
-                  Archived logs are saved to the filesystem as JSONL files and can still be accessed via the Archives page.
+
+                <Alert
+                  icon={<IconInfoCircle size={16} />}
+                  title="Where expired data goes"
+                  mt="lg"
+                  color="blue"
+                  variant="light"
+                >
+                  Delivery events are written to JSONL archives before they leave the database and
+                  stay available on the Archives page. Everything else is deleted outright.
                 </Alert>
               </Box>
 
               <Group justify="flex-end" mt="xl">
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   leftSection={<IconDeviceFloppy size={18} />}
                   loading={mutation.isPending}
+                  disabled={!loaded}
                 >
                   Save Settings
                 </Button>
@@ -130,6 +228,49 @@ export const SettingsPage: React.FC = () => {
           </form>
         </Paper>
       </Stack>
+
+      <Modal
+        opened={pending !== null}
+        onClose={() => setPending(null)}
+        title={
+          <Group gap="xs">
+            <ThemeIcon variant="light" color="orange" size="md">
+              <IconAlertTriangle size={18} />
+            </ThemeIcon>
+            <Text fw={700}>This deletes data now</Text>
+          </Group>
+        }
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            Saving starts a retention pass immediately. These changes remove the only copy panmail
+            holds:
+          </Text>
+
+          <List size="sm" spacing="xs">
+            {pending?.changes.map(({ field, from, to }) => (
+              <List.Item key={field.key}>
+                <Text size="sm" fw={600}>
+                  {field.label}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {describeRetention(from, field)} → {describeRetention(to, field)}
+                </Text>
+              </List.Item>
+            ))}
+          </List>
+
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setPending(null)}>
+              Cancel
+            </Button>
+            <Button color="orange" onClick={confirm}>
+              Save and delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   );
 };

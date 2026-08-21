@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Panmail — The email gateway for multi-tenant products</title>
+<meta name="description" content="Panmail is the email gateway that sits between your apps and any mail server. One API, automatic failover, a visual builder, and deliverability guardrails that protect your sender reputation.">
+<meta name="theme-color" content="#0a0b12" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+
+<link rel="canonical" href="https://gsoultan.github.io/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/img/logo.svg">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Panmail">
+<meta property="og:title" content="Panmail — The email gateway for multi-tenant products">
+<meta property="og:description" content="One API in front of every mail server. Automatic failover, a persistent outbox, a visual builder, and deliverability guardrails that protect your sender reputation.">
+<meta property="og:url" content="https://gsoultan.github.io/">
+<meta property="og:image" content="https://gsoultan.github.io/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Panmail — The email gateway for multi-tenant products">
+<meta name="twitter:description" content="One API in front of every mail server. Automatic failover, a persistent outbox, a visual builder, and deliverability guardrails.">
+<meta name="twitter:image" content="https://gsoultan.github.io/assets/img/og.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/css/styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Panmail",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux, macOS, Windows, Docker, Kubernetes",
+  "description": "Multi-tenant email gateway providing a unified API in front of any SMTP, IMAP or POP3 server, with automatic failover, a persistent outbox, a visual email builder and deliverability guardrails.",
+  "url": "https://gsoultan.github.io/",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD",
+    "description": "Free self-hosted tier"
+  }
+}
+</script>
+</head>
+
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!-- ─────────────────────────  NAV  ───────────────────────── -->
+<header class="nav" id="nav">
+  <div class="shell nav__inner">
+    <a class="brand" href="#top" aria-label="Panmail home">
+      <img class="brand__mark" src="assets/img/logo.svg" alt="" width="28" height="27">
+      <span class="brand__word">Panmail</span>
+    </a>
+
+    <nav class="nav__links" aria-label="Primary">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#deliverability">Deliverability</a>
+      <a href="#security">Security</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#docs">Docs</a>
+    </nav>
+
+    <div class="nav__actions">
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch to light theme" title="Toggle theme">
+        <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10Zm0-13.2a1 1 0 0 1-1-1V1a1 1 0 1 1 2 0v1.8a1 1 0 0 1-1 1Zm0 18.4a1 1 0 0 1 1 1V25a1 1 0 1 1-2 0v-1.8a1 1 0 0 1 1-1ZM3.8 12a1 1 0 0 1-1 1H1a1 1 0 1 1 0-2h1.8a1 1 0 0 1 1 1Zm18.4 0a1 1 0 0 1 1-1H25a1 1 0 1 1 0 2h-1.8a1 1 0 0 1-1-1ZM5.6 5.6a1 1 0 0 1 1.4 0l1.3 1.3a1 1 0 0 1-1.4 1.4L5.6 7a1 1 0 0 1 0-1.4Zm11.7 11.7a1 1 0 0 1 1.4 0l1.3 1.3a1 1 0 0 1-1.4 1.4l-1.3-1.3a1 1 0 0 1 0-1.4ZM18.4 5.6a1 1 0 0 1 0 1.4l-1.3 1.3a1 1 0 1 1-1.4-1.4L17 5.6a1 1 0 0 1 1.4 0ZM6.7 17.3a1 1 0 0 1 0 1.4l-1.3 1.3a1 1 0 0 1-1.4-1.4l1.3-1.3a1 1 0 0 1 1.4 0Z"/></svg>
+      </button>
+      <a class="btn btn--ghost nav__signin" data-cta="signin" href="#start">Sign in</a>
+      <a class="btn btn--primary" data-cta="trial" href="#start">Start free trial</a>
+      <button class="icon-btn nav__burger" id="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="mobile-menu" id="mobile-menu" hidden>
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#deliverability">Deliverability</a>
+    <a href="#security">Security</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#docs">Docs</a>
+    <a class="btn btn--primary" data-cta="trial" href="#start">Start free trial</a>
+  </div>
+</header>
+
+<main id="main">
+<span id="top"></span>
+
+<!-- ─────────────────────────  HERO  ───────────────────────── -->
+<section class="hero">
+  <div class="hero__aurora" aria-hidden="true">
+    <span class="blob blob--violet"></span>
+    <span class="blob blob--cyan"></span>
+    <span class="blob blob--deep"></span>
+  </div>
+  <div class="hero__grid" aria-hidden="true"></div>
+
+  <div class="shell hero__inner">
+    <p class="eyebrow reveal">
+      <span class="eyebrow__dot"></span>
+      Email infrastructure for multi-tenant products
+    </p>
+
+    <h1 class="hero__title reveal">
+      Ship email your customers<br>
+      <span class="grad">actually receive.</span>
+    </h1>
+
+    <p class="hero__lede reveal">
+      Panmail is the gateway that sits between your applications and any mail server.
+      One API for every provider, automatic failover when one goes dark, a persistent
+      outbox that never drops a message, and guardrails that protect your sender reputation.
+    </p>
+
+    <div class="hero__cta reveal">
+      <a class="btn btn--primary btn--lg" data-cta="trial" href="#start">
+        Start free trial
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"/></svg>
+      </a>
+      <a class="btn btn--ghost btn--lg" data-cta="demo" href="#how">See how it works</a>
+    </div>
+
+    <p class="hero__note reveal">
+      No credit card required · Managed cloud or self-hosted · Docker, Kubernetes, or a single binary
+    </p>
+
+    <!-- Product visual -->
+    <div class="hero__stage reveal">
+      <div class="stage-glow" aria-hidden="true"></div>
+      <div class="window">
+        <div class="window__bar">
+          <span class="dot dot--r"></span><span class="dot dot--y"></span><span class="dot dot--g"></span>
+          <span class="window__title">POST /panmail.v1.EmailService/SendEmail</span>
+          <button class="copy-btn" type="button" data-copy="#hero-code">Copy</button>
+        </div>
+        <pre class="window__body"><code id="hero-code"><span class="c-cm">// One call. Panmail renders the template,</span>
+<span class="c-cm">// queues it durably, retries it, and reports what happened.</span>
+<span class="c-fn">curl</span> -X POST https://api.panmail.io/panmail.v1.EmailService/SendEmail \
+  -H <span class="c-st">"X-API-Key: pm_live_7f3c…"</span> \
+  -H <span class="c-st">"Content-Type: application/json"</span> \
+  -d <span class="c-st">'{
+    <span class="c-ky">"provider_id"</span>: "0f8b8f4e-0000-4000-8000-000000000000",
+    <span class="c-ky">"from"</span>:        "billing@acme.com",
+    <span class="c-ky">"to"</span>:          ["jane@example.com"],
+    <span class="c-ky">"template_id"</span>: "invoice-notification",
+    <span class="c-ky">"template_data"</span>: {
+      <span class="c-ky">"customer_name"</span>: "Jane Smith",
+      <span class="c-ky">"amount"</span>:        "99.00"
+    }
+  }'</span>
+
+<span class="c-cm">→</span> <span class="c-ok">{"message_id":"01J8…","status":"PENDING"}</span>  <span class="c-cm">// accepted in 4ms</span></code></pre>
+      </div>
+
+      <!-- floating status chips -->
+      <div class="chip chip--1"><span class="pulse pulse--ok"></span> Delivered via SMTP #1</div>
+      <div class="chip chip--2"><span class="pulse pulse--warn"></span> Soft bounce → retry in 5m</div>
+      <div class="chip chip--3"><span class="pulse pulse--brand"></span> Opened · Clicked</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  STAT BAND  ───────────────────────── -->
+<section class="band">
+  <div class="shell band__grid">
+    <div class="stat reveal">
+      <span class="stat__num" data-count="1000" data-suffix="+">0</span>
+      <span class="stat__label">messages / second<br><em>parallel workers, batched writes</em></span>
+    </div>
+    <div class="stat reveal">
+      <span class="stat__num" data-count="4">0</span>
+      <span class="stat__label">RBAC roles<br><em>Super Admin → Viewer</em></span>
+    </div>
+    <div class="stat reveal">
+      <span class="stat__num">AES-256</span>
+      <span class="stat__label">GCM at rest<br><em>every provider credential</em></span>
+    </div>
+    <div class="stat reveal">
+      <span class="stat__num">0</span>
+      <span class="stat__label">dropped messages<br><em>durable outbox + retries</em></span>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  HOW IT WORKS  ───────────────────────── -->
+<section class="section" id="how">
+  <div class="shell">
+    <div class="section__head reveal">
+      <p class="kicker">How it works</p>
+      <h2>A gateway, not another provider</h2>
+      <p class="section__lede">
+        Panmail doesn't replace SendGrid, Mailgun or your own Postfix box — it stands in front
+        of all of them. Your application talks to one API. Panmail decides where the mail
+        actually goes, and what happens when that fails.
+      </p>
+    </div>
+
+    <div class="pipeline reveal" aria-label="Request flow diagram">
+      <div class="pipe-node pipe-node--app">
+        <span class="pipe-node__icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 6 3 12l5 6m8-12 5 6-5 6m-2-15-4 18"/></svg>
+        </span>
+        <strong>Your applications</strong>
+        <span>REST · gRPC · ConnectRPC</span>
+      </div>
+
+      <div class="pipe-wire" aria-hidden="true"><i></i><i></i><i></i></div>
+
+      <div class="pipe-node pipe-node--core">
+        <span class="pipe-node__icon"><img src="assets/img/logo.svg" alt="" width="20" height="19"></span>
+        <strong>Panmail Gateway</strong>
+        <span>route · render · queue · retry</span>
+        <ul class="pipe-node__list">
+          <li>Domain-based provider selection</li>
+          <li>Suppression &amp; bounce checks</li>
+          <li>Template rendering</li>
+          <li>Durable outbox</li>
+        </ul>
+      </div>
+
+      <div class="pipe-wire" aria-hidden="true"><i></i><i></i><i></i></div>
+
+      <div class="pipe-stack">
+        <div class="pipe-node pipe-node--sm"><strong>SMTP</strong><span>primary</span></div>
+        <div class="pipe-node pipe-node--sm"><strong>SMTP</strong><span>failover</span></div>
+        <div class="pipe-node pipe-node--sm"><strong>IMAP / POP3</strong><span>inbound</span></div>
+      </div>
+    </div>
+
+    <ol class="steps">
+      <li class="step reveal">
+        <span class="step__n">01</span>
+        <h3>Point your app at one endpoint</h3>
+        <p>Swap your SMTP client for a single authenticated call. Send raw HTML, plain text, or a template ID with variables — attachments included.</p>
+      </li>
+      <li class="step reveal">
+        <span class="step__n">02</span>
+        <h3>Panmail routes it</h3>
+        <p>The sending domain picks the provider, so a tenant can never send as a domain that isn't theirs. If the primary refuses, the next one takes it.</p>
+      </li>
+      <li class="step reveal">
+        <span class="step__n">03</span>
+        <h3>The outbox guarantees it</h3>
+        <p>Accepted mail lands in a persistent outbox before anything is attempted. Temporary failures retry on your backoff pattern — <code>5m, 1h, 1d</code> — instead of vanishing.</p>
+      </li>
+      <li class="step reveal">
+        <span class="step__n">04</span>
+        <h3>You see what happened</h3>
+        <p>Sent, delivered, opened, clicked, bounced — unified across every provider, streamed to your own systems over signed webhooks.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ─────────────────────────  FEATURES  ───────────────────────── -->
+<section class="section section--alt" id="features">
+  <div class="shell">
+    <div class="section__head reveal">
+      <p class="kicker">Platform</p>
+      <h2>Everything between <span class="grad">“send”</span> and <span class="grad">“received”</span></h2>
+      <p class="section__lede">
+        The unglamorous machinery every product ends up rebuilding — retries, suppression,
+        templates, tenancy, audit trails — already built, already tested.
+      </p>
+    </div>
+
+    <div class="cards">
+      <article class="card reveal">
+        <span class="card__icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h16M4 17h10"/></svg>
+        </span>
+        <h3>One unified API</h3>
+        <p>HTTP/JSON, gRPC and ConnectRPC over the same schema. Asynchronous by default — you get a message ID the moment it's queued, not when the far end finally answers.</p>
+      </article>
+
+      <article class="card reveal">
+        <span class="card__icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M4 17V7a2 2 0 0 1 2-2h7l3 3h2a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Zm5-4 2 2 4-4"/></svg>
+        </span>
+        <h3>Intelligent routing &amp; failover</h3>
+        <p>Register as many providers as you like. Panmail picks by sending domain — preventing spoofing across tenants — and rolls to the next server automatically when one starts refusing mail.</p>
+      </article>
+
+      <article class="card reveal">
+        <span class="card__icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v14H4zM4 9h16M9 9v10"/></svg>
+        </span>
+        <h3>Visual email builder</h3>
+        <p>Drag-and-drop composition with multi-column layouts, mobile and desktop preview frames, dynamic merge tags, and output that survives Outlook.</p>
+      </article>
+
+      <article class="card reveal">
+        <span class="card__icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="m9 8-4 4 4 4m6-8 4 4-4 4"/></svg>
+        </span>
+        <h3>Two template engines</h3>
+        <p>Handlebars or Go <code>html/template</code> — loops, conditionals and nested data in both. Centralised, versioned, and editable without a deploy.</p>
+      </article>
+
+      <article class="card reveal">
+        <span class="card__icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M4 7a8 3 0 1 0 16 0A8 3 0 1 0 4 7m0 0v10a8 3 0 0 0 16 0V7M4 12a8 3 0 0 0 16 0"/></svg>
+        </span>
+        <h3>Persistent outbox</h3>
+        <p>Every accepted message is durable before it's attempted. Batched async writes and pooled SMTP connections keep throughput high without trading away the guarantee.</p>
+      </article>
+
+      <article class="card reveal">
+        <span class="card__icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M4 20V10m5 10V4m5 16v-7m5 7V8"/></svg>
+        </span>
+        <h3>Unified analytics</h3>
+        <p>Delivery trends across every provider in one view — sent, delivered, opened, clicked, bounced — with historical archiving so last quarter is still answerable.</p>
+      </article>
+
+      <article class="card reveal">
+        <span class="card__icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 1 0 9 9M12 7v5l3 2M15 3h6v6"/></svg>
+        </span>
+        <h3>Webhooks both ways</h3>
+        <p>Ingest provider events with verified signatures, and push your own systems signed, durable, retried notifications for delivery events and inbound mail.</p>
+      </article>
+
+      <article class="card reveal">
+        <span class="card__icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M9 7a3 3 0 1 0 6 0 3 3 0 1 0-6 0M4 20a6 6 0 0 1 16 0M18 6h4M20 4v4"/></svg>
+        </span>
+        <h3>Multi-tenant from the first line</h3>
+        <p>Each tenant carries its own providers, templates, suppressions and retry patterns. Isolation isn't a query filter bolted on later — it's how the data is keyed.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  DELIVERABILITY  ───────────────────────── -->
+<section class="section" id="deliverability">
+  <div class="shell split">
+    <div class="split__text reveal">
+      <p class="kicker">Deliverability</p>
+      <h2>Your sender reputation is an asset. Panmail treats it like one.</h2>
+      <p class="section__lede">
+        Most outages aren't outages. They're a slow slide into the spam folder because
+        nobody stopped mailing the addresses that keep bouncing.
+      </p>
+
+      <ul class="checklist">
+        <li>
+          <strong>Hard bounces are suppressed immediately.</strong>
+          An address that will never accept mail is added to the suppression list and never
+          attempted again — across every tenant that shares the list.
+        </li>
+        <li>
+          <strong>Soft bounces retry on your schedule.</strong>
+          Mailbox full, greylisted, rate limited — classified as temporary and retried with a
+          per-tenant backoff pattern rather than hammered or discarded.
+        </li>
+        <li>
+          <strong>Unsubscribes are honoured at the gateway.</strong>
+          One-click unsubscribe headers and HMAC-signed links, enforced before a message is
+          ever handed to a provider.
+        </li>
+        <li>
+          <strong>SPF, DKIM and DMARC checked continuously.</strong>
+          Domain health surfaces a misaligned record before your open rate does.
+        </li>
+      </ul>
+
+      <a class="btn btn--primary" data-cta="trial" href="#start">Protect your domain
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"/></svg>
+      </a>
+    </div>
+
+    <div class="split__visual reveal">
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Domain health · acme.com</span>
+          <span class="badge badge--ok">Healthy</span>
+        </div>
+        <div class="panel__rows">
+          <div class="row"><span class="tick tick--ok"></span><span class="row__k">SPF</span><span class="row__v">includes provider</span></div>
+          <div class="row"><span class="tick tick--ok"></span><span class="row__k">DKIM</span><span class="row__v">selector <code>pm1</code> published</span></div>
+          <div class="row"><span class="tick tick--warn"></span><span class="row__k">DMARC</span><span class="row__v"><code>p=none</code> — tighten to quarantine</span></div>
+          <div class="row"><span class="tick tick--ok"></span><span class="row__k">MX</span><span class="row__v">resolves</span></div>
+        </div>
+
+        <div class="panel__divider"></div>
+
+        <div class="panel__head">
+          <span class="panel__title">Last 24 hours</span>
+        </div>
+        <div class="bars" role="img" aria-label="Delivery outcomes: 94.2% delivered, 3.1% opened-only, 1.9% soft bounce, 0.8% hard bounce">
+          <div class="bar"><span class="bar__k">Delivered</span><span class="bar__t"><i style="--w:94.2%" class="bar__f bar__f--ok"></i></span><span class="bar__v">94.2%</span></div>
+          <div class="bar"><span class="bar__k">Opened</span><span class="bar__t"><i style="--w:41.6%" class="bar__f bar__f--brand"></i></span><span class="bar__v">41.6%</span></div>
+          <div class="bar"><span class="bar__k">Soft bounce</span><span class="bar__t"><i style="--w:14%" class="bar__f bar__f--warn"></i></span><span class="bar__v">1.9%</span></div>
+          <div class="bar"><span class="bar__k">Hard bounce</span><span class="bar__t"><i style="--w:7%" class="bar__f bar__f--bad"></i></span><span class="bar__v">0.8%</span></div>
+        </div>
+        <p class="panel__foot">1,284 addresses suppressed · 0 messages lost</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  DEVELOPERS  ───────────────────────── -->
+<section class="section section--alt" id="docs">
+  <div class="shell">
+    <div class="section__head reveal">
+      <p class="kicker">For developers</p>
+      <h2>Integrate in an afternoon</h2>
+      <p class="section__lede">
+        A schema-first API with generated clients, honest status codes, and a local
+        setup that doesn't need a cloud account to try.
+      </p>
+    </div>
+
+    <div class="tabs reveal" id="code-tabs">
+      <div class="tabs__list" role="tablist" aria-label="Code examples">
+        <button class="tab is-active" role="tab" aria-selected="true"  aria-controls="p-curl"     id="t-curl">cURL</button>
+        <button class="tab"           role="tab" aria-selected="false" aria-controls="p-go"       id="t-go">Go</button>
+        <button class="tab"           role="tab" aria-selected="false" aria-controls="p-ts"       id="t-ts">TypeScript</button>
+        <button class="tab"           role="tab" aria-selected="false" aria-controls="p-webhook"  id="t-webhook">Webhook</button>
+      </div>
+
+      <div class="tabs__panels">
+        <div class="tabpanel is-active" role="tabpanel" id="p-curl" aria-labelledby="t-curl" tabindex="0">
+          <div class="window window--flat">
+            <div class="window__bar"><span class="window__title">send.sh</span><button class="copy-btn" type="button" data-copy="#code-curl">Copy</button></div>
+<pre class="window__body"><code id="code-curl"><span class="c-fn">curl</span> -X POST https://api.panmail.io/panmail.v1.EmailService/SendEmail \
+  -H <span class="c-st">"X-API-Key: $PANMAIL_KEY"</span> \
+  -H <span class="c-st">"Content-Type: application/json"</span> \
+  -d <span class="c-st">'{
+    "provider_id": "0f8b8f4e-0000-4000-8000-000000000000",
+    "from":      "support@acme.com",
+    "to":        ["user@example.com"],
+    "subject":   "Welcome aboard",
+    "body_html": "&lt;h1&gt;Welcome&lt;/h1&gt;",
+    "body_text": "Welcome"
+  }'</span></code></pre>
+          </div>
+        </div>
+
+        <div class="tabpanel" role="tabpanel" id="p-go" aria-labelledby="t-go" tabindex="0" hidden>
+          <div class="window window--flat">
+            <div class="window__bar"><span class="window__title">main.go</span><button class="copy-btn" type="button" data-copy="#code-go">Copy</button></div>
+<pre class="window__body"><code id="code-go">client := emailv1connect.<span class="c-fn">NewEmailServiceClient</span>(
+    http.DefaultClient, <span class="c-st">"https://api.panmail.io"</span>,
+)
+
+res, err := client.<span class="c-fn">SendEmail</span>(ctx, connect.<span class="c-fn">NewRequest</span>(&amp;emailv1.SendEmailRequest{
+    From:       <span class="c-st">"billing@acme.com"</span>,
+    To:         []<span class="c-ty">string</span>{<span class="c-st">"jane@example.com"</span>},
+    TemplateId: <span class="c-st">"invoice-notification"</span>,
+    TemplateData: <span class="c-kw">map</span>[<span class="c-ty">string</span>]<span class="c-ty">any</span>{
+        <span class="c-st">"customer_name"</span>: <span class="c-st">"Jane Smith"</span>,
+        <span class="c-st">"amount"</span>:        <span class="c-st">"99.00"</span>,
+    },
+}))
+<span class="c-kw">if</span> err != <span class="c-kw">nil</span> {
+    <span class="c-kw">return</span> err
+}
+log.<span class="c-fn">Info</span>(<span class="c-st">"queued"</span>, <span class="c-st">"id"</span>, res.Msg.MessageId)</code></pre>
+          </div>
+        </div>
+
+        <div class="tabpanel" role="tabpanel" id="p-ts" aria-labelledby="t-ts" tabindex="0" hidden>
+          <div class="window window--flat">
+            <div class="window__bar"><span class="window__title">notify.ts</span><button class="copy-btn" type="button" data-copy="#code-ts">Copy</button></div>
+<pre class="window__body"><code id="code-ts"><span class="c-kw">const</span> res = <span class="c-kw">await</span> <span class="c-fn">fetch</span>(
+  <span class="c-st">"https://api.panmail.io/panmail.v1.EmailService/SendEmail"</span>,
+  {
+    method:  <span class="c-st">"POST"</span>,
+    headers: {
+      <span class="c-st">"X-API-Key"</span>:    process.env.PANMAIL_KEY!,
+      <span class="c-st">"Content-Type"</span>: <span class="c-st">"application/json"</span>,
+    },
+    body: <span class="c-ty">JSON</span>.<span class="c-fn">stringify</span>({
+      from:       <span class="c-st">"billing@acme.com"</span>,
+      to:         [user.email],
+      templateId: <span class="c-st">"invoice-notification"</span>,
+      attachments: [{
+        filename:    <span class="c-st">"invoice.pdf"</span>,
+        contentType: <span class="c-st">"application/pdf"</span>,
+        content:     pdf.<span class="c-fn">toString</span>(<span class="c-st">"base64"</span>),
+      }],
+    }),
+  },
+);
+
+<span class="c-kw">const</span> { messageId, status } = <span class="c-kw">await</span> res.<span class="c-fn">json</span>();
+<span class="c-cm">// → { messageId: "01J8…", status: "PENDING" }</span></code></pre>
+          </div>
+        </div>
+
+        <div class="tabpanel" role="tabpanel" id="p-webhook" aria-labelledby="t-webhook" tabindex="0" hidden>
+          <div class="window window--flat">
+            <div class="window__bar"><span class="window__title">POST https://acme.com/hooks/panmail</span><button class="copy-btn" type="button" data-copy="#code-webhook">Copy</button></div>
+<pre class="window__body"><code id="code-webhook"><span class="c-cm">// Signed, retried, and delivered in order.</span>
+{
+  <span class="c-ky">"event"</span>:     <span class="c-st">"WEBHOOK_TRIGGER_EVENT_MAIL_DELIVERED"</span>,
+  <span class="c-ky">"tenant_id"</span>: <span class="c-st">"acme"</span>,
+  <span class="c-ky">"timestamp"</span>: <span class="c-nu">1712345678</span>,
+  <span class="c-ky">"data"</span>: {
+    <span class="c-ky">"message_id"</span>: <span class="c-st">"01J8…"</span>,
+    <span class="c-ky">"to"</span>:         <span class="c-st">"jane@example.com"</span>,
+    <span class="c-ky">"provider"</span>:   <span class="c-st">"smtp-primary"</span>,
+    <span class="c-ky">"attempts"</span>:   <span class="c-nu">1</span>
+  }
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="minicards">
+      <div class="minicard reveal">
+        <h4>Health checks that mean something</h4>
+        <p><code>/healthz</code> asks “is this process working?”. <code>/readyz</code> asks “can it serve a request right now?”. Pointing the wrong probe at the wrong one causes outages instead of preventing them — so Panmail keeps them separate.</p>
+      </div>
+      <div class="minicard reveal">
+        <h4>Runs where you already run</h4>
+        <p>A single static binary with the UI embedded, an unprivileged Docker image, and a worked Kubernetes StatefulSet. PostgreSQL or SQLite, with migrations applied automatically.</p>
+      </div>
+      <div class="minicard reveal">
+        <h4>Observability included</h4>
+        <p>Structured logs, Prometheus metrics and a shipped alert set covering the failures that stay quiet — a stalled outbox still returns 200 to every caller.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  SECURITY  ───────────────────────── -->
+<section class="section" id="security">
+  <div class="shell">
+    <div class="section__head reveal">
+      <p class="kicker">Security</p>
+      <h2>Built for the tenant who audits you</h2>
+      <p class="section__lede">
+        Email systems hold credentials for every domain you send from. Panmail is designed
+        on the assumption that someone will eventually copy the database.
+      </p>
+    </div>
+
+    <div class="seccards">
+      <div class="seccard reveal">
+        <h3>Two-factor authentication</h3>
+        <p>TOTP for every user, and administrators can enforce it across their tenant rather than hoping.</p>
+      </div>
+      <div class="seccard reveal">
+        <h3>Scoped API keys</h3>
+        <p>Keys are bound to one tenant and carry an explicit scope set — <code>email:send</code>, <code>providers:read</code>. A key grants exactly what it was issued for, and is revocable and expirable.</p>
+      </div>
+      <div class="seccard reveal">
+        <h3>Keys are never recoverable</h3>
+        <p>API keys are stored only as SHA-256 hashes. Panmail cannot show you a key again, because it does not have it.</p>
+      </div>
+      <div class="seccard reveal">
+        <h3>Credentials encrypted at rest</h3>
+        <p>SMTP, IMAP, POP3 and webhook secrets must be readable to be used, so they're sealed with AES-256-GCM and redacted from every API response.</p>
+      </div>
+      <div class="seccard reveal">
+        <h3>Signed tracking links</h3>
+        <p>Open and click URLs are HMAC-signed. Delivery events can't be forged, and the click endpoint can't be turned into an open redirect.</p>
+      </div>
+      <div class="seccard reveal">
+        <h3>Verified inbound webhooks</h3>
+        <p>SendGrid ECDSA, Mailgun HMAC or a shared secret — verified before a single event is recorded.</p>
+      </div>
+      <div class="seccard reveal">
+        <h3>Brute force gets nowhere</h3>
+        <p>Five failed logins locks the account for fifteen minutes, per account, automatically.</p>
+      </div>
+      <div class="seccard reveal">
+        <h3>Least privilege by role</h3>
+        <p>Super Admin, Admin, Editor and Viewer. A Viewer reads analytics and configuration and cannot change one byte of it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  PRICING  ───────────────────────── -->
+<section class="section section--alt" id="pricing">
+  <div class="shell">
+    <div class="section__head reveal">
+      <p class="kicker">Pricing</p>
+      <h2>Priced per volume, not per seat</h2>
+      <p class="section__lede">
+        Invite your whole team on every plan. Start on the managed cloud in minutes,
+        or run the same gateway on your own hardware.
+      </p>
+
+      <div class="toggle" id="billing-toggle" role="group" aria-label="Billing period">
+        <button class="toggle__opt is-active" type="button" data-period="monthly">Monthly</button>
+        <button class="toggle__opt" type="button" data-period="yearly">Yearly <span class="save">−20%</span></button>
+      </div>
+    </div>
+
+    <div class="plans">
+      <article class="plan reveal">
+        <h3 class="plan__name">Self-hosted</h3>
+        <p class="plan__desc">Run the full gateway on your own infrastructure.</p>
+        <p class="plan__price"><span class="plan__amt">$0</span><span class="plan__per">forever</span></p>
+        <a class="btn btn--ghost btn--full" data-cta="selfhost" href="#start">Download</a>
+        <ul class="plan__list">
+          <li>Unlimited sends on your own servers</li>
+          <li>1 tenant</li>
+          <li>Visual builder &amp; both template engines</li>
+          <li>PostgreSQL or SQLite</li>
+          <li>Community support</li>
+        </ul>
+      </article>
+
+      <article class="plan plan--featured reveal">
+        <span class="plan__flag">Most popular</span>
+        <h3 class="plan__name">Business</h3>
+        <p class="plan__desc">The managed gateway, running in minutes.</p>
+        <p class="plan__price">
+          <span class="plan__amt" data-monthly="$49" data-yearly="$39">$49</span><span class="plan__per">/ month</span>
+        </p>
+        <a class="btn btn--primary btn--full" data-cta="trial" href="#start">Start free trial</a>
+        <ul class="plan__list">
+          <li>100,000 emails / month</li>
+          <li>Up to 10 tenants</li>
+          <li>Unlimited providers &amp; failover</li>
+          <li>Inbound parsing &amp; signed webhooks</li>
+          <li>90-day analytics retention</li>
+          <li>Email support, 1 business day</li>
+        </ul>
+      </article>
+
+      <article class="plan reveal">
+        <h3 class="plan__name">Scale</h3>
+        <p class="plan__desc">For platforms sending on behalf of their customers.</p>
+        <p class="plan__price">
+          <span class="plan__amt" data-monthly="$249" data-yearly="$199">$249</span><span class="plan__per">/ month</span>
+        </p>
+        <a class="btn btn--ghost btn--full" data-cta="trial" href="#start">Start free trial</a>
+        <ul class="plan__list">
+          <li>1,000,000 emails / month</li>
+          <li>Unlimited tenants</li>
+          <li>Dedicated sending IPs</li>
+          <li>Per-tenant retry patterns &amp; suppressions</li>
+          <li>1-year analytics retention</li>
+          <li>Priority support, 4-hour response</li>
+        </ul>
+      </article>
+
+      <article class="plan reveal">
+        <h3 class="plan__name">Enterprise</h3>
+        <p class="plan__desc">Private deployment with a contract behind it.</p>
+        <p class="plan__price"><span class="plan__amt">Custom</span><span class="plan__per">annual</span></p>
+        <a class="btn btn--ghost btn--full" data-cta="sales" href="#start">Talk to sales</a>
+        <ul class="plan__list">
+          <li>Single-tenant or on-premise install</li>
+          <li>SSO / SAML &amp; audit export</li>
+          <li>99.9% uptime SLA</li>
+          <li>Custom data residency</li>
+          <li>Named support engineer</li>
+        </ul>
+      </article>
+    </div>
+
+    <p class="plans__foot reveal">
+      All plans include the full feature set — RBAC, 2FA, the visual builder, suppression
+      lists and domain health. Volume above your plan is billed per thousand, never blocked.
+    </p>
+  </div>
+</section>
+
+<!-- ─────────────────────────  FAQ  ───────────────────────── -->
+<section class="section" id="faq">
+  <div class="shell shell--narrow">
+    <div class="section__head reveal">
+      <p class="kicker">FAQ</p>
+      <h2>Questions worth asking first</h2>
+    </div>
+
+    <div class="faq">
+      <details class="faq__item reveal" open>
+        <summary>Does Panmail replace my email provider?</summary>
+        <div class="faq__body"><p>No. Panmail sits in front of the providers you already use — SMTP, SendGrid, Mailgun, your own Postfix box — and gives your applications one interface to all of them. You keep your provider relationships and your sending reputation; Panmail manages what happens around them.</p></div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>What happens when a provider goes down?</summary>
+        <div class="faq__body"><p>Nothing your callers can see. Mail is written to a durable outbox before any send is attempted, so an accepted message survives a provider outage, a restart, or a deploy. Panmail fails over to the next configured provider, and anything classified as a temporary failure is retried on your tenant's backoff pattern.</p></div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>Can I run it on my own infrastructure?</summary>
+        <div class="faq__body"><p>Yes, and the self-hosted tier is free. Panmail ships as a single binary with the dashboard embedded, an unprivileged Docker image, and a worked Kubernetes StatefulSet — a StatefulSet rather than a Deployment because each replica needs its own local storage. It runs on PostgreSQL or SQLite and applies its own migrations.</p></div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>How is multi-tenancy actually isolated?</summary>
+        <div class="faq__body"><p>Tenancy is structural, not a filter someone might forget. Each tenant carries its own providers, templates, suppression lists and retry patterns, event data is keyed by tenant prefix, and every RPC passes through an enforcement interceptor rather than trusting the caller's claim. Provider selection is driven by the sending domain, so one tenant cannot send as another's domain.</p></div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>What can Panmail see of my provider credentials?</summary>
+        <div class="faq__body"><p>They're encrypted at rest with AES-256-GCM and redacted from every API response, including your own. They have to be decryptable to be used — anyone who tells you otherwise is describing a password hash, not a credential store. API keys are different: those are stored only as SHA-256 hashes and cannot be recovered by anyone, including us.</p></div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>Is there a real throughput number?</summary>
+        <div class="faq__body"><p>Panmail's own pipeline handles over a thousand messages per second with parallel workers and batched writes. Your ceiling, though, is almost always your provider's rate limit and connection concurrency — not the gateway. Benchmark against your own setup rather than trusting a headline figure, ours included.</p></div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>Which databases are supported?</summary>
+        <div class="faq__body"><p>PostgreSQL and SQLite, both with automatic migrations. MySQL and MariaDB are not supported — the query layer uses PostgreSQL-style positional parameters, so those drivers connect and then fail on every query. We'd rather say so here than have you find out in staging.</p></div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>Can I migrate off it later?</summary>
+        <div class="faq__body"><p>Your templates, suppression lists and delivery history export as open formats, and the self-hosted build is the same software as the managed one. Switching from cloud to your own hardware is a data import, not a rewrite.</p></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  CTA  ───────────────────────── -->
+<section class="cta" id="start">
+  <div class="cta__aurora" aria-hidden="true"><span class="blob blob--violet"></span><span class="blob blob--cyan"></span></div>
+  <div class="shell shell--narrow cta__inner">
+    <h2 class="reveal">Stop rebuilding the email layer.</h2>
+    <p class="reveal">
+      Start on the managed cloud with a 14-day trial, or download the self-hosted build
+      and have a gateway running before your coffee goes cold.
+    </p>
+
+    <!-- Replace action= with your form endpoint (see README). -->
+    <form class="signup reveal" id="signup" action="#" method="post" novalidate>
+      <label class="visually-hidden" for="email">Work email</label>
+      <input class="signup__input" id="email" name="email" type="email" required
+             autocomplete="email" placeholder="you@company.com" aria-describedby="signup-note">
+      <button class="btn btn--primary btn--lg" type="submit">Start free trial</button>
+    </form>
+    <p class="cta__note reveal" id="signup-note">14-day trial · No credit card · Cancel any time</p>
+
+    <p class="cta__alt reveal">
+      Prefer to self-host? <a data-cta="selfhost" href="https://github.com/gsoultan/panmail">Get it on GitHub</a>
+      · Want a walkthrough? <a data-cta="sales" href="#start">Book a demo</a>
+    </p>
+  </div>
+</section>
+</main>
+
+<!-- ─────────────────────────  FOOTER  ───────────────────────── -->
+<footer class="footer">
+  <div class="shell footer__grid">
+    <div class="footer__brand">
+      <a class="brand" href="#top" aria-label="Panmail home">
+        <img class="brand__mark" src="assets/img/logo.svg" alt="" width="26" height="25">
+        <span class="brand__word">Panmail</span>
+      </a>
+      <p>The email gateway for multi-tenant products. One API in front of every mail server.</p>
+      <a class="ghlink" href="https://github.com/gsoultan/panmail" rel="noopener">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.54-3.88-1.54-.53-1.34-1.29-1.7-1.29-1.7-1.06-.72.08-.7.08-.7 1.17.08 1.78 1.2 1.78 1.2 1.04 1.79 2.74 1.27 3.4.97.11-.76.41-1.28.75-1.57-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.69.42.36.8 1.08.8 2.18v3.23c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5Z"/></svg>
+        View source
+      </a>
+    </div>
+
+    <nav class="footer__col" aria-label="Product">
+      <h4>Product</h4>
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#deliverability">Deliverability</a>
+      <a href="#security">Security</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+
+    <nav class="footer__col" aria-label="Developers">
+      <h4>Developers</h4>
+      <a href="#docs">Quick start</a>
+      <a href="https://github.com/gsoultan/panmail#readme" rel="noopener">Documentation</a>
+      <a href="https://github.com/gsoultan/panmail#api-integration" rel="noopener">API reference</a>
+      <a href="https://github.com/gsoultan/panmail/issues" rel="noopener">Report an issue</a>
+    </nav>
+
+    <nav class="footer__col" aria-label="Company">
+      <h4>Company</h4>
+      <a href="#faq">FAQ</a>
+      <a data-cta="sales" href="#start">Contact sales</a>
+      <a href="https://github.com/gsoultan/panmail/blob/main/LICENSE" rel="noopener">License</a>
+    </nav>
+  </div>
+
+  <div class="shell footer__bar">
+    <p>© <span id="year">2026</span> Panmail. Released under the MIT License.</p>
+    <p class="footer__made">Built with Go and React.</p>
+  </div>
+</footer>
+
+<script src="assets/js/main.js" defer></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Container, Title, Button, Group, Stack, Box, Text, rem, ThemeIcon, ActionIcon, Loader, Center } from '@mantine/core';
+import { Container, Title, Group, Box, ThemeIcon, ActionIcon, Loader, Center } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconTemplate, IconArrowLeft } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

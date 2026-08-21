@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, Badge, Paper, TextInput, Select, ActionIcon, Button, Pagination } from '@mantine/core';
+import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, Badge, Paper, TextInput, Select, ActionIcon, Button } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { IconChartBar, IconMail, IconClick, IconEye, IconBan, IconAlertCircle, IconSend, IconCornerUpLeft, IconX, IconClock, IconSearch, IconFilter, IconCalendar, IconRotate, IconExternalLink, IconArchive, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
@@ -60,7 +60,7 @@ export const AnalyticsPage: React.FC = () => {
   const [detailOpened, { open: openDetail, close: closeDetail }] = useDisclosure(false);
   const navigate = useNavigate();
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['analyticsEvents', debouncedRecipient, debouncedSubject, eventType, dateRange, pageToken, pageSize],
     queryFn: () => analyticsService.listEvents(
       Number(pageSize),

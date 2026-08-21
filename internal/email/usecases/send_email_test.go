@@ -104,8 +104,16 @@ func (m *mockEventRepo) GetLatestMessageForRecipient(ctx context.Context, tenant
 	return nil, nil
 }
 
-func (m *mockEventRepo) TruncateBefore(ctx context.Context, before time.Time) error {
-	return nil
+func (m *mockEventRepo) TruncateBefore(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockEventRepo) TruncateMessagesBefore(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockEventRepo) PruneArchivesBefore(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
 }
 
 func (m *mockEventRepo) ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {

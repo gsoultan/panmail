@@ -189,13 +189,36 @@ func (x *UpdateSettingsResponse) GetSettings() *SystemSettings {
 	return nil
 }
 
+// SystemSettings holds the global, admin-editable configuration.
+//
+// Every *_retention_days field is a whole number of days, and zero always
+// means "keep forever" — a retention nobody has configured must never delete
+// anything. The UI says so on each field; do not add a field whose zero value
+// means something else.
 type SystemSettings struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	BaseUrl          string                 `protobuf:"bytes,1,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
 	LogRetentionDays int32                  `protobuf:"varint,2,opt,name=log_retention_days,json=logRetentionDays,proto3" json:"log_retention_days,omitempty"`
 	RetryPattern     []string               `protobuf:"bytes,3,rep,name=retry_pattern,json=retryPattern,proto3" json:"retry_pattern,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Message bodies and attachments, deleted outright rather than archived:
+	// an archive of the content is the content, so archiving it would defeat
+	// the retention it is meant to enforce.
+	MessageRetentionDays int32 `protobuf:"varint,4,opt,name=message_retention_days,json=messageRetentionDays,proto3" json:"message_retention_days,omitempty"`
+	// Permanently failed outbox rows. Only FAILED qualifies — pending,
+	// deferred and claimed rows are live work.
+	OutboxRetentionDays int32 `protobuf:"varint,5,opt,name=outbox_retention_days,json=outboxRetentionDays,proto3" json:"outbox_retention_days,omitempty"`
+	// Delivered and permanently failed webhook notifications.
+	WebhookRetentionDays int32 `protobuf:"varint,6,opt,name=webhook_retention_days,json=webhookRetentionDays,proto3" json:"webhook_retention_days,omitempty"`
+	// Application logs from the Pebble log store.
+	AppLogRetentionDays int32 `protobuf:"varint,7,opt,name=app_log_retention_days,json=appLogRetentionDays,proto3" json:"app_log_retention_days,omitempty"`
+	// Received mail. Deleting inbound mail destroys the only copy panmail
+	// holds, so this defaults to keeping it forever.
+	InboundRetentionDays int32 `protobuf:"varint,8,opt,name=inbound_retention_days,json=inboundRetentionDays,proto3" json:"inbound_retention_days,omitempty"`
+	// The JSONL archives written when delivery events expire. This is the
+	// escape hatch for log_retention_days, so it also defaults to forever.
+	ArchiveRetentionDays int32 `protobuf:"varint,9,opt,name=archive_retention_days,json=archiveRetentionDays,proto3" json:"archive_retention_days,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SystemSettings) Reset() {
@@ -249,6 +272,48 @@ func (x *SystemSettings) GetRetryPattern() []string {
 	return nil
 }
 
+func (x *SystemSettings) GetMessageRetentionDays() int32 {
+	if x != nil {
+		return x.MessageRetentionDays
+	}
+	return 0
+}
+
+func (x *SystemSettings) GetOutboxRetentionDays() int32 {
+	if x != nil {
+		return x.OutboxRetentionDays
+	}
+	return 0
+}
+
+func (x *SystemSettings) GetWebhookRetentionDays() int32 {
+	if x != nil {
+		return x.WebhookRetentionDays
+	}
+	return 0
+}
+
+func (x *SystemSettings) GetAppLogRetentionDays() int32 {
+	if x != nil {
+		return x.AppLogRetentionDays
+	}
+	return 0
+}
+
+func (x *SystemSettings) GetInboundRetentionDays() int32 {
+	if x != nil {
+		return x.InboundRetentionDays
+	}
+	return 0
+}
+
+func (x *SystemSettings) GetArchiveRetentionDays() int32 {
+	if x != nil {
+		return x.ArchiveRetentionDays
+	}
+	return 0
+}
+
 var File_panmail_v1_system_settings_proto protoreflect.FileDescriptor
 
 const file_panmail_v1_system_settings_proto_rawDesc = "" +
@@ -261,11 +326,17 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x15UpdateSettingsRequest\x126\n" +
 	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"P\n" +
 	"\x16UpdateSettingsResponse\x126\n" +
-	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"~\n" +
+	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"\xbf\x03\n" +
 	"\x0eSystemSettings\x12\x19\n" +
 	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12,\n" +
 	"\x12log_retention_days\x18\x02 \x01(\x05R\x10logRetentionDays\x12#\n" +
-	"\rretry_pattern\x18\x03 \x03(\tR\fretryPattern2\xc0\x01\n" +
+	"\rretry_pattern\x18\x03 \x03(\tR\fretryPattern\x124\n" +
+	"\x16message_retention_days\x18\x04 \x01(\x05R\x14messageRetentionDays\x122\n" +
+	"\x15outbox_retention_days\x18\x05 \x01(\x05R\x13outboxRetentionDays\x124\n" +
+	"\x16webhook_retention_days\x18\x06 \x01(\x05R\x14webhookRetentionDays\x123\n" +
+	"\x16app_log_retention_days\x18\a \x01(\x05R\x13appLogRetentionDays\x124\n" +
+	"\x16inbound_retention_days\x18\b \x01(\x05R\x14inboundRetentionDays\x124\n" +
+	"\x16archive_retention_days\x18\t \x01(\x05R\x14archiveRetentionDays2\xc0\x01\n" +
 	"\x15SystemSettingsService\x12N\n" +
 	"\vGetSettings\x12\x1e.panmail.v1.GetSettingsRequest\x1a\x1f.panmail.v1.GetSettingsResponse\x12W\n" +
 	"\x0eUpdateSettings\x12!.panmail.v1.UpdateSettingsRequest\x1a\".panmail.v1.UpdateSettingsResponseB\xa4\x01\n" +

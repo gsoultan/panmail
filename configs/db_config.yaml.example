@@ -12,7 +12,30 @@ auth:
 
 app:
   base_url: "http://localhost:8080"
-  log_retention_days: 14
+
+  # Marks the retention encoding below as the current one, in which a zero
+  # means "keep forever". Without it a zero is read as a pre-upgrade file that
+  # never configured retention at all, and the default applies instead — which
+  # is what every config written before per-class retention existed looks like.
+  # Anything panmail saves carries this; hand-written files should too.
+  retention_schema: 2
+
+  # Retention, in whole days, for every class of data panmail stores. Zero
+  # means keep forever, so a policy nobody has set never deletes anything.
+  # These are also editable in Settings, which applies a change immediately;
+  # the values below are what an unconfigured deployment enforces.
+  #
+  # Delivery events are archived to JSONL under archives/ before they are
+  # removed, so this bounds what analytics can query rather than destroying
+  # the record. Everything else is deleted outright.
+  log_retention_days: 14 # delivery events
+  message_retention_days: 0 # subjects, bodies and attachments as sent
+  archive_retention_days: 0 # the JSONL archives written above
+  outbox_retention_days: 0 # permanently failed sends
+  webhook_retention_days: 7 # delivered and failed notifications
+  app_log_retention_days: 0 # the gateway's own logs
+  inbound_retention_days: 0 # received mail, the only copy panmail holds
+
   retry_pattern:
     - 5m
     - 1h

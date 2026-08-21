@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,7 +39,11 @@ type DurableWorker struct {
 	interval  time.Duration
 	batchSize int
 	lease     time.Duration
-	retention time.Duration
+	// How long a finished notification is kept, in nanoseconds. Atomic
+	// because the retention worker rewrites it whenever an administrator
+	// saves the settings page, while this worker is reading it between
+	// batches.
+	retention atomic.Int64
 
 	// trigger wakes the loop when something is enqueued, so a notification
 	// does not wait out the poll interval before its first attempt.
@@ -66,17 +71,22 @@ const (
 )
 
 func NewDurableWorker(deliveries stores.DeliveryRepository, webhookUsecase usecases.WebhookUsecase) *DurableWorker {
-	return &DurableWorker{
+	w := &DurableWorker{
 		deliveries:     deliveries,
 		webhookUsecase: webhookUsecase,
 		client:         &http.Client{Timeout: defaultDeliveryTimeout},
 		interval:       defaultDeliveryInterval,
 		batchSize:      defaultDeliveryBatch,
 		lease:          defaultDeliveryLease,
-		retention:      defaultDeliveryRetention,
 		trigger:        make(chan struct{}, 1),
 	}
+	w.SetRetention(defaultDeliveryRetention)
+	return w
 }
+
+// SetRetention configures how long a finished notification is kept before it
+// is pruned. Zero disables pruning. Safe to call while the worker is running.
+func (w *DurableWorker) SetRetention(d time.Duration) { w.retention.Store(int64(d)) }
 
 // Enqueue records a notification for every subscription that wants this event.
 //
@@ -314,7 +324,8 @@ func (w *DurableWorker) save(ctx context.Context, d *entities.WebhookDelivery) {
 
 // pruneIfDue ages out notifications that have finished.
 func (w *DurableWorker) pruneIfDue(ctx context.Context) {
-	if w.retention <= 0 {
+	retention := time.Duration(w.retention.Load())
+	if retention <= 0 {
 		return
 	}
 	if !w.lastPrune.IsZero() && time.Since(w.lastPrune) < deliveryPrunePeriod {
@@ -325,7 +336,7 @@ func (w *DurableWorker) pruneIfDue(ctx context.Context) {
 	pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 
-	removed, err := w.deliveries.PruneTerminal(pruneCtx, time.Now().Add(-w.retention))
+	removed, err := w.deliveries.PruneTerminal(pruneCtx, time.Now().Add(-retention))
 	if err != nil {
 		slog.Warn("webhook: failed to prune finished notifications", "error", err)
 		return

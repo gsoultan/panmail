@@ -56,6 +56,7 @@ import (
 	migrator "github.com/gsoultan/panmail/internal/migrate"
 	"github.com/gsoultan/panmail/internal/observability"
 	"github.com/gsoultan/panmail/internal/ratelimit"
+	"github.com/gsoultan/panmail/internal/retention"
 	setupservices "github.com/gsoultan/panmail/internal/setup/services"
 	setupusecases "github.com/gsoultan/panmail/internal/setup/usecases"
 	suppressionstores "github.com/gsoultan/panmail/internal/suppression/repositories/stores/postgres"
@@ -336,9 +337,6 @@ func main() {
 	webhookUsecase := webhookusecases.NewWebhookUsecase(webhookRepo)
 	webhookService := webhookservices.NewWebhookService(webhookUsecase)
 
-	settingsUsecase := settingsusecases.NewSettingsUsecase()
-	settingsService := settingsservices.NewSettingsService(settingsUsecase)
-
 	// Background work runs under a context this process controls, so shutdown
 	// can stop the workers before the stores they write to are closed.
 	workerCtx, stopWorkers := context.WithCancel(context.Background())
@@ -355,15 +353,6 @@ func main() {
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
 	eventService := eventservices.NewEventService(processEventUsecase)
 	webhookHandler := eventhttp.NewWebhookHandler(processEventUsecase, providerRepo)
-
-	// Start background tasks
-	retentionDays := 14
-	if cfg != nil && cfg.App.LogRetentionDays > 0 {
-		retentionDays = cfg.App.LogRetentionDays
-	}
-	runWorker(&workers, workerCtx, "log-retention", func() {
-		processEventUsecase.StartCleanupTask(workerCtx, 24*time.Hour, retentionDays)
-	})
 
 	inboundUsecase := inboundusecases.NewInboundUsecase(inboundRepo, processEventUsecase, outboundWebhookWorker)
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
@@ -398,19 +387,24 @@ func main() {
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
 	queueWorker := emailusecases.NewQueueWorker(outboxRepo, sendEmailUsecase, manageSuppressionsUsecase, tenantUsecase, 5*time.Second)
-	// cfg is nil until setup has written a config file, and every other read
-	// of it in this function is guarded. This one was not, which on a first run
-	// dereferences nil at the one point where nothing has been configured yet.
-	if cfg != nil && cfg.App.OutboxRetentionDays > 0 {
-		days := cfg.App.OutboxRetentionDays
-		// Failures are the only outbox rows that accumulate, and each carries
-		// the whole serialised request. Without a cutoff this becomes the
-		// largest table in the database holding nothing anyone will read.
-		queueWorker.SetRetention(time.Duration(days) * 24 * time.Hour)
-		slog.Info("outbox retention configured", "days", days)
-	}
 	sendEmailUsecase.RegisterQueueWorker(queueWorker)
 	runWorker(&workers, workerCtx, "outbox-queue", func() { queueWorker.Start(workerCtx) })
+
+	// One worker owns every retention. It reads the configuration on each pass
+	// and hands the outbox and webhook queues their own cutoffs, so all seven
+	// policies come from the settings page and a change applies without a
+	// restart. Started last because it needs the workers it configures.
+	retentionWorker := retention.NewWorker(retention.Deps{
+		Events:   eventRepo,
+		Logs:     logStore,
+		Inbound:  inboundRepo,
+		Outbox:   queueWorker,
+		Webhooks: outboundWebhookWorker,
+	})
+	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })
+
+	settingsUsecase := settingsusecases.NewSettingsUsecase(retentionWorker)
+	settingsService := settingsservices.NewSettingsService(settingsUsecase)
 
 	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase, trackingSigner)
 
@@ -482,6 +476,26 @@ func main() {
 	if err := metrics.ObserveGauge("imap_idle_sessions", "Open IMAP IDLE connections",
 		func() int64 { return int64(idleSupervisor.Sessions()) }); err != nil {
 		slog.Error("failed to register idle metrics", "error", err)
+	}
+
+	// Retention is a background pass nobody watches, so the failure that costs
+	// an operator their disk is not a bad deletion — it is the pass quietly
+	// ceasing to happen. Before the first pass this measures from process
+	// start, so "has not run in 48 hours" also fires for a gateway where it
+	// never ran at all.
+	if err := metrics.ObserveGauge("retention_last_run_seconds", "Seconds since the last completed retention pass",
+		func() int64 { return int64(retentionWorker.SinceLastRun().Seconds()) }); err != nil {
+		slog.Error("failed to register retention metrics", "error", err)
+	}
+	if err := metrics.ObserveGauge("retention_removed_total", "Records deleted by retention since start",
+		func() int64 { return retentionWorker.Stats().Removed }); err != nil {
+		slog.Error("failed to register retention metrics", "error", err)
+	}
+	// Non-zero and rising means a store is refusing to be pruned, which ends
+	// as a full disk however correct the policy is.
+	if err := metrics.ObserveGauge("retention_failures_total", "Retention passes that failed on a store",
+		func() int64 { return retentionWorker.Stats().Failures }); err != nil {
+		slog.Error("failed to register retention metrics", "error", err)
 	}
 
 	// A worker that had to be restarted is a worker that stopped, and until it

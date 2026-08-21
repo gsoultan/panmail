@@ -1,19 +1,16 @@
+import type { MessageInitShape } from '@bufbuild/protobuf';
 import { providerClient, emailClient } from '../../../services/client';
-import { 
-  CreateEmailProviderRequest, 
-  UpdateEmailProviderRequest,
-} from '../../../api/panmail/v1/email_provider_service_pb';
-import {
-  SmtpConfig,
-  ImapConfig,
-  Pop3Config,
-  SendGridConfig,
-  SesConfig,
-  PostmarkConfig,
-  MailgunConfig,
-} from '../../../api/panmail/v1/email_provider_pb';
+import type { CreateEmailProviderRequestSchema } from '../../../api/panmail/v1/email_provider_service_pb';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
-import { SendEmailRequest } from '../../../api/panmail/v1/email_service_pb';
+
+/**
+ * The config oneof, as the request wants it.
+ *
+ * Typed from the schema rather than with bare `as const` strings, so a case
+ * name that does not exist on the oneof is a compile error. protobuf-es v2
+ * takes plain init objects, which is why nothing is constructed here any more.
+ */
+type ProviderConfig = MessageInitShape<typeof CreateEmailProviderRequestSchema>['config'];
 
 /**
  * Maps form values onto the request's config oneof.
@@ -23,22 +20,22 @@ import { SendEmailRequest } from '../../../api/panmail/v1/email_service_pb';
  * sent an undefined config from the third and stored an empty configuration
  * with no error. The backend had the identical duplication.
  */
-const configFor = (values: any) => {
+const configFor = (values: any): ProviderConfig => {
   switch (values.type) {
     case ProviderType.SMTP:
-      return { case: 'smtp' as const, value: new SmtpConfig(values.smtp) };
+      return { case: 'smtp', value: values.smtp ?? {} };
     case ProviderType.IMAP:
-      return { case: 'imap' as const, value: new ImapConfig(values.imap) };
+      return { case: 'imap', value: values.imap ?? {} };
     case ProviderType.POP3:
-      return { case: 'pop3' as const, value: new Pop3Config(values.pop3) };
+      return { case: 'pop3', value: values.pop3 ?? {} };
     case ProviderType.SENDGRID:
-      return { case: 'sendgrid' as const, value: new SendGridConfig(values.sendgrid) };
+      return { case: 'sendgrid', value: values.sendgrid ?? {} };
     case ProviderType.SES:
-      return { case: 'ses' as const, value: new SesConfig(values.ses) };
+      return { case: 'ses', value: values.ses ?? {} };
     case ProviderType.POSTMARK:
-      return { case: 'postmark' as const, value: new PostmarkConfig(values.postmark) };
+      return { case: 'postmark', value: values.postmark ?? {} };
     case ProviderType.MAILGUN:
-      return { case: 'mailgun' as const, value: new MailgunConfig(values.mailgun) };
+      return { case: 'mailgun', value: values.mailgun ?? {} };
     default:
       return undefined;
   }
@@ -51,24 +48,20 @@ export const emailProviderService = {
   },
 
   async createProvider(values: any) {
-    const req = new CreateEmailProviderRequest({
+    const res = await providerClient.createEmailProvider({
       name: values.name,
       type: values.type,
-  config: configFor(values)
+      config: configFor(values),
     });
-
-    const res = await providerClient.createEmailProvider(req);
     return res.provider;
   },
 
   async updateProvider(id: string, values: any) {
-    const req = new UpdateEmailProviderRequest({
+    const res = await providerClient.updateEmailProvider({
       id,
       name: values.name,
-  config: configFor(values)
+      config: configFor(values),
     });
-
-    const res = await providerClient.updateEmailProvider(req);
     return res.provider;
   },
 
@@ -81,13 +74,11 @@ export const emailProviderService = {
   },
 
   async testProviderConfig(values: any) {
-    const req = new CreateEmailProviderRequest({
+    return await providerClient.testEmailProviderConfig({
       name: values.name,
       type: values.type,
-  config: configFor(values)
+      config: configFor(values),
     });
-
-    return await providerClient.testEmailProviderConfig(req);
   },
 
   /**
@@ -107,7 +98,6 @@ export const emailProviderService = {
   },
 
   async sendEmail(values: any) {
-    const req = new SendEmailRequest(values);
-    return await emailClient.sendEmail(req);
+    return await emailClient.sendEmail(values);
   }
 };

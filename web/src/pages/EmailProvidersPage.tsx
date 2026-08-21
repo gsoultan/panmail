@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Button, Group, Stack, useComputedColorScheme, Modal, Box, Text, rem, ThemeIcon, Select, TextInput } from '@mantine/core';
+import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, Select, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconMail, IconPlus, IconChevronLeft, IconChevronRight, IconSearch, IconFilter } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -28,7 +28,7 @@ export const EmailProvidersPage: React.FC = () => {
     setHistory([]);
   }, [pageSize, nameSearch, typeFilter]);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['emailProviders', pageToken, pageSize, nameSearch, typeFilter],
     queryFn: () => emailProviderService.listProviders(
       Number(pageSize),

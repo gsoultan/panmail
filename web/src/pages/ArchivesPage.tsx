@@ -1,3 +1,4 @@
+import { timestampDate } from '@bufbuild/protobuf/wkt';
 import React, { useState, useEffect } from 'react';
 import { Container, Title, Text, Group, Stack, Box, Paper, rem, ThemeIcon, Table, Button, Badge, Select } from '@mantine/core';
 import { IconArchive, IconDownload, IconFileText, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
@@ -40,7 +41,10 @@ export const ArchivesPage: React.FC = () => {
   const handleDownload = async (id: string, filename: string) => {
     try {
       const res = await analyticsService.downloadArchive(id);
-      const blob = new Blob([res.content], { type: 'application/json' });
+      // Copied into a fresh ArrayBuffer: protobuf-es hands back a
+      // Uint8Array that may be backed by a SharedArrayBuffer, which is not
+      // a BlobPart.
+      const blob = new Blob([new Uint8Array(res.content)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -136,7 +140,7 @@ export const ArchivesPage: React.FC = () => {
                       </Group>
                     </Table.Td>
                     <Table.Td>
-                      <Text size="sm">{archive.createdAt?.toDate().toLocaleString()}</Text>
+                      <Text size="sm">{archive.createdAt && timestampDate(archive.createdAt).toLocaleString()}</Text>
                     </Table.Td>
                     <Table.Td>
                       <Badge variant="light" color="gray" radius="sm">

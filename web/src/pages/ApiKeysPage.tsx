@@ -39,7 +39,7 @@ export const ApiKeysPage: React.FC = () => {
     setHistory([]);
   }, [pageSize]);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['apiKeys', pageToken, pageSize],
     queryFn: () => apiKeyService.listApiKeys(Number(pageSize), pageToken),
   });

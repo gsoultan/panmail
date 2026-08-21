@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Button, Group, Stack, Box, Text, rem, ThemeIcon, Table, ActionIcon, Badge, useComputedColorScheme, Select } from '@mantine/core';
+import { Container, Title, Button, Group, Stack, Box, Text, rem, ThemeIcon, Table, ActionIcon, Badge, Select } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconTemplate, IconPlus, IconEdit, IconTrash, IconSend, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -24,7 +24,7 @@ export const TemplatesPage: React.FC = () => {
     setHistory([]);
   }, [pageSize]);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['templates', pageToken, pageSize],
     queryFn: () => templateService.listTemplates(Number(pageSize), pageToken),
   });
