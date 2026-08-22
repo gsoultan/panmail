@@ -20,6 +20,9 @@ concurrency:
 jobs:
   backend:
     name: backend
+    # Pinned to Linux: the postgres and greenmail service containers below are a
+    # Linux-only runner feature, so this job cannot move to a macOS self-hosted
+    # runner however convenient that would be.
     runs-on: ubuntu-latest
 
     services:
@@ -113,7 +116,7 @@ jobs:
 
   frontend:
     name: frontend
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -149,7 +152,7 @@ jobs:
     # mode — web/dist missing or misnamed passes both jobs above and breaks only
     # at tag time, which is the worst moment to find out.
     name: release build
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -180,6 +183,8 @@ jobs:
     # step, its own way to break. An image nobody builds is an image that is
     # broken the day someone needs it.
     name: container image
+    # Pinned to Linux: this builds a container image, which needs a Docker daemon
+    # the macOS self-hosted runner does not have.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -212,7 +217,7 @@ jobs:
     # UI keeps compiling against a field the server no longer sends, and the
     # first sign is a value arriving undefined at runtime.
     name: generated code is current
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
