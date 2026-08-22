@@ -18,6 +18,22 @@
 //
 //	PANMAIL_TEST_POSTGRES='postgres://user:pass@127.0.0.1:5432/db?sslmode=disable' go test ./...
 //
+// On macOS, run the server under Apple's container CLI the way scripts/dev.sh
+// does, and **publish it to loopback**:
+//
+//	container run -d --name pg -e POSTGRES_USER=u -e POSTGRES_PASSWORD=p \
+//	  -e POSTGRES_DB=d -p 15432:5432 docker.io/library/postgres:16-alpine
+//	container exec pg pg_isready -U u -d d   # the port opens before the db does
+//
+// Pointing the DSN at the container's own 192.168.64.x address instead looks
+// like it should work — nc reaches it — but every test fails with
+//
+//	dial tcp 192.168.64.x:5432: connect: no route to host
+//
+// because macOS grants local network access to system tools and withholds it
+// from a freshly compiled test binary. It reads as a broken container and is
+// not one. Loopback avoids the permission entirely.
+//
 // Each test gets its own schema rather than its own database — creating a
 // database per test is slow enough to discourage running the matrix at all,
 // and a schema gives the same isolation.
