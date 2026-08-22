@@ -32,12 +32,18 @@ GM_IMAGE="${PANMAIL_CI_GM_IMAGE:-docker.io/greenmail/standalone:2.1.0}"
 PG_NAME=panmail-ci-postgres
 GM_NAME=panmail-ci-greenmail
 
-# Host ports. The defaults are what the test lanes expect on a clean CI runner;
-# override them on a developer machine already running something on 5432, which
-# is common enough that hardcoding it makes the script useless locally.
-PG_PORT="${PANMAIL_CI_PG_PORT:-5432}"
-IMAP_PORT="${PANMAIL_CI_IMAP_PORT:-3143}"
-SMTP_PORT="${PANMAIL_CI_SMTP_PORT:-3025}"
+# Host ports are chosen at run time, not fixed.
+#
+# A self-hosted runner shares the machine with whatever else it is doing: this
+# one already has another project's postgres on 5432, so a hardcoded port makes
+# the job fail with "Address already in use" and nothing to do with the code.
+# Set PANMAIL_CI_*_PORT to pin one.
+free_port() {
+	python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'
+}
+PG_PORT="${PANMAIL_CI_PG_PORT:-$(free_port)}"
+IMAP_PORT="${PANMAIL_CI_IMAP_PORT:-$(free_port)}"
+SMTP_PORT="${PANMAIL_CI_SMTP_PORT:-$(free_port)}"
 
 up() {
 	down >/dev/null 2>&1 || true
@@ -77,6 +83,21 @@ up() {
 			exec 3>&- 2>/dev/null || true
 			echo "services ready via $CLI"
 			echo "  postgres 127.0.0.1:${PG_PORT}  imap 127.0.0.1:${IMAP_PORT}  smtp 127.0.0.1:${SMTP_PORT}"
+
+			# Hand the addresses to the steps that follow. Under Actions that
+			# is $GITHUB_ENV; run by hand it is a line you can eval.
+			local dsn="postgres://panmail:panmail_test@127.0.0.1:${PG_PORT}/panmail_test?sslmode=disable"
+			if [ -n "${GITHUB_ENV:-}" ]; then
+				{
+					echo "PANMAIL_TEST_POSTGRES=${dsn}"
+					echo "PANMAIL_TEST_IMAP=127.0.0.1:${IMAP_PORT}"
+					echo "PANMAIL_TEST_SMTP=127.0.0.1:${SMTP_PORT}"
+				} >> "$GITHUB_ENV"
+			else
+				echo "export PANMAIL_TEST_POSTGRES='${dsn}'"
+				echo "export PANMAIL_TEST_IMAP=127.0.0.1:${IMAP_PORT}"
+				echo "export PANMAIL_TEST_SMTP=127.0.0.1:${SMTP_PORT}"
+			fi
 			return 0
 		fi
 		sleep 2

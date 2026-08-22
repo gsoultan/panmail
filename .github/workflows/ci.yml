@@ -57,17 +57,14 @@ jobs:
       # claim appeared safe without the row locks PostgreSQL needs, and it
       # validates neither UUID columns nor JSON ones, so values that PostgreSQL
       # rejects outright were stored happily.
+      # PANMAIL_TEST_POSTGRES comes from the Start services step, which picks a
+      # free port rather than assuming 5432 is available on a shared runner.
       - name: Test against PostgreSQL
-        env:
-          PANMAIL_TEST_POSTGRES: postgres://panmail:panmail_test@127.0.0.1:5432/panmail_test?sslmode=disable
         run: go test ./...
 
       # Skipped entirely when these are unset, so this is the only place the
       # IDLE integration tests actually run.
       - name: Test IMAP IDLE against a real server
-        env:
-          PANMAIL_TEST_IMAP: 127.0.0.1:3143
-          PANMAIL_TEST_SMTP: 127.0.0.1:3025
         run: go test ./internal/inbound/... -count=1
 
       - name: Check formatting
