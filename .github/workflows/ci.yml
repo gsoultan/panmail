@@ -20,42 +20,18 @@ concurrency:
 jobs:
   backend:
     name: backend
-    # Pinned to Linux: the postgres and greenmail service containers below are a
-    # Linux-only runner feature, so this job cannot move to a macOS self-hosted
-    # runner however convenient that would be.
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: panmail
-          POSTGRES_PASSWORD: panmail_test
-          POSTGRES_DB: panmail_test
-        ports:
-          - 5432:5432
-        # Without a health check the tests start before the server accepts
-        # connections and fail for a reason that has nothing to do with them.
-        options: >-
-          --health-cmd "pg_isready -U panmail -d panmail_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-      # A real IMAP server, because IDLE cannot be judged from a fake. Whether
-      # the server pushes an unsolicited EXISTS, whether the client notices,
-      # and what happens when the connection dies are properties of the
-      # protocol and the two implementations, not of our code.
-      imap:
-        image: greenmail/standalone:2.1.0
-        env:
-          GREENMAIL_OPTS: -Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
-        ports:
-          - 3143:3143
-          - 3025:3025
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
 
     steps:
       - uses: actions/checkout@v4
+
+      # Postgres and a real IMAP server, started by a script rather than by a
+      # `services:` block. That key is implemented by the runner shelling out
+      # to Docker and only works on Linux runners, which pinned this whole job
+      # to a Linux box. The script picks Apple's `container` or docker,
+      # whichever exists, so the job runs on a self-hosted mac too.
+      - name: Start services
+        run: scripts/ci/services.sh up
 
       - uses: actions/setup-go@v5
         with:
@@ -113,6 +89,10 @@ jobs:
       # path that exists and not a line in a dependency tree.
       - name: Check for known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+      - name: Stop services
+        if: always()
+        run: scripts/ci/services.sh down
 
   frontend:
     name: frontend
@@ -183,8 +163,12 @@ jobs:
     # step, its own way to break. An image nobody builds is an image that is
     # broken the day someone needs it.
     name: container image
-    # Pinned to Linux: this builds a container image, which needs a Docker daemon
-    # the macOS self-hosted runner does not have.
+    # Pinned to Linux, but not for the reason you would guess: Apple's
+    # `container` builds images perfectly well. The arm64 variant of
+    # golang:1.26-alpine currently ships go1.26.5 while go.mod requires
+    # 1.26.6, so a native build on an arm mac fails on `go mod download`
+    # while amd64 (go1.26.7) is fine. Building --arch amd64 works but runs
+    # emulated and slowly. Left on Linux until the arm64 tag catches up.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
