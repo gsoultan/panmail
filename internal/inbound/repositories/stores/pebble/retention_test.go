@@ -131,3 +131,69 @@ func TestTruncateBeforeRefusesAZeroCutoff(t *testing.T) {
 		t.Error("mail was deleted despite the prune refusing")
 	}
 }
+
+// Inbound retention scans every tenant's mail in one pass. Deleting across a
+// tenant boundary here destroys the only copy panmail holds of somebody's
+// mail, so the boundary is worth an explicit test rather than an assumption.
+func TestPruningOneTenantsMailLeavesAnothersAlone(t *testing.T) {
+	const otherTenant = "tenant-b"
+
+	s := newTestStore(t)
+
+	old := inbound("a-old", 48*time.Hour)
+	write(t, s, old)
+
+	fresh := inbound("b-fresh", time.Hour)
+	fresh.TenantID = otherTenant
+	if err := s.Write(t.Context(), fresh); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	for range 100 {
+		if got, _ := s.GetByID(t.Context(), otherTenant, "b-fresh"); got != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// A second tenant's mail is also older than the cutoff: age decides, and
+	// it must be expired on its own merits, not spared or swept by whose it is.
+	otherOld := inbound("b-old", 48*time.Hour)
+	otherOld.TenantID = otherTenant
+	if err := s.Write(t.Context(), otherOld); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	for range 100 {
+		if got, _ := s.GetByID(t.Context(), otherTenant, "b-old"); got != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	removed, err := s.TruncateBefore(t.Context(), time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("TruncateBefore: %v", err)
+	}
+	if removed != 2 {
+		t.Errorf("removed = %d; want both tenants' expired mail", removed)
+	}
+
+	if got, _ := s.GetByID(t.Context(), otherTenant, "b-fresh"); got == nil {
+		t.Error("a second tenant's fresh mail was deleted")
+	}
+	if got, _ := s.GetByID(t.Context(), testTenant, "a-old"); got != nil {
+		t.Error("expired mail survived")
+	}
+
+	// The per-tenant listing must reflect it: the surviving tenant sees only
+	// its own message, and the pruned tenant sees none.
+	list, _, err := s.List(t.Context(), otherTenant, 10, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != "b-fresh" {
+		t.Errorf("second tenant's list = %v; want only its fresh message", list)
+	}
+	if list, _, _ := s.List(t.Context(), testTenant, 10, ""); len(list) != 0 {
+		t.Errorf("first tenant's list = %v; want empty after its only mail expired", list)
+	}
+}

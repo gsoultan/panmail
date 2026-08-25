@@ -3,6 +3,7 @@ package pebble
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -343,5 +344,135 @@ func TestPruneRefusesAZeroCutoff(t *testing.T) {
 	// The store still has its data.
 	if got, _ := s.GetMessage(t.Context(), retentionTenant, "m1"); got == nil {
 		t.Error("the message was deleted despite every prune refusing")
+	}
+}
+
+// Retention scans every tenant's keys in one pass, and nothing in the earlier
+// tests exercises more than one tenant. These do.
+//
+// The property under test is the one the archive code states in its own
+// comment: a shared archive file would let anyone who can download an archive
+// read every other tenant's mail history. That is a security boundary, and it
+// had no coverage.
+const otherTenant = "tenant-b"
+
+func eventFor(tenant, id string, age time.Duration) *entities.EmailEvent {
+	return &entities.EmailEvent{
+		ID:        id,
+		TenantID:  tenant,
+		MessageID: "msg-" + id,
+		Recipient: id + "@example.org",
+		Subject:   "subject " + id,
+		Type:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED,
+		Timestamp: time.Now().Add(-age),
+	}
+}
+
+func writeEventFor(t *testing.T, s stores.EventRepository, tenant string, e *entities.EmailEvent) {
+	t.Helper()
+
+	if err := s.Write(t.Context(), e); err != nil {
+		t.Fatalf("write event %s: %v", e.ID, err)
+	}
+	for range 100 {
+		if got, _ := s.GetByID(t.Context(), tenant, e.ID); got != nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("event %s never became readable", e.ID)
+}
+
+func TestExpiredEventsAreArchivedPerTenant(t *testing.T) {
+	s := newRetentionStore(t)
+	root := inArchiveDir(t)
+
+	writeEventFor(t, s, retentionTenant, eventFor(retentionTenant, "a-old", 48*time.Hour))
+	writeEventFor(t, s, otherTenant, eventFor(otherTenant, "b-old", 48*time.Hour))
+
+	if _, err := s.TruncateBefore(t.Context(), time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("TruncateBefore: %v", err)
+	}
+
+	// Each tenant's history lands under its own directory, and reading one
+	// must not reveal the other's recipients or subjects.
+	for _, tc := range []struct{ tenant, mine, theirs string }{
+		{retentionTenant, "a-old", "b-old"},
+		{otherTenant, "b-old", "a-old"},
+	} {
+		t.Run(tc.tenant, func(t *testing.T) {
+			archives, _, err := s.ListArchives(t.Context(), tc.tenant, 10, "")
+			if err != nil {
+				t.Fatalf("ListArchives: %v", err)
+			}
+			if len(archives) != 1 {
+				t.Fatalf("archives = %d; want 1 for %s", len(archives), tc.tenant)
+			}
+
+			body, err := os.ReadFile(filepath.Join(root, tc.tenant, archives[0].Filename))
+			if err != nil {
+				t.Fatalf("read archive: %v", err)
+			}
+			if !strings.Contains(string(body), tc.mine) {
+				t.Errorf("%s's archive does not contain its own event %s", tc.tenant, tc.mine)
+			}
+			if strings.Contains(string(body), tc.theirs) {
+				t.Errorf("%s's archive contains another tenant's event %s", tc.tenant, tc.theirs)
+			}
+		})
+	}
+}
+
+func TestPruningOneTenantLeavesAnotherAlone(t *testing.T) {
+	s := newRetentionStore(t)
+	inArchiveDir(t)
+
+	// Same cutoff, different ages: retention is a global policy, so what
+	// decides survival is age, never which tenant the row belongs to.
+	writeEventFor(t, s, retentionTenant, eventFor(retentionTenant, "a-old", 48*time.Hour))
+	writeEventFor(t, s, otherTenant, eventFor(otherTenant, "b-fresh", time.Hour))
+
+	writeMessage(t, s, message("a-old-msg", 48*time.Hour))
+	fresh := message("b-fresh-msg", time.Hour)
+	fresh.TenantID = otherTenant
+	fresh.To = []string{"shared@example.org"}
+	if err := s.WriteMessage(t.Context(), fresh); err != nil {
+		t.Fatalf("write message: %v", err)
+	}
+	for range 100 {
+		if got, _ := s.GetMessage(t.Context(), otherTenant, "b-fresh-msg"); got != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if _, err := s.TruncateBefore(t.Context(), time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("TruncateBefore: %v", err)
+	}
+	if _, err := s.TruncateMessagesBefore(t.Context(), time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("TruncateMessagesBefore: %v", err)
+	}
+
+	if got, _ := s.GetByID(t.Context(), otherTenant, "b-fresh"); got == nil {
+		t.Error("a second tenant's fresh event was removed by another tenant's expiry")
+	}
+	if got, _ := s.GetMessage(t.Context(), otherTenant, "b-fresh-msg"); got == nil {
+		t.Error("a second tenant's fresh message body was removed")
+	}
+	if got, _ := s.GetByID(t.Context(), retentionTenant, "a-old"); got != nil {
+		t.Error("the expired event survived")
+	}
+	if got, _ := s.GetMessage(t.Context(), retentionTenant, "a-old-msg"); got != nil {
+		t.Error("the expired message body survived")
+	}
+
+	// The recipient index is per tenant. Pruning one tenant's message must not
+	// strand or remove the other's lookup.
+	got, err := s.GetLatestMessageForRecipient(t.Context(), otherTenant, "shared@example.org")
+	if err != nil {
+		t.Fatalf("GetLatestMessageForRecipient: %v", err)
+	}
+	if got == nil || got.ID != "b-fresh-msg" {
+		t.Errorf("second tenant's recipient lookup = %v; want its own fresh message", got)
 	}
 }
