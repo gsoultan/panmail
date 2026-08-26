@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/gsoultan/panmail/internal/inbound/repositories/entities"
 	"github.com/gsoultan/panmail/internal/inbound/repositories/stores"
+	"github.com/gsoultan/panmail/pkg/pebbleopt"
 )
 
 type store struct {
@@ -22,7 +23,7 @@ type store struct {
 
 func NewStore(dir string) (stores.InboundRepository, error) {
 	opts := &pebble.Options{
-		MemTableSize:                64 << 20, // 64MB
+		MemTableSize:                pebbleopt.MemTableSize(),
 		MemTableStopWritesThreshold: 4,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       24,

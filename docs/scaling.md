@@ -320,9 +320,47 @@ that run the settled total was 256 MiB, of which 246 MiB was WAL holding 9.8 MiB
 of live data.
 
 So: **size the disk for the WAL high-water mark, not for the retained data.**
-Retention returns the live data and nothing else. If the floor is too high for
-your disk, the lever is Pebble's `MemTableSize` in the store options, not a
-retention setting.
+Retention returns the live data and nothing else.
+
+#### The lever, with numbers
+
+`PANMAIL_PEBBLE_MEMTABLE_MB` sets the memtable size for all three Pebble stores
+and defaults to 64, which is what panmail has always used. The memtable decides
+how much sits unflushed in a WAL, so it decides the floor.
+
+`go test -tags soak -run TestMemTableTradeoff -v
+./internal/event/repositories/stores/pebble/` measures both directions. Writing
+40,000 messages with 8 KiB bodies, median of three runs on a laptop:
+
+| `MEMTABLE_MB` | writes/s | total on disk | live data | WAL floor |
+| ---: | ---: | ---: | ---: | ---: |
+| 64 (default) | 39,700 | 246 MiB | 26.4 MiB | 219 MiB |
+| 32 | 39,500 | 114 MiB | 26.4 MiB | 88 MiB |
+| **16** | **35,700** | **~65 MiB** | 26.4 MiB | ~39 MiB |
+| 8 | 20,800 | ~28 MiB | 26.4 MiB | ~2 MiB |
+| 4 | 20,800 | 26.4 MiB | 26.4 MiB | 0 MiB |
+
+Live data is 26.4 MiB at every size, which is the point: everything above it is
+overhead that no retention setting can touch.
+
+**The throughput column is a red herring, and that is the finding.** Even the
+slowest row writes 20,800 messages a second. Admission peaks near 3,000/s and
+sustained delivery is 193/s, so the store is two orders of magnitude faster than
+anything upstream of it can feed. Halving a number nothing was waiting on costs
+nothing real.
+
+**Recommended: 16.** Roughly a quarter of the disk for a throughput reduction
+panmail cannot use. Go to 8 if disk is what is scarce — the floor essentially
+disappears and the footprint becomes the data. Stay at 64 only if you have
+measured your own workload and found the write path to be the constraint, which
+these numbers say it is not.
+
+```
+PANMAIL_PEBBLE_MEMTABLE_MB=16
+```
+
+Values are clamped to 1..512, and an unreadable one falls back to the default
+with a warning rather than refusing to start.
 
 **Do not alert on RSS.** Go returns freed memory to the OS lazily, so RSS
 climbs under load and comes back later. Measured over a 16-minute run of 57,500
