@@ -476,3 +476,45 @@ func TestPruningOneTenantLeavesAnotherAlone(t *testing.T) {
 		t.Errorf("second tenant's recipient lookup = %v; want its own fresh message", got)
 	}
 }
+
+// The archive prune walks a directory and deletes from it, which is the shape
+// of bug where a symlink turns "tidy up old archives" into "delete something
+// else entirely". The behaviour it relies on -- os.ReadDir reporting a symlink
+// as not-a-directory, and os.Remove unlinking the symlink rather than its
+// target -- is correct but not obvious, so it is pinned here rather than
+// assumed by the next person to touch this loop.
+func TestPruneArchivesDoesNotFollowSymlinks(t *testing.T) {
+	s := newRetentionStore(t)
+	root := inArchiveDir(t)
+
+	// Something outside the archive root that must survive.
+	outside := t.TempDir()
+	precious := filepath.Join(outside, "precious.jsonl")
+	writeArchiveFile(t, precious, time.Now().Add(-48*time.Hour))
+
+	tenantDir := filepath.Join(root, retentionTenant)
+	if err := os.MkdirAll(tenantDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// A symlink that looks exactly like an expired archive.
+	link := filepath.Join(tenantDir, "archive_20260101_000000.jsonl")
+	if err := os.Symlink(precious, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	// And a symlinked directory posing as another tenant.
+	linkedDir := filepath.Join(root, "tenant-elsewhere")
+	if err := os.Symlink(outside, linkedDir); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := s.PruneArchivesBefore(t.Context(), time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("PruneArchivesBefore: %v", err)
+	}
+
+	// The file the symlinks point at is outside the archive root and is not
+	// the prune's to touch, however old it is.
+	if _, err := os.Stat(precious); err != nil {
+		t.Errorf("a file outside the archive root was deleted through a symlink: %v", err)
+	}
+}
