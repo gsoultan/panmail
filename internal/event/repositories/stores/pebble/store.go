@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/gsoultan/panmail/internal/event/repositories/entities"
 	"github.com/gsoultan/panmail/internal/event/repositories/stores"
+	"github.com/gsoultan/panmail/pkg/pebbleopt"
 )
 
 type store struct {
@@ -48,7 +49,7 @@ func NewStore(dir string) (stores.EventRepository, error) {
 				return &counterValueMerger{sum: decodeUint64(value)}, nil
 			},
 		},
-		MemTableSize:                64 << 20, // 64MB
+		MemTableSize:                pebbleopt.MemTableSize(),
 		MemTableStopWritesThreshold: 4,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       24,

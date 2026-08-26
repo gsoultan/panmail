@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/google/uuid"
+	"github.com/gsoultan/panmail/pkg/pebbleopt"
 )
 
 type LogEntry struct {
@@ -44,7 +45,7 @@ type pebbleStore struct {
 
 func NewPebbleStore(dir string) (Store, error) {
 	opts := &pebble.Options{
-		MemTableSize:                64 << 20, // 64MB
+		MemTableSize:                pebbleopt.MemTableSize(),
 		MemTableStopWritesThreshold: 4,
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       24,
