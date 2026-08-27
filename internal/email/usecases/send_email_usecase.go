@@ -154,18 +154,11 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	if _, err := gsmail.ParseEmailAddress(req.From); err != nil {
 		return nil, fmt.Errorf("invalid from address %q: %w", req.From, err)
 	}
-	for _, list := range [][]string{req.To, req.Cc, req.Bcc} {
-		for _, addr := range list {
-			// Checked separately: an empty entry is a caller building the list
-			// wrongly rather than a malformed address, and the parser does not
-			// treat it as an error.
-			if strings.TrimSpace(addr) == "" {
-				return nil, fmt.Errorf("recipient list contains an empty address")
-			}
-			if _, err := gsmail.ParseEmailAddress(addr); err != nil {
-				return nil, fmt.Errorf("invalid recipient %q: %w", addr, err)
-			}
-		}
+	// Validated, de-duplicated and normalised in one pass, because parsing an
+	// address allocates and this used to do it twice for every recipient.
+	recipients, err := resolveRecipients(req.To, req.Cc, req.Bcc)
+	if err != nil {
+		return nil, err
 	}
 
 	// Same reasoning as the provider check below, for the same reason: a
@@ -230,8 +223,6 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, fmt.Errorf("invalid from address: %s", req.From)
 	}
 
-	allRecipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
-
 	// Check suppressions for every recipient, in one round trip.
 	//
 	// This was a query per recipient, which made a hundred-recipient send cost
@@ -239,21 +230,14 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	// dominant cost of admitting a large message. The check is unchanged:
 	// every address is still looked up, still scoped to the tenant, and the
 	// first suppressed recipient still refuses the whole message.
-	// Normalised once and kept: NormalizeAddress parses the address, so doing
-	// it again in the loop below would pay that cost twice per recipient.
-	normalised := make([]string, len(allRecipients))
-	for i, recipient := range allRecipients {
-		normalised[i] = gsmail.NormalizeAddress(recipient)
-	}
-
-	suppressed, err := u.suppressionsFor(ctx, tenantID, normalised)
+	suppressed, err := u.suppressionsFor(ctx, tenantID, recipients.normalised)
 	if err != nil {
 		slog.Error("failed to check suppression", "error", err, "id", messageID)
 		return nil, err
 	}
 
-	for i, recipient := range allRecipients {
-		if reason, ok := suppressed[normalised[i]]; ok {
+	for i, recipient := range recipients.addresses {
+		if reason, ok := suppressed[recipients.normalised[i]]; ok {
 			_ = u.RecordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, "", reason, nil)
 			return nil, fmt.Errorf("recipient %s is suppressed: %s", recipient, reason)
 		}

@@ -133,3 +133,29 @@ func BenchmarkSendEmailAdmission(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkSendEmailAdmissionCPU measures the same path with no simulated
+// round trip, so a CPU profile taken over it shows the work admission actually
+// does rather than the time it spends waiting for a database.
+//
+// Run it with:
+//
+//	go test -run '^$' -bench AdmissionCPU -cpuprofile cpu.prof ./internal/email/usecases/
+func BenchmarkSendEmailAdmissionCPU(b *testing.B) {
+	for _, recipients := range []int{1, 100} {
+		b.Run(fmt.Sprintf("recipients=%d", recipients), func(b *testing.B) {
+			quietLogs(b)
+			usecase := benchUsecase(&countingSuppressionRepo{})
+			req := benchRequest(benchRecipients(recipients))
+			ctx := context.Background()
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := usecase.SendEmail(ctx, testTenantID, req); err != nil {
+					b.Fatalf("SendEmail: %v", err)
+				}
+			}
+		})
+	}
+}
