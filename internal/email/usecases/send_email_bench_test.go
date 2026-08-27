@@ -159,3 +159,53 @@ func BenchmarkSendEmailAdmissionCPU(b *testing.B) {
 		})
 	}
 }
+
+// TestAdmissionStaysWithinItsAllocationBudget is the guard on the work above.
+//
+// Allocation was the largest CPU cost on this path — parsing addresses alone
+// was 76% of it — and the two fixes that brought it down, parsing each address
+// once and looking suppressions up in one query, are both the kind of thing a
+// later change reintroduces without noticing. A benchmark would not catch that
+// because nothing runs benchmarks; this runs with the suite.
+//
+// The budget is deliberately loose. It exists to catch a change that puts the
+// per-recipient work back, which would roughly double the count, not to police
+// a few allocations either way.
+func TestAdmissionStaysWithinItsAllocationBudget(t *testing.T) {
+	testCases := []struct {
+		name       string
+		recipients int
+		budget     float64
+	}{
+		// 40 today.
+		{name: "one recipient", recipients: 1, budget: 60},
+		// 741 today. Reintroducing a parse or a query per recipient would put
+		// this well past the budget.
+		{name: "a hundred recipients", recipients: 100, budget: 1000},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+
+			usecase := benchUsecase(&countingSuppressionRepo{})
+			req := benchRequest(benchRecipients(tc.recipients))
+			ctx := context.Background()
+
+			got := testing.AllocsPerRun(50, func() {
+				if _, err := usecase.SendEmail(ctx, testTenantID, req); err != nil {
+					t.Fatalf("SendEmail() error = %v", err)
+				}
+			})
+
+			if got > tc.budget {
+				t.Errorf(
+					"admission allocated %.0f times for %d recipients, over the budget of %.0f",
+					got, tc.recipients, tc.budget,
+				)
+			}
+		})
+	}
+}
