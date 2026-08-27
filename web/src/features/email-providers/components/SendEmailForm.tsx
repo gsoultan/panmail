@@ -3,6 +3,8 @@ import { TextInput, Textarea, TagsInput, Button, Stack, Group, Select, Text, Jso
 import { settingsService } from '../../../services/settings';
 import { describeConnection } from '../../settings/components/smtpConnection';
 import { buildSmtpSnippet } from '../../settings/components/smtpSnippet';
+import { goApiSnippet, phpApiSnippet, javaApiSnippet } from '../../settings/components/snippets/api';
+import { goSmtpSnippet, phpSmtpSnippet, javaSmtpSnippet } from '../../settings/components/snippets/smtp';
 import { useAdaptedForm } from '../../../lib/form/useAdaptedForm';
 import { useQuery } from '@tanstack/react-query';
 import { templateService } from '../../templates/services/template';
@@ -25,6 +27,35 @@ import {
 } from '@tabler/icons-react';
 import { create, toJson } from '@bufbuild/protobuf';
 import { AttachmentSchema } from '../../../api/panmail/v1/common_pb';
+
+// One generated snippet, with the copy button that is the only reason anyone
+// opens these tabs.
+const SnippetBlock: React.FC<{ label: string; code: string }> = ({ label, code }) => (
+  <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
+    <Stack gap="xs">
+      <Group justify="space-between">
+        <Group gap="xs">
+          <ThemeIcon variant="light" color="brand" size="md">
+            <IconCode size={16} />
+          </ThemeIcon>
+          <Text fw={700} size="sm">{label}</Text>
+        </Group>
+        <CopyButton value={code}>
+          {({ copied, copy }) => (
+            <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy} aria-label={`Copy ${label} snippet`}>
+              {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+            </ActionIcon>
+          )}
+        </CopyButton>
+      </Group>
+      <ScrollArea h={rem(360)}>
+        <Code block style={{ whiteSpace: 'pre', fontSize: rem(11) }}>
+          {code}
+        </Code>
+      </ScrollArea>
+    </Stack>
+  </Paper>
+);
 
 interface SendEmailFormProps {
   onSubmit: (values: any) => void;
@@ -274,6 +305,20 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
 
   const smtpConnection = describeConnection(smtpSubmission, systemSettings?.baseUrl);
   const smtpSnippet = buildSmtpSnippet(form.values, smtpConnection);
+
+  // Generated from the same form values as the cURL and swaks commands, so
+  // every tab describes one message rather than several slightly different ones.
+  const apiOrigin = window.location.origin;
+  const apiSnippets = {
+    go: goApiSnippet(form.values, apiOrigin),
+    php: phpApiSnippet(form.values, apiOrigin),
+    java: javaApiSnippet(form.values, apiOrigin),
+  };
+  const smtpSnippets = {
+    go: goSmtpSnippet(form.values, smtpConnection),
+    php: phpSmtpSnippet(form.values, smtpConnection),
+    java: javaSmtpSnippet(form.values, smtpConnection),
+  };
 
   const curlCommand = `curl -X POST "${window.location.origin}/panmail.v1.EmailService/SendEmail" \\
   -H "Content-Type: application/json" \\
@@ -540,6 +585,16 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
 
         <Tabs.Panel value="api">
           <Stack gap="md">
+            <Tabs defaultValue="curl" variant="outline" radius="md">
+              <Tabs.List mb="md">
+                <Tabs.Tab value="curl" leftSection={<IconCode size={14} />}>cURL</Tabs.Tab>
+                <Tabs.Tab value="go" leftSection={<IconCode size={14} />}>Go</Tabs.Tab>
+                <Tabs.Tab value="php" leftSection={<IconCode size={14} />}>PHP</Tabs.Tab>
+                <Tabs.Tab value="java" leftSection={<IconCode size={14} />}>Java</Tabs.Tab>
+              </Tabs.List>
+
+              <Tabs.Panel value="curl">
+                <Stack gap="md">
             <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
               <Stack gap="xs">
                 <Group justify="space-between">
@@ -590,6 +645,20 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
               </Stack>
             </Paper>
 
+                </Stack>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="go">
+                <SnippetBlock label="Go" code={apiSnippets.go} />
+              </Tabs.Panel>
+              <Tabs.Panel value="php">
+                <SnippetBlock label="PHP" code={apiSnippets.php} />
+              </Tabs.Panel>
+              <Tabs.Panel value="java">
+                <SnippetBlock label="Java" code={apiSnippets.java} />
+              </Tabs.Panel>
+            </Tabs>
+
             <Alert icon={<IconInfoCircle size={16} />} color="blue" radius="md">
               <Text size="xs">
                 Make sure to replace <code>YOUR_API_KEY</code> with a valid API key generated in the <b>API Keys</b> section.
@@ -634,6 +703,16 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
               </Paper>
             )}
 
+            <Tabs defaultValue="swaks" variant="outline" radius="md">
+              <Tabs.List mb="md">
+                <Tabs.Tab value="swaks" leftSection={<IconCode size={14} />}>swaks</Tabs.Tab>
+                <Tabs.Tab value="go" leftSection={<IconCode size={14} />}>Go</Tabs.Tab>
+                <Tabs.Tab value="php" leftSection={<IconCode size={14} />}>PHP</Tabs.Tab>
+                <Tabs.Tab value="java" leftSection={<IconCode size={14} />}>Java</Tabs.Tab>
+              </Tabs.List>
+
+              <Tabs.Panel value="swaks">
+                <Stack gap="md">
             <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
               <Stack gap="xs">
                 <Group justify="space-between">
@@ -683,6 +762,20 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                 </ScrollArea>
               </Stack>
             </Paper>
+
+                </Stack>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="go">
+                <SnippetBlock label="Go" code={smtpSnippets.go} />
+              </Tabs.Panel>
+              <Tabs.Panel value="php">
+                <SnippetBlock label="PHP" code={smtpSnippets.php} />
+              </Tabs.Panel>
+              <Tabs.Panel value="java">
+                <SnippetBlock label="Java" code={smtpSnippets.java} />
+              </Tabs.Panel>
+            </Tabs>
 
             {smtpSnippet.notes.map((note) => (
               <Alert key={note} icon={<IconInfoCircle size={16} />} color="blue" radius="md">
