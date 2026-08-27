@@ -79,7 +79,7 @@ export function goSdkSnippet(values: SnippetValues, baseUrl: string): string {
     '}',
   );
 
-  return lines.join('\n');
+  return `${lines.join('\n')}\n`;
 }
 
 /** PHP, using the gsoultan/panmail-sdk composer package. */
@@ -150,6 +150,9 @@ import io.github.gsoultan.panmail.Message;
 import io.github.gsoultan.panmail.PanmailClient;
 import io.github.gsoultan.panmail.RateLimitedException;
 import io.github.gsoultan.panmail.Result;
+
+// to() always renders a List.of(...), so this import is never unused.
+import java.util.List;
 
 public class SendEmail {
     public static void main(String[] args) {

@@ -58,11 +58,15 @@ export function goApiSnippet(values: SnippetValues, baseUrl: string): string {
     '\tpayload, err := json.Marshal(map[string]any{',
   ];
 
-  for (const [key, value] of payloadEntries(values)) {
+  // Padded to the longest key, because gofmt aligns a map literal's values and
+  // a snippet that reformats the moment it is saved looks like it was never run.
+  const entries = payloadEntries(values);
+  const width = Math.max(...entries.map(([key]) => key.length));
+  for (const [key, value] of entries) {
     const rendered = Array.isArray(value)
       ? goStringSlice(value as string[])
       : `"${goString(String(value))}"`;
-    lines.push(`\t\t"${key}": ${rendered},`);
+    lines.push(`\t\t"${key}":${' '.repeat(width - key.length + 1)}${rendered},`);
   }
 
   lines.push(
@@ -115,7 +119,7 @@ export function goApiSnippet(values: SnippetValues, baseUrl: string): string {
     '}',
   );
 
-  return lines.join('\n');
+  return `${lines.join('\n')}\n`;
 }
 
 /** PHP, posting JSON with the bundled cURL extension. */

@@ -226,6 +226,63 @@ describe('SMTP snippets', () => {
 });
 
 /**
+ * These snippets are pasted into real projects, so "it renders" is not the bar —
+ * it has to compile. Each case here is a defect found by generating the snippet
+ * and running the real compiler on it, kept so it cannot come back without a
+ * toolchain in CI.
+ */
+describe('generated code is valid in its own language', () => {
+  const goGenerators = [
+    { name: 'API Go', build: goApiSnippet, arg: BASE },
+    { name: 'SDK Go', build: goSdkSnippet, arg: BASE },
+  ];
+
+  // A Go file without one is not gofmt-clean, and every editor fixes it on
+  // save — which makes the snippet look like it was never run.
+  test('Go snippets end with a newline', () => {
+    for (const { name, build, arg } of goGenerators) {
+      expect(build(values(), arg).endsWith('\n'), name).toBe(true);
+    }
+  });
+
+  // gofmt aligns a map literal's values. Emitting it unaligned means the file
+  // reformats the moment it is saved.
+  test('the Go map literal is aligned the way gofmt would align it', () => {
+    const code = goApiSnippet(
+      values({ cc: ['c@example.net'], bcc: ['b@example.net'] }),
+      BASE,
+    );
+    const columns = code
+      .split('\n')
+      .map((line) => line.match(/^\t\t"[a-zA-Z]+":( +)\S/))
+      .filter((match): match is RegExpMatchArray => match !== null)
+      .map((match) => match[0].indexOf(match[1]!) + match[1]!.length);
+
+    expect(columns.length).toBeGreaterThan(3);
+    expect(new Set(columns).size, 'every value starts in the same column').toBe(1);
+  });
+
+  // javac does not care that the reference is obvious; the import has to be
+  // there. The SDK snippet renders List.of(...) for every recipient list.
+  test('Java snippets import everything they reference', () => {
+    for (const { name, build } of [
+      { name: 'API Java', build: javaApiSnippet },
+      { name: 'SDK Java', build: javaSdkSnippet },
+    ]) {
+      const code = build(values({ cc: ['c@example.net'], bcc: ['b@example.net'] }), BASE);
+      if (code.includes('List.of(')) {
+        expect(code, `${name} uses List.of without importing List`).toContain(
+          'import java.util.List;',
+        );
+      }
+      if (code.includes('new LinkedHashMap')) {
+        expect(code, name).toContain('import java.util.LinkedHashMap;');
+      }
+    }
+  });
+});
+
+/**
  * A subject or body is free text that lands inside a string literal. Each
  * language disagrees about what closes one, so each is checked on its own
  * terms: a snippet that will not compile is worse than no snippet.
