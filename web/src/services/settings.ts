@@ -11,9 +11,12 @@ export const settingsService = {
   // response as the settings. It is fetched through its own accessor so the
   // settings form, which writes what it reads, never sees a field it cannot
   // save.
-  getSmtpSubmission: async (): Promise<SmtpSubmission | undefined> => {
+  // Null, never undefined. The block is optional on the wire, so a server that
+  // predates it sends nothing — and react-query treats an undefined result as a
+  // broken query function rather than as "no listener".
+  getSmtpSubmission: async (): Promise<SmtpSubmission | null> => {
     const res = await client.getSettings({});
-    return res.smtpSubmission;
+    return res.smtpSubmission ?? null;
   },
 
   updateSettings: async (settings: SystemSettings) => {

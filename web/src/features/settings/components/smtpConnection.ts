@@ -31,7 +31,7 @@ export function hostFromBaseUrl(baseUrl: string | undefined): string {
 // claiming 0.0.0.0 is reachable. Falling back to the base URL host is a guess,
 // and is labelled as one.
 export function describeConnection(
-  submission: SmtpSubmission | undefined,
+  submission: SmtpSubmission | null | undefined,
   baseUrl: string | undefined,
 ): SmtpConnection {
   if (!submission?.enabled) {

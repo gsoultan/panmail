@@ -18,7 +18,7 @@ const submission = (fields: Partial<SmtpSubmission>): SmtpSubmission =>
 describe('describeConnection', () => {
   const cases: {
     name: string;
-    submission: SmtpSubmission | undefined;
+    submission: SmtpSubmission | null | undefined;
     baseUrl: string | undefined;
     wantEnabled: boolean;
     wantHost: string;
@@ -73,6 +73,15 @@ describe('describeConnection', () => {
     {
       name: 'a disabled listener reports nothing to connect to',
       submission: submission({ enabled: false, host: 'mail.example.com' }),
+      baseUrl: 'https://panmail.example.com',
+      wantEnabled: false,
+      wantHost: '',
+      wantSource: 'unknown',
+      wantEncryption: 'None',
+    },
+    {
+      name: 'a null listener block is treated as disabled',
+      submission: null,
       baseUrl: 'https://panmail.example.com',
       wantEnabled: false,
       wantHost: '',
