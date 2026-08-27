@@ -232,14 +232,28 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 
 	allRecipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
 
-	// Check suppressions for each recipient
-	for _, recipient := range allRecipients {
-		isSuppressed, reason, err := u.isSuppressed(ctx, tenantID, recipient)
-		if err != nil {
-			slog.Error("failed to check suppression", "error", err, "recipient", recipient)
-			return nil, err
-		}
-		if isSuppressed {
+	// Check suppressions for every recipient, in one round trip.
+	//
+	// This was a query per recipient, which made a hundred-recipient send cost
+	// a hundred sequential trips to a database usually on another host — the
+	// dominant cost of admitting a large message. The check is unchanged:
+	// every address is still looked up, still scoped to the tenant, and the
+	// first suppressed recipient still refuses the whole message.
+	// Normalised once and kept: NormalizeAddress parses the address, so doing
+	// it again in the loop below would pay that cost twice per recipient.
+	normalised := make([]string, len(allRecipients))
+	for i, recipient := range allRecipients {
+		normalised[i] = gsmail.NormalizeAddress(recipient)
+	}
+
+	suppressed, err := u.suppressionsFor(ctx, tenantID, normalised)
+	if err != nil {
+		slog.Error("failed to check suppression", "error", err, "id", messageID)
+		return nil, err
+	}
+
+	for i, recipient := range allRecipients {
+		if reason, ok := suppressed[normalised[i]]; ok {
 			_ = u.RecordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, "", reason, nil)
 			return nil, fmt.Errorf("recipient %s is suppressed: %s", recipient, reason)
 		}
@@ -751,19 +765,31 @@ func (u *sendEmailUsecase) getProvider(ctx context.Context, tenantID, providerID
 	return u.providerRepo.GetByID(ctx, tenantID, providerID)
 }
 
-// isSuppressed asks whether a mailbox is on the tenant's suppression list.
+// suppressionsFor asks which of a message's recipients are on the tenant's
+// suppression list, returning address -> reason for those that are.
 //
 // The address is normalised first, for the same reason the suppression usecase
 // normalises on write: a bounce recorded for "Alice@Example.COM" has to stop
 // the next send to "alice@example.com". Reading with the raw address made the
 // list fail open on any difference of case or display name.
-func (u *sendEmailUsecase) isSuppressed(ctx context.Context, tenantID, email string) (bool, string, error) {
-	s, err := u.suppressionRepo.GetByEmail(ctx, tenantID, gsmail.NormalizeAddress(email))
+// The addresses must already be normalised: the caller holds that slice for
+// its own lookups, and normalising is the expensive part.
+func (u *sendEmailUsecase) suppressionsFor(
+	ctx context.Context, tenantID string, normalised []string,
+) (map[string]string, error) {
+	found, err := u.suppressionRepo.GetByEmails(ctx, tenantID, normalised)
 	if err != nil {
-		return false, "", err
+		return nil, err
 	}
-	if s == nil {
-		return false, "", nil
+
+	// Reduced to address -> reason: the reason is all the send path needs, and
+	// holding the rows would keep a row per recipient alive for the rest of
+	// the request.
+	reasons := make(map[string]string, len(found))
+	for address, suppression := range found {
+		if suppression != nil {
+			reasons[address] = suppression.Reason
+		}
 	}
-	return true, s.Reason, nil
+	return reasons, nil
 }
