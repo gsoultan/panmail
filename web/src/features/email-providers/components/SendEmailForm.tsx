@@ -3,8 +3,24 @@ import { TextInput, Textarea, TagsInput, Button, Stack, Group, Select, Text, Jso
 import { settingsService } from '../../../services/settings';
 import { describeConnection } from '../../settings/components/smtpConnection';
 import { buildSmtpSnippet } from '../../settings/components/smtpSnippet';
-import { goApiSnippet, phpApiSnippet, javaApiSnippet } from '../../settings/components/snippets/api';
-import { goSmtpSnippet, phpSmtpSnippet, javaSmtpSnippet } from '../../settings/components/snippets/smtp';
+import {
+  goApiSnippet,
+  phpApiSnippet,
+  javaApiSnippet,
+  nodeApiSnippet,
+} from '../../settings/components/snippets/api';
+import {
+  goSdkSnippet,
+  phpSdkSnippet,
+  javaSdkSnippet,
+  nodeSdkSnippet,
+} from '../../settings/components/snippets/sdk';
+import {
+  goSmtpSnippet,
+  phpSmtpSnippet,
+  javaSmtpSnippet,
+  nodeSmtpSnippet,
+} from '../../settings/components/snippets/smtp';
 import { useAdaptedForm } from '../../../lib/form/useAdaptedForm';
 import { useQuery } from '@tanstack/react-query';
 import { templateService } from '../../templates/services/template';
@@ -313,11 +329,19 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     go: goApiSnippet(form.values, apiOrigin),
     php: phpApiSnippet(form.values, apiOrigin),
     java: javaApiSnippet(form.values, apiOrigin),
+    node: nodeApiSnippet(form.values, apiOrigin),
+  };
+  const sdkSnippets = {
+    go: goSdkSnippet(form.values, apiOrigin),
+    php: phpSdkSnippet(form.values, apiOrigin),
+    java: javaSdkSnippet(form.values, apiOrigin),
+    node: nodeSdkSnippet(form.values, apiOrigin),
   };
   const smtpSnippets = {
     go: goSmtpSnippet(form.values, smtpConnection),
     php: phpSmtpSnippet(form.values, smtpConnection),
     java: javaSmtpSnippet(form.values, smtpConnection),
+    node: nodeSmtpSnippet(form.values, smtpConnection),
   };
 
   const curlCommand = `curl -X POST "${window.location.origin}/panmail.v1.EmailService/SendEmail" \\
@@ -335,6 +359,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
       <Tabs value={activeTab} onChange={setActiveTab} radius="md">
         <Tabs.List mb="md">
           <Tabs.Tab value="form" leftSection={<IconMail size={16} />}>Test Form</Tabs.Tab>
+          <Tabs.Tab value="sdk" leftSection={<IconCode size={16} />}>SDK</Tabs.Tab>
           <Tabs.Tab value="api" leftSection={<IconCode size={16} />}>API Request</Tabs.Tab>
           <Tabs.Tab value="smtp" leftSection={<IconMail size={16} />}>SMTP Request</Tabs.Tab>
         </Tabs.List>
@@ -583,6 +608,51 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
           </form>
         </Tabs.Panel>
 
+        <Tabs.Panel value="sdk">
+          <Stack gap="md">
+            <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
+              <Group gap="xs" align="flex-start" wrap="nowrap">
+                <ThemeIcon variant="light" color="brand" size="md">
+                  <IconCode size={16} />
+                </ThemeIcon>
+                <Stack gap={2}>
+                  <Text fw={700} size="sm">panmail-sdk</Text>
+                  <Text size="xs" c="dimmed">
+                    One call, and the two capacity refusals arrive as distinct types you can
+                    catch. Neither means the message was queued — but only a rate limit is safe
+                    to repeat. The API and SMTP tabs are the same send without the dependency.
+                  </Text>
+                </Stack>
+              </Group>
+            </Paper>
+
+            <Tabs defaultValue="go" variant="outline" radius="md">
+              <Tabs.List mb="md">
+                <Tabs.Tab value="go" leftSection={<IconCode size={14} />}>Go</Tabs.Tab>
+                <Tabs.Tab value="php" leftSection={<IconCode size={14} />}>PHP</Tabs.Tab>
+                <Tabs.Tab value="java" leftSection={<IconCode size={14} />}>Java</Tabs.Tab>
+                <Tabs.Tab value="node" leftSection={<IconCode size={14} />}>Node</Tabs.Tab>
+              </Tabs.List>
+
+              <Tabs.Panel value="go">
+                <SnippetBlock label="Go" code={sdkSnippets.go} />
+              </Tabs.Panel>
+
+              <Tabs.Panel value="php">
+                <SnippetBlock label="PHP" code={sdkSnippets.php} />
+              </Tabs.Panel>
+
+              <Tabs.Panel value="java">
+                <SnippetBlock label="Java" code={sdkSnippets.java} />
+              </Tabs.Panel>
+
+              <Tabs.Panel value="node">
+                <SnippetBlock label="Node" code={sdkSnippets.node} />
+              </Tabs.Panel>
+            </Tabs>
+          </Stack>
+        </Tabs.Panel>
+
         <Tabs.Panel value="api">
           <Stack gap="md">
             <Tabs defaultValue="curl" variant="outline" radius="md">
@@ -591,6 +661,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                 <Tabs.Tab value="go" leftSection={<IconCode size={14} />}>Go</Tabs.Tab>
                 <Tabs.Tab value="php" leftSection={<IconCode size={14} />}>PHP</Tabs.Tab>
                 <Tabs.Tab value="java" leftSection={<IconCode size={14} />}>Java</Tabs.Tab>
+                <Tabs.Tab value="node" leftSection={<IconCode size={14} />}>Node</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="curl">
@@ -654,6 +725,10 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
               <Tabs.Panel value="php">
                 <SnippetBlock label="PHP" code={apiSnippets.php} />
               </Tabs.Panel>
+              <Tabs.Panel value="node">
+                <SnippetBlock label="Node" code={apiSnippets.node} />
+              </Tabs.Panel>
+
               <Tabs.Panel value="java">
                 <SnippetBlock label="Java" code={apiSnippets.java} />
               </Tabs.Panel>
@@ -709,6 +784,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                 <Tabs.Tab value="go" leftSection={<IconCode size={14} />}>Go</Tabs.Tab>
                 <Tabs.Tab value="php" leftSection={<IconCode size={14} />}>PHP</Tabs.Tab>
                 <Tabs.Tab value="java" leftSection={<IconCode size={14} />}>Java</Tabs.Tab>
+                <Tabs.Tab value="node" leftSection={<IconCode size={14} />}>Node</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="swaks">
@@ -772,6 +848,10 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
               <Tabs.Panel value="php">
                 <SnippetBlock label="PHP" code={smtpSnippets.php} />
               </Tabs.Panel>
+              <Tabs.Panel value="node">
+                <SnippetBlock label="Node" code={smtpSnippets.node} />
+              </Tabs.Panel>
+
               <Tabs.Panel value="java">
                 <SnippetBlock label="Java" code={smtpSnippets.java} />
               </Tabs.Panel>
