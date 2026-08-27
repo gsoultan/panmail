@@ -23,3 +23,6 @@
 
 # Event log archives written at runtime; these are tenant data, not source.
 /archives/
+
+# Test binaries left behind by `go test -c` and profiling runs.
+*.test

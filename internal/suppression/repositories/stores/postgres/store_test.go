@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -167,5 +168,124 @@ func TestListPaginationAdvances(t *testing.T) {
 
 	if len(seen) != total {
 		t.Errorf("pagination visited %d of %d suppressions", len(seen), total)
+	}
+}
+
+// The batch lookup exists so admission costs one round trip instead of one per
+// recipient. It has to answer exactly what the per-address lookup answered, so
+// these run the same questions through it.
+func TestGetByEmailsAnswersForEveryAddressAtOnce(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	for _, s := range []*entities.Suppression{
+		suppression("b1", storetest.TenantA, "gone@example.com"),
+		suppression("b2", storetest.TenantA, "bounced@example.com"),
+	} {
+		if err := repo.Create(ctx, s); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+	}
+
+	found, err := repo.GetByEmails(ctx, storetest.TenantA, []string{
+		"gone@example.com",
+		"fine@example.com",
+		"bounced@example.com",
+	})
+	if err != nil {
+		t.Fatalf("GetByEmails() error = %v", err)
+	}
+
+	if len(found) != 2 {
+		t.Fatalf("got %d suppressions, want 2: %v", len(found), found)
+	}
+	if found["gone@example.com"] == nil || found["bounced@example.com"] == nil {
+		t.Errorf("a suppressed address is missing from the result: %v", found)
+	}
+	// An address absent from the map is the signal that it may be sent to.
+	if _, ok := found["fine@example.com"]; ok {
+		t.Error("an unsuppressed address was reported as suppressed")
+	}
+}
+
+// Isolation is by tenant on every read. A batch that dropped the scope would
+// let one tenant's suppression list refuse another tenant's mail.
+func TestGetByEmailsStaysInsideTheTenant(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	if err := repo.Create(ctx, suppression("b3", storetest.TenantA, "shared@example.com")); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	found, err := repo.GetByEmails(ctx, storetest.TenantB, []string{"shared@example.com"})
+	if err != nil {
+		t.Fatalf("GetByEmails() error = %v", err)
+	}
+	if len(found) != 0 {
+		t.Errorf("tenant B saw tenant A's suppression: %v", found)
+	}
+}
+
+// A recipient list is caller-supplied and nothing upstream caps its length, so
+// the lookup chunks. The chunk boundary is where a batch quietly loses rows.
+func TestGetByEmailsChunksWithoutLosingAnyone(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	// Enough to cross maxEmailsPerLookup more than once.
+	const total = maxEmailsPerLookup*2 + 7
+
+	emails := make([]string, 0, total)
+	for i := range total {
+		email := fmt.Sprintf("bulk-%d@example.com", i)
+		emails = append(emails, email)
+		if err := repo.Create(ctx, suppression(fmt.Sprintf("bulk%d", i), storetest.TenantA, email)); err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+	}
+
+	found, err := repo.GetByEmails(ctx, storetest.TenantA, emails)
+	if err != nil {
+		t.Fatalf("GetByEmails() error = %v", err)
+	}
+	if len(found) != total {
+		t.Errorf("got %d suppressions across the chunk boundary, want %d", len(found), total)
+	}
+}
+
+// The list is built from To, Cc and Bcc, so the same person can appear more
+// than once. Sending them one query is the point.
+func TestGetByEmailsDeduplicatesAndNormalises(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	if err := repo.Create(ctx, suppression("b4", storetest.TenantA, "gone@example.com")); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	found, err := repo.GetByEmails(ctx, storetest.TenantA, []string{
+		"gone@example.com",
+		"  GONE@Example.COM  ",
+		"",
+	})
+	if err != nil {
+		t.Fatalf("GetByEmails() error = %v", err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("got %d suppressions, want 1: %v", len(found), found)
+	}
+	if found["gone@example.com"] == nil {
+		t.Errorf("the suppression is not keyed by the normalised address: %v", found)
+	}
+}
+
+func TestGetByEmailsWithNoAddressesAsksNothing(t *testing.T) {
+	found, err := newRepo(t).GetByEmails(context.Background(), storetest.TenantA, nil)
+	if err != nil {
+		t.Fatalf("GetByEmails() error = %v", err)
+	}
+	if len(found) != 0 {
+		t.Errorf("got %d suppressions for an empty list", len(found))
 	}
 }

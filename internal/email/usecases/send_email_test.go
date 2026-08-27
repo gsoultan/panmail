@@ -230,6 +230,18 @@ func (m *mockSuppressionRepo) Delete(ctx context.Context, tenantID, email string
 func (m *mockSuppressionRepo) GetByEmail(ctx context.Context, tenantID, email string) (*suppressionentities.Suppression, error) {
 	return m.suppression, nil
 }
+func (m *mockSuppressionRepo) GetByEmails(ctx context.Context, tenantID string, emails []string) (map[string]*suppressionentities.Suppression, error) {
+	found := make(map[string]*suppressionentities.Suppression, len(emails))
+	if m.suppression == nil {
+		return found, nil
+	}
+	// The single fixture stands in for every address, which is what the
+	// per-address mock did before.
+	for _, email := range emails {
+		found[strings.ToLower(strings.TrimSpace(email))] = m.suppression
+	}
+	return found, nil
+}
 func (m *mockSuppressionRepo) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*suppressionentities.Suppression, string, error) {
 	return nil, "", nil
 }
@@ -679,4 +691,162 @@ func (m *mockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time.Time)
 
 func (m *mockOutboxRepo) Stats(context.Context) (int64, time.Time, error) {
 	return int64(len(m.emails)), time.Now(), nil
+}
+
+// Admission checks every recipient against the suppression list, and it used
+// to do that one query at a time — so a hundred-recipient send cost a hundred
+// sequential round trips to a database that is usually on another host.
+//
+// The check is unchanged; its cost is. This pins the shape: the number of
+// round trips must not depend on the number of recipients.
+func TestSuppressionCostsOneRoundTripWhateverTheRecipientCount(t *testing.T) {
+	testCases := []struct {
+		name       string
+		recipients int
+	}{
+		{name: "one recipient", recipients: 1},
+		{name: "a small list", recipients: 10},
+		{name: "a large list", recipients: 250},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			suppressionRepo := &countingSuppressionRepo{}
+			usecase := benchUsecase(suppressionRepo)
+
+			recipients := benchRecipients(tc.recipients)
+			if _, err := usecase.SendEmail(
+				context.Background(), testTenantID, benchRequest(recipients),
+			); err != nil {
+				t.Fatalf("SendEmail() error = %v", err)
+			}
+
+			if got := suppressionRepo.calls.Load(); got != 1 {
+				t.Errorf(
+					"%d recipients cost %d suppression round trips, want 1",
+					tc.recipients, got,
+				)
+			}
+		})
+	}
+}
+
+// The batch must not become a way to send to a suppressed address. A recipient
+// on the list still refuses the whole message, wherever they appear in it.
+func TestASuppressedRecipientStillRefusesTheMessage(t *testing.T) {
+	testCases := []struct {
+		name string
+		req  func(suppressed string) *panmailv1.SendEmailRequest
+	}{
+		{
+			name: "suppressed in To",
+			req: func(s string) *panmailv1.SendEmailRequest {
+				return &panmailv1.SendEmailRequest{
+					ProviderId: testProviderID, From: "from@example.com",
+					To: []string{"ok@example.com", s}, Subject: "Hi", BodyText: "hi",
+				}
+			},
+		},
+		{
+			name: "suppressed in Cc",
+			req: func(s string) *panmailv1.SendEmailRequest {
+				return &panmailv1.SendEmailRequest{
+					ProviderId: testProviderID, From: "from@example.com",
+					To: []string{"ok@example.com"}, Cc: []string{s},
+					Subject: "Hi", BodyText: "hi",
+				}
+			},
+		},
+		{
+			name: "suppressed in Bcc",
+			req: func(s string) *panmailv1.SendEmailRequest {
+				return &panmailv1.SendEmailRequest{
+					ProviderId: testProviderID, From: "from@example.com",
+					To: []string{"ok@example.com"}, Bcc: []string{s},
+					Subject: "Hi", BodyText: "hi",
+				}
+			},
+		},
+		{
+			name: "suppressed under a different case",
+			req: func(s string) *panmailv1.SendEmailRequest {
+				return &panmailv1.SendEmailRequest{
+					ProviderId: testProviderID, From: "from@example.com",
+					To:      []string{"ok@example.com", strings.ToUpper(s)},
+					Subject: "Hi", BodyText: "hi",
+				}
+			},
+		},
+	}
+
+	const suppressedAddress = "gone@example.com"
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			outboxRepo := &mockOutboxRepo{}
+			usecase := NewSendEmailUsecase(SendEmailDeps{
+				ProviderRepo: &mockProviderRepo{provider: &providerEntities.EmailProvider{
+					ID: testProviderID, Name: "SMTP", Type: panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
+				}},
+				TemplateRepo: &mockTemplateRepo{},
+				SuppressionRepo: &fixedSuppressionRepo{
+					suppressed: map[string]string{suppressedAddress: "hard bounce"},
+				},
+				OutboxRepo:      outboxRepo,
+				EventUsecase:    &mockEventUsecase{},
+				ProviderFactory: &mockFactory{sender: &mockSender{}},
+				Renderer:        NewTemplateRenderer(),
+				BaseURL:         "http://localhost",
+				TrackingSigner:  tracking.NewSigner([]byte("test-tracking-key")),
+			})
+
+			_, err := usecase.SendEmail(
+				context.Background(), testTenantID, tc.req(suppressedAddress),
+			)
+			if err == nil {
+				t.Fatal("SendEmail() accepted a message to a suppressed address")
+			}
+			if len(outboxRepo.emails) != 0 {
+				t.Errorf("%d messages were queued, want 0", len(outboxRepo.emails))
+			}
+		})
+	}
+}
+
+// fixedSuppressionRepo suppresses exactly the addresses it is given.
+type fixedSuppressionRepo struct {
+	suppressed map[string]string
+}
+
+func (m *fixedSuppressionRepo) Create(context.Context, *suppressionentities.Suppression) error {
+	return nil
+}
+func (m *fixedSuppressionRepo) Delete(context.Context, string, string) error { return nil }
+
+func (m *fixedSuppressionRepo) GetByEmail(
+	_ context.Context, _, email string,
+) (*suppressionentities.Suppression, error) {
+	if reason, ok := m.suppressed[strings.ToLower(strings.TrimSpace(email))]; ok {
+		return &suppressionentities.Suppression{Email: email, Reason: reason}, nil
+	}
+	return nil, nil
+}
+
+func (m *fixedSuppressionRepo) GetByEmails(
+	_ context.Context, _ string, emails []string,
+) (map[string]*suppressionentities.Suppression, error) {
+	found := make(map[string]*suppressionentities.Suppression)
+	for _, email := range emails {
+		key := strings.ToLower(strings.TrimSpace(email))
+		if reason, ok := m.suppressed[key]; ok {
+			found[key] = &suppressionentities.Suppression{Email: key, Reason: reason}
+		}
+	}
+	return found, nil
+}
+
+func (m *fixedSuppressionRepo) List(
+	context.Context, string, int, string,
+) ([]*suppressionentities.Suppression, string, error) {
+	return nil, "", nil
 }
