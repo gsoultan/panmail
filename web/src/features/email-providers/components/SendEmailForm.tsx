@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import { TextInput, Textarea, TagsInput, Button, Stack, Group, Select, Text, JsonInput, Tabs, Paper, rem, ThemeIcon, Code, ActionIcon, CopyButton, Tooltip, SimpleGrid, Badge, FileButton, Box, ScrollArea, Alert } from '@mantine/core';
+import { settingsService } from '../../../services/settings';
+import { describeConnection } from '../../settings/components/smtpConnection';
+import { buildSmtpSnippet } from '../../settings/components/smtpSnippet';
+import { goApiSnippet, phpApiSnippet, javaApiSnippet } from '../../settings/components/snippets/api';
+import { goSmtpSnippet, phpSmtpSnippet, javaSmtpSnippet } from '../../settings/components/snippets/smtp';
 import { useAdaptedForm } from '../../../lib/form/useAdaptedForm';
 import { useQuery } from '@tanstack/react-query';
 import { templateService } from '../../templates/services/template';
@@ -22,6 +27,35 @@ import {
 } from '@tabler/icons-react';
 import { create, toJson } from '@bufbuild/protobuf';
 import { AttachmentSchema } from '../../../api/panmail/v1/common_pb';
+
+// One generated snippet, with the copy button that is the only reason anyone
+// opens these tabs.
+const SnippetBlock: React.FC<{ label: string; code: string }> = ({ label, code }) => (
+  <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
+    <Stack gap="xs">
+      <Group justify="space-between">
+        <Group gap="xs">
+          <ThemeIcon variant="light" color="brand" size="md">
+            <IconCode size={16} />
+          </ThemeIcon>
+          <Text fw={700} size="sm">{label}</Text>
+        </Group>
+        <CopyButton value={code}>
+          {({ copied, copy }) => (
+            <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy} aria-label={`Copy ${label} snippet`}>
+              {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+            </ActionIcon>
+          )}
+        </CopyButton>
+      </Group>
+      <ScrollArea h={rem(360)}>
+        <Code block style={{ whiteSpace: 'pre', fontSize: rem(11) }}>
+          {code}
+        </Code>
+      </ScrollArea>
+    </Stack>
+  </Paper>
+);
 
 interface SendEmailFormProps {
   onSubmit: (values: any) => void;
@@ -258,6 +292,34 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     return JSON.stringify(data, null, 2);
   };
 
+  // Live listener details, so the command names a port that is actually
+  // listening rather than a plausible-looking guess.
+  const { data: smtpSubmission } = useQuery({
+    queryKey: ['smtpSubmission'],
+    queryFn: settingsService.getSmtpSubmission,
+  });
+  const { data: systemSettings } = useQuery({
+    queryKey: ['systemSettings'],
+    queryFn: settingsService.getSettings,
+  });
+
+  const smtpConnection = describeConnection(smtpSubmission, systemSettings?.baseUrl);
+  const smtpSnippet = buildSmtpSnippet(form.values, smtpConnection);
+
+  // Generated from the same form values as the cURL and swaks commands, so
+  // every tab describes one message rather than several slightly different ones.
+  const apiOrigin = window.location.origin;
+  const apiSnippets = {
+    go: goApiSnippet(form.values, apiOrigin),
+    php: phpApiSnippet(form.values, apiOrigin),
+    java: javaApiSnippet(form.values, apiOrigin),
+  };
+  const smtpSnippets = {
+    go: goSmtpSnippet(form.values, smtpConnection),
+    php: phpSmtpSnippet(form.values, smtpConnection),
+    java: javaSmtpSnippet(form.values, smtpConnection),
+  };
+
   const curlCommand = `curl -X POST "${window.location.origin}/panmail.v1.EmailService/SendEmail" \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
@@ -274,6 +336,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
         <Tabs.List mb="md">
           <Tabs.Tab value="form" leftSection={<IconMail size={16} />}>Test Form</Tabs.Tab>
           <Tabs.Tab value="api" leftSection={<IconCode size={16} />}>API Request</Tabs.Tab>
+          <Tabs.Tab value="smtp" leftSection={<IconMail size={16} />}>SMTP Request</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="form">
@@ -522,6 +585,16 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
 
         <Tabs.Panel value="api">
           <Stack gap="md">
+            <Tabs defaultValue="curl" variant="outline" radius="md">
+              <Tabs.List mb="md">
+                <Tabs.Tab value="curl" leftSection={<IconCode size={14} />}>cURL</Tabs.Tab>
+                <Tabs.Tab value="go" leftSection={<IconCode size={14} />}>Go</Tabs.Tab>
+                <Tabs.Tab value="php" leftSection={<IconCode size={14} />}>PHP</Tabs.Tab>
+                <Tabs.Tab value="java" leftSection={<IconCode size={14} />}>Java</Tabs.Tab>
+              </Tabs.List>
+
+              <Tabs.Panel value="curl">
+                <Stack gap="md">
             <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
               <Stack gap="xs">
                 <Group justify="space-between">
@@ -572,11 +645,149 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
               </Stack>
             </Paper>
 
+                </Stack>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="go">
+                <SnippetBlock label="Go" code={apiSnippets.go} />
+              </Tabs.Panel>
+              <Tabs.Panel value="php">
+                <SnippetBlock label="PHP" code={apiSnippets.php} />
+              </Tabs.Panel>
+              <Tabs.Panel value="java">
+                <SnippetBlock label="Java" code={apiSnippets.java} />
+              </Tabs.Panel>
+            </Tabs>
+
             <Alert icon={<IconInfoCircle size={16} />} color="blue" radius="md">
               <Text size="xs">
                 Make sure to replace <code>YOUR_API_KEY</code> with a valid API key generated in the <b>API Keys</b> section.
                 For production use, send requests to <code>/panmail.v1.EmailService/SendEmail</code> using POST.
                 Attachments are sent as an array of objects with <code>content</code> as a base64 string.
+              </Text>
+            </Alert>
+          </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="smtp">
+          <Stack gap="md">
+            {!smtpConnection.enabled ? (
+              <Alert icon={<IconInfoCircle size={16} />} color="gray" radius="md">
+                <Text size="xs">
+                  This server is not accepting SMTP submissions, so the command below uses
+                  placeholders. Start panmail with <code>--smtp-addr</code> to enable it, then
+                  the real host and port will appear here.
+                </Text>
+              </Alert>
+            ) : (
+              <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
+                <Group gap="lg">
+                  <Box>
+                    <Text size="xs" c="dimmed">Host</Text>
+                    <Text size="sm" fw={600} ff="monospace">{smtpConnection.host || 'unknown'}</Text>
+                  </Box>
+                  <Box>
+                    <Text size="xs" c="dimmed">Port</Text>
+                    <Text size="sm" fw={600} ff="monospace">{smtpConnection.port}</Text>
+                  </Box>
+                  <Box>
+                    <Text size="xs" c="dimmed">Encryption</Text>
+                    <Badge
+                      variant="light"
+                      color={smtpConnection.encryption === 'STARTTLS' ? 'teal' : 'orange'}
+                    >
+                      {smtpConnection.encryption}
+                    </Badge>
+                  </Box>
+                </Group>
+              </Paper>
+            )}
+
+            <Tabs defaultValue="swaks" variant="outline" radius="md">
+              <Tabs.List mb="md">
+                <Tabs.Tab value="swaks" leftSection={<IconCode size={14} />}>swaks</Tabs.Tab>
+                <Tabs.Tab value="go" leftSection={<IconCode size={14} />}>Go</Tabs.Tab>
+                <Tabs.Tab value="php" leftSection={<IconCode size={14} />}>PHP</Tabs.Tab>
+                <Tabs.Tab value="java" leftSection={<IconCode size={14} />}>Java</Tabs.Tab>
+              </Tabs.List>
+
+              <Tabs.Panel value="swaks">
+                <Stack gap="md">
+            <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Group gap="xs">
+                    <ThemeIcon variant="light" color="brand" size="md">
+                      <IconMail size={16} />
+                    </ThemeIcon>
+                    <Text fw={700} size="sm">swaks Command</Text>
+                  </Group>
+                  <CopyButton value={smtpSnippet.swaks}>
+                    {({ copied, copy }) => (
+                      <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy}>
+                        {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                      </ActionIcon>
+                    )}
+                  </CopyButton>
+                </Group>
+                <ScrollArea h={rem(180)}>
+                  <Code block style={{ whiteSpace: 'pre-wrap', fontSize: rem(11) }}>
+                    {smtpSnippet.swaks}
+                  </Code>
+                </ScrollArea>
+              </Stack>
+            </Paper>
+
+            <Paper p="md" withBorder radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Group gap="xs">
+                    <ThemeIcon variant="light" color="brand" size="md">
+                      <IconCode size={16} />
+                    </ThemeIcon>
+                    <Text fw={700} size="sm">Message</Text>
+                  </Group>
+                  <CopyButton value={smtpSnippet.message}>
+                    {({ copied, copy }) => (
+                      <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy}>
+                        {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                      </ActionIcon>
+                    )}
+                  </CopyButton>
+                </Group>
+                <ScrollArea h={rem(200)}>
+                  <Code block style={{ whiteSpace: 'pre-wrap', fontSize: rem(11) }}>
+                    {smtpSnippet.message}
+                  </Code>
+                </ScrollArea>
+              </Stack>
+            </Paper>
+
+                </Stack>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="go">
+                <SnippetBlock label="Go" code={smtpSnippets.go} />
+              </Tabs.Panel>
+              <Tabs.Panel value="php">
+                <SnippetBlock label="PHP" code={smtpSnippets.php} />
+              </Tabs.Panel>
+              <Tabs.Panel value="java">
+                <SnippetBlock label="Java" code={smtpSnippets.java} />
+              </Tabs.Panel>
+            </Tabs>
+
+            {smtpSnippet.notes.map((note) => (
+              <Alert key={note} icon={<IconInfoCircle size={16} />} color="blue" radius="md">
+                <Text size="xs">{note}</Text>
+              </Alert>
+            ))}
+
+            <Alert icon={<IconInfoCircle size={16} />} color="blue" radius="md">
+              <Text size="xs">
+                Sign in with the <b>provider id</b> as the username and an <b>API key</b> with the{' '}
+                <code>email:send</code> scope as the password. Replace <code>YOUR_API_KEY</code>{' '}
+                with one from the <b>API Keys</b> section.
               </Text>
             </Alert>
           </Stack>

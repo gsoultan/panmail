@@ -13,11 +13,21 @@ import (
 )
 
 type settingsService struct {
-	usecase usecases.SettingsUsecase
+	usecase        usecases.SettingsUsecase
+	smtpSubmission *panmailv1.SmtpSubmission
 }
 
-func NewSettingsService(usecase usecases.SettingsUsecase) panmailv1connect.SystemSettingsServiceHandler {
-	return &settingsService{usecase: usecase}
+// NewSettingsService builds the settings handler.
+//
+// smtpSubmission describes the SMTP listener this process is running, and is
+// reported unchanged on every read. It is a value rather than something the
+// service looks up because it cannot change while the process is alive: it
+// comes from the flags the process started with.
+func NewSettingsService(
+	usecase usecases.SettingsUsecase,
+	smtpSubmission *panmailv1.SmtpSubmission,
+) panmailv1connect.SystemSettingsServiceHandler {
+	return &settingsService{usecase: usecase, smtpSubmission: smtpSubmission}
 }
 
 func (s *settingsService) GetSettings(ctx context.Context, req *connect.Request[panmailv1.GetSettingsRequest]) (*connect.Response[panmailv1.GetSettingsResponse], error) {
@@ -25,7 +35,10 @@ func (s *settingsService) GetSettings(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&panmailv1.GetSettingsResponse{Settings: settings}), nil
+	return connect.NewResponse(&panmailv1.GetSettingsResponse{
+		Settings:       settings,
+		SmtpSubmission: s.smtpSubmission,
+	}), nil
 }
 
 func (s *settingsService) UpdateSettings(ctx context.Context, req *connect.Request[panmailv1.UpdateSettingsRequest]) (*connect.Response[panmailv1.UpdateSettingsResponse], error) {

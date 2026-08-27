@@ -8,6 +8,8 @@ require (
 	github.com/aymerick/raymond v2.0.2+incompatible
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/emersion/go-msgauth v0.7.0
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
+	github.com/emersion/go-smtp v0.25.0
 	github.com/google/uuid v1.6.0
 	github.com/gsoultan/gsmail v0.9.1
 	github.com/jackc/pgx/v5 v5.10.0
@@ -21,6 +23,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.45.0
 	golang.org/x/crypto v0.54.0
 	golang.org/x/net v0.57.0
+	golang.org/x/text v0.40.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.53.0
@@ -60,7 +63,6 @@ require (
 	github.com/emersion/go-imap v1.2.1 // indirect
 	github.com/emersion/go-imap-idle v0.0.0-20210907174914-db2568431445 // indirect
 	github.com/emersion/go-message v0.18.2 // indirect
-	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -96,7 +98,6 @@ require (
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

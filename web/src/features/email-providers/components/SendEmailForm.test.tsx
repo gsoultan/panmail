@@ -38,6 +38,17 @@ mock.module('../../templates/services/template', () => ({
   templateService: { listTemplates: () => templatesResult },
 }));
 
+// The SMTP tab reads live listener state. Stubbed here so this file does not
+// depend on a backend — and null rather than undefined, which is what the real
+// accessor returns and what react-query needs to tell "no listener" apart from
+// a broken query function.
+mock.module('../../../services/settings', () => ({
+  settingsService: {
+    getSmtpSubmission: async () => null,
+    getSettings: async () => ({ baseUrl: 'https://mail.example.com' }),
+  },
+}));
+
 mock.module('../services/emailProvider', () => ({
   emailProviderService: {
     listProviders: () => providersResult,

@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/system_settings.proto.
  */
 export const file_panmail_v1_system_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QiQwoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MiRQoVVXBkYXRlU2V0dGluZ3NSZXF1ZXN0EiwKCHNldHRpbmdzGAEgASgLMhoucGFubWFpbC52MS5TeXN0ZW1TZXR0aW5ncyJGChZVcGRhdGVTZXR0aW5nc1Jlc3BvbnNlEiwKCHNldHRpbmdzGAEgASgLMhoucGFubWFpbC52MS5TeXN0ZW1TZXR0aW5ncyKUAgoOU3lzdGVtU2V0dGluZ3MSEAoIYmFzZV91cmwYASABKAkSGgoSbG9nX3JldGVudGlvbl9kYXlzGAIgASgFEhUKDXJldHJ5X3BhdHRlcm4YAyADKAkSHgoWbWVzc2FnZV9yZXRlbnRpb25fZGF5cxgEIAEoBRIdChVvdXRib3hfcmV0ZW50aW9uX2RheXMYBSABKAUSHgoWd2ViaG9va19yZXRlbnRpb25fZGF5cxgGIAEoBRIeChZhcHBfbG9nX3JldGVudGlvbl9kYXlzGAcgASgFEh4KFmluYm91bmRfcmV0ZW50aW9uX2RheXMYCCABKAUSHgoWYXJjaGl2ZV9yZXRlbnRpb25fZGF5cxgJIAEoBTLAAQoVU3lzdGVtU2V0dGluZ3NTZXJ2aWNlEk4KC0dldFNldHRpbmdzEh4ucGFubWFpbC52MS5HZXRTZXR0aW5nc1JlcXVlc3QaHy5wYW5tYWlsLnYxLkdldFNldHRpbmdzUmVzcG9uc2USVwoOVXBkYXRlU2V0dGluZ3MSIS5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVxdWVzdBoiLnBhbm1haWwudjEuVXBkYXRlU2V0dGluZ3NSZXNwb25zZUKkAQoOY29tLnBhbm1haWwudjFCE1N5c3RlbVNldHRpbmdzUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM");
+  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QieAoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MSMwoPc210cF9zdWJtaXNzaW9uGAIgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiJFChVVcGRhdGVTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIkYKFlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIm4KDlNtdHBTdWJtaXNzaW9uEg8KB2VuYWJsZWQYASABKAgSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgFEhAKCHN0YXJ0dGxzGAQgASgIEh0KFWluc2VjdXJlX2F1dGhfYWxsb3dlZBgFIAEoCCKUAgoOU3lzdGVtU2V0dGluZ3MSEAoIYmFzZV91cmwYASABKAkSGgoSbG9nX3JldGVudGlvbl9kYXlzGAIgASgFEhUKDXJldHJ5X3BhdHRlcm4YAyADKAkSHgoWbWVzc2FnZV9yZXRlbnRpb25fZGF5cxgEIAEoBRIdChVvdXRib3hfcmV0ZW50aW9uX2RheXMYBSABKAUSHgoWd2ViaG9va19yZXRlbnRpb25fZGF5cxgGIAEoBRIeChZhcHBfbG9nX3JldGVudGlvbl9kYXlzGAcgASgFEh4KFmluYm91bmRfcmV0ZW50aW9uX2RheXMYCCABKAUSHgoWYXJjaGl2ZV9yZXRlbnRpb25fZGF5cxgJIAEoBTLAAQoVU3lzdGVtU2V0dGluZ3NTZXJ2aWNlEk4KC0dldFNldHRpbmdzEh4ucGFubWFpbC52MS5HZXRTZXR0aW5nc1JlcXVlc3QaHy5wYW5tYWlsLnYxLkdldFNldHRpbmdzUmVzcG9uc2USVwoOVXBkYXRlU2V0dGluZ3MSIS5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVxdWVzdBoiLnBhbm1haWwudjEuVXBkYXRlU2V0dGluZ3NSZXNwb25zZUKkAQoOY29tLnBhbm1haWwudjFCE1N5c3RlbVNldHRpbmdzUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM");
 
 /**
  * @generated from message panmail.v1.GetSettingsRequest
@@ -33,6 +33,14 @@ export type GetSettingsResponse = Message<"panmail.v1.GetSettingsResponse"> & {
    * @generated from field: panmail.v1.SystemSettings settings = 1;
    */
   settings?: SystemSettings | undefined;
+
+  /**
+   * How this process is accepting SMTP submissions. Read-only: it reports
+   * process state, not configuration, and UpdateSettings does not accept it.
+   *
+   * @generated from field: panmail.v1.SmtpSubmission smtp_submission = 2;
+   */
+  smtpSubmission?: SmtpSubmission | undefined;
 };
 
 /**
@@ -75,6 +83,64 @@ export type UpdateSettingsResponse = Message<"panmail.v1.UpdateSettingsResponse"
  */
 export const UpdateSettingsResponseSchema: GenMessage<UpdateSettingsResponse> = /*@__PURE__*/
   messageDesc(file_panmail_v1_system_settings, 3);
+
+/**
+ * SmtpSubmission reports the SMTP submission listener, so the dashboard can
+ * show an integrator real connection details instead of guessing at them.
+ *
+ * It is deliberately not part of SystemSettings. The listener is configured by
+ * process flags and cannot be changed by an administrator at runtime, and a
+ * field that appears in an editable form but silently ignores edits is worse
+ * than one that is absent.
+ *
+ * @generated from message panmail.v1.SmtpSubmission
+ */
+export type SmtpSubmission = Message<"panmail.v1.SmtpSubmission"> & {
+  /**
+   * Whether this process is listening for submissions at all.
+   *
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+
+  /**
+   * The hostname clients should connect to, empty when the listener binds
+   * every interface. A wildcard bind gives no hostname worth reporting, and
+   * inventing one would send integrators somewhere that does not answer; the
+   * dashboard falls back to the host in base_url and says what it did.
+   *
+   * @generated from field: string host = 2;
+   */
+  host: string;
+
+  /**
+   * @generated from field: int32 port = 3;
+   */
+  port: number;
+
+  /**
+   * Whether the listener offers STARTTLS.
+   *
+   * @generated from field: bool starttls = 4;
+   */
+  starttls: boolean;
+
+  /**
+   * Whether AUTH is accepted on an unencrypted connection. True means an API
+   * key can cross the network in the clear, which is a deployment decision
+   * worth showing rather than burying in a log line at startup.
+   *
+   * @generated from field: bool insecure_auth_allowed = 5;
+   */
+  insecureAuthAllowed: boolean;
+};
+
+/**
+ * Describes the message panmail.v1.SmtpSubmission.
+ * Use `create(SmtpSubmissionSchema)` to create a new message.
+ */
+export const SmtpSubmissionSchema: GenMessage<SmtpSubmission> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 4);
 
 /**
  * SystemSettings holds the global, admin-editable configuration.
@@ -155,7 +221,7 @@ export type SystemSettings = Message<"panmail.v1.SystemSettings"> & {
  * Use `create(SystemSettingsSchema)` to create a new message.
  */
 export const SystemSettingsSchema: GenMessage<SystemSettings> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 4);
+  messageDesc(file_panmail_v1_system_settings, 5);
 
 /**
  * @generated from service panmail.v1.SystemSettingsService

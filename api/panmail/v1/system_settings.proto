@@ -13,6 +13,10 @@ message GetSettingsRequest {}
 
 message GetSettingsResponse {
   SystemSettings settings = 1;
+
+  // How this process is accepting SMTP submissions. Read-only: it reports
+  // process state, not configuration, and UpdateSettings does not accept it.
+  SmtpSubmission smtp_submission = 2;
 }
 
 message UpdateSettingsRequest {
@@ -21,6 +25,34 @@ message UpdateSettingsRequest {
 
 message UpdateSettingsResponse {
   SystemSettings settings = 1;
+}
+
+// SmtpSubmission reports the SMTP submission listener, so the dashboard can
+// show an integrator real connection details instead of guessing at them.
+//
+// It is deliberately not part of SystemSettings. The listener is configured by
+// process flags and cannot be changed by an administrator at runtime, and a
+// field that appears in an editable form but silently ignores edits is worse
+// than one that is absent.
+message SmtpSubmission {
+  // Whether this process is listening for submissions at all.
+  bool enabled = 1;
+
+  // The hostname clients should connect to, empty when the listener binds
+  // every interface. A wildcard bind gives no hostname worth reporting, and
+  // inventing one would send integrators somewhere that does not answer; the
+  // dashboard falls back to the host in base_url and says what it did.
+  string host = 2;
+
+  int32 port = 3;
+
+  // Whether the listener offers STARTTLS.
+  bool starttls = 4;
+
+  // Whether AUTH is accepted on an unencrypted connection. True means an API
+  // key can cross the network in the clear, which is a deployment decision
+  // worth showing rather than burying in a log line at startup.
+  bool insecure_auth_allowed = 5;
 }
 
 // SystemSettings holds the global, admin-editable configuration.
