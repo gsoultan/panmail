@@ -50,8 +50,13 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     queryFn: () => emailProviderService.listProviders(100),
   });
 
-  const templates = templatesData?.templates || [];
-  const providers = providersData?.providers || [];
+  // Memoised so the empty-array fallback keeps one identity across renders.
+  // `templates` is a dependency of the seeding effect below, and while the
+  // query was in flight a bare `|| []` handed that effect a new array every
+  // render: it re-ran, wrote to the form, re-rendered, and re-ran again until
+  // React gave up at its nested-update limit.
+  const templates = React.useMemo(() => templatesData?.templates ?? [], [templatesData]);
+  const providers = React.useMemo(() => providersData?.providers ?? [], [providersData]);
 
   const form = useAdaptedForm({
     initialValues: {
@@ -161,21 +166,31 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     return data;
   };
 
-  // Reset form when initial values change
+  // Seed the form from the props the caller opened it with.
+  //
+  // The template list is a dependency because a named template only arrives
+  // after mount, so its mockup can only be built on a later pass. But the seed
+  // has to happen once per prop change rather than once per list identity: the
+  // list gets a new identity on every background refetch, and writing the
+  // props back then would reset a provider the user had since picked.
+  const seededRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     const tId = initialTemplateId || '';
+    const pId = initialProviderId || '';
+    const template = tId ? templates.find(t => t.id === tId) : undefined;
+
+    const seed = `${tId}\u0000${pId}\u0000${template ? 'ready' : ''}`;
+    if (seededRef.current === seed) return;
+    seededRef.current = seed;
+
     form.setFieldValue('templateId', tId);
-    form.setFieldValue('providerId', initialProviderId || '');
-    
-    if (tId && templates.length > 0) {
-      const template = templates.find(t => t.id === tId);
-      if (template) {
-        const mockup = extractVariables(template);
-        form.setFieldValue('templateData', JSON.stringify(mockup, null, 2));
-      }
-    } else {
-      form.setFieldValue('templateData', '{}');
-    }
+    form.setFieldValue('providerId', pId);
+    form.setFieldValue(
+      'templateData',
+      template ? JSON.stringify(extractVariables(template), null, 2) : '{}',
+    );
+    // `form` is deliberately absent: the adapter returns a fresh object each
+    // render, so depending on it would reintroduce the loop this fixes.
   }, [initialTemplateId, initialProviderId, templates]);
 
   const handleSubmit = (values: typeof form.values) => {
