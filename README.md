@@ -270,6 +270,63 @@ curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
 
 The presence of `Retry-After` is what separates the two capacity refusals — they deliberately share a status code, because they are the same answer to the caller: you are asking for more than you may have. The Go client turns them into `panmail.RateLimitedError` and `panmail.BacklogFullError` so you do not have to read headers.
 
+### Sending over SMTP
+
+For an application that already speaks SMTP — an existing framework mailer, or
+anything you would rather not fit a new client into — panmail accepts
+submissions directly. It is the same pipeline: a message submitted over SMTP
+goes through the same send usecase as the RPC API, so the rate limit, backlog
+ceiling, suppression list and per-provider `AllowedDomains` anti-spoofing
+checks all apply unchanged.
+
+The listener is **off by default**. Enable it with `--smtp-addr`:
+
+```bash
+panmail --smtp-addr :587 \
+        --smtp-tls-cert /etc/panmail/tls.crt \
+        --smtp-tls-key  /etc/panmail/tls.key
+```
+
+Then point the application at it:
+
+| Setting | Value |
+| :--- | :--- |
+| Host / Port | the address you passed to `--smtp-addr` |
+| Encryption | STARTTLS |
+| Username | the **provider id** (a UUID) |
+| Password | the **API key**, with the `email:send` scope |
+
+The username carries the provider id because SMTP has no field for it and
+`provider_id` is required on every send. A message may override it with an
+`X-Panmail-Provider-Id` header, so one connection can send through more than
+one provider; the header is stripped before the message goes out.
+
+**TLS is required for AUTH.** The password is an API key, which is a tenant's
+entire sending authority, so the server refuses to start without either a
+keypair or an explicit `--smtp-allow-insecure-auth`. Use that flag only where
+the hop is already private, such as a container network or loopback.
+
+#### What the reply codes mean
+
+| Code | Meaning | What the client does |
+| :--- | :--- | :--- |
+| `250` | Queued. The message is in the outbox and panmail owns delivery from here. | Done. Delivery is reported through events and webhooks. |
+| `451 4.7.1` | Over the tenant's send rate. **Not** queued. | Retries. The delay to wait is in the reply text. |
+| `452 4.3.1` | The queue is deeper than the rate can drain. **Not** queued. | Retries later. |
+| `535 5.7.8` | The key is unknown, disabled, expired, or lacks `email:send`. | Gives up. Fix the key. |
+| `501 5.5.4` | No provider id, or one that is not a UUID. | Gives up. Fix the username or the header. |
+| `451 4.3.0` | Something else went wrong. **Not** queued. | Retries. |
+
+Every failure code above is returned *before* the message is written to the
+outbox, so a client that retries one cannot produce a duplicate send. The `250`
+is written only after the message is queued.
+
+One caveat inherent to SMTP: if the connection drops in the moment between
+panmail queueing a message and the `250` reaching the client, the client will
+retry and the message will be sent twice. SMTP carries no idempotency key for
+panmail to de-duplicate on. The RPC API has the same property, which is why the
+Go client [never retries a send whose outcome it does not know](#what-the-refusals-mean).
+
 ### 🧬 Advanced Templating
 
 Panmail supports two template engines: **Handlebars** (default) and standard **Go `html/template`**. This allows you to use the syntax you are most comfortable with.

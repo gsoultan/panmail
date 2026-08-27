@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -37,6 +38,7 @@ import (
 	emailstores "github.com/gsoultan/panmail/internal/email/repositories/stores/postgres"
 	emailservices "github.com/gsoultan/panmail/internal/email/services"
 	emailconnect "github.com/gsoultan/panmail/internal/email/transports/connect"
+	emailsmtp "github.com/gsoultan/panmail/internal/email/transports/smtp"
 	emailusecases "github.com/gsoultan/panmail/internal/email/usecases"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/stores/postgres"
 	providerservices "github.com/gsoultan/panmail/internal/email_provider/services"
@@ -197,6 +199,22 @@ func main() {
 	// runs alongside, or an operator forwards the port deliberately.
 	metricsAddrFlag := flag.String("metrics-addr", "127.0.0.1:9090",
 		"Address for the Prometheus metrics listener; empty to disable")
+	// Off by default. SMTP submission is a second way into the send pipeline,
+	// for applications that already speak SMTP and would otherwise need the
+	// RPC client; an operator who has not asked for it should not be running
+	// an open port for it.
+	smtpAddrFlag := flag.String("smtp-addr", "",
+		"Address for the SMTP submission listener; empty to disable")
+	// TLS is how the API key a client sends as its password stays private.
+	smtpTLSCertFlag := flag.String("smtp-tls-cert", "",
+		"Certificate for the SMTP submission listener (enables STARTTLS)")
+	smtpTLSKeyFlag := flag.String("smtp-tls-key", "",
+		"Private key for the SMTP submission listener")
+	// An API key is a tenant's whole sending authority. Sending it in the
+	// clear is defensible only where the hop is already private, so it takes
+	// an explicit flag rather than being what happens when TLS is unset.
+	smtpAllowInsecureFlag := flag.Bool("smtp-allow-insecure-auth", false,
+		"Permit SMTP AUTH without TLS; only for a listener on loopback or a private network")
 	flag.Parse()
 
 	if *versionFlag {
@@ -594,6 +612,31 @@ func main() {
 
 	authMiddleware := authmiddlewares.NewAuthMiddleware(swappableTokenMaker, apiKeyUsecase)
 
+	// SMTP submission, for applications that already speak SMTP. It is a
+	// second door onto the same pipeline, not a second pipeline: everything
+	// it accepts goes through the send usecase the RPC handler calls, so the
+	// rate limit, backlog ceiling, suppression list and anti-spoofing checks
+	// apply to it unchanged.
+	smtpServer, err := buildSMTPServer(
+		*smtpAddrFlag, *smtpTLSCertFlag, *smtpTLSKeyFlag, *smtpAllowInsecureFlag,
+		apiKeyUsecase, sendEmailUsecase,
+	)
+	if err != nil {
+		// Fatal, unlike the metrics listener. An operator who asked for SMTP
+		// and silently did not get it would find out from the application
+		// that could not send.
+		slog.Error("failed to configure the SMTP submission listener", "error", err)
+		os.Exit(1)
+	}
+	if smtpServer != nil {
+		go func() {
+			slog.Info("SMTP submission listener started", "addr", smtpServer.Addr())
+			if err := smtpServer.ListenAndServe(); err != nil && !errors.Is(err, net.ErrClosed) {
+				slog.Error("SMTP submission listener stopped", "error", err)
+			}
+		}()
+	}
+
 	setupUsecase := setupusecases.NewSetupUsecase(authUsecase, conn, swappableTokenMaker, migrate)
 	setupService := setupservices.NewSetupService(setupUsecase)
 	warnIfSetupIsStillOpen(setupUsecase)
@@ -799,6 +842,14 @@ func main() {
 
 	if metricsServer != nil {
 		_ = metricsServer.Shutdown(shutdownCtx)
+	}
+	if smtpServer != nil {
+		// Draining matters more here than for a scrape endpoint: a client
+		// mid-DATA has already been told to send, and dropping the connection
+		// makes it retry a message that may yet be queued.
+		if err := smtpServer.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("SMTP submission listener shutdown failed", "error", err)
+		}
 	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown failed", "error", err)
@@ -1427,4 +1478,54 @@ func handleBackupCommand() {
 	for _, note := range manifest.Notes {
 		fmt.Printf("  note: %s\n", note)
 	}
+}
+
+// buildSMTPServer constructs the SMTP submission listener, or returns nil when
+// the operator did not ask for one.
+//
+// The insecure-auth decision is made here rather than left to the transport so
+// the reasoning is visible next to the other listen-address guards: an API key
+// travels as the SMTP password, and on a listener reachable from another host
+// that is a credential in plaintext on the wire.
+func buildSMTPServer(
+	addr, certFile, keyFile string,
+	allowInsecure bool,
+	verifier emailsmtp.APIKeyVerifier,
+	sender emailsmtp.Sender,
+) (*emailsmtp.Server, error) {
+	if addr == "" {
+		return nil, nil
+	}
+
+	cfg := emailsmtp.Config{
+		Addr:              addr,
+		AllowInsecureAuth: allowInsecure,
+	}
+
+	switch {
+	case certFile != "" && keyFile != "":
+		certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("load SMTP TLS keypair: %w", err)
+		}
+		cfg.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{certificate},
+			MinVersion:   tls.VersionTLS12,
+		}
+	case certFile != "" || keyFile != "":
+		return nil, errors.New("both --smtp-tls-cert and --smtp-tls-key are required to enable STARTTLS")
+	}
+
+	if cfg.TLSConfig == nil && allowInsecure && !isLoopbackAddr(addr) {
+		// Not refused: a private container network is a legitimate place to
+		// run this, and the gateway cannot tell one from the open internet by
+		// looking at a bind address. Said plainly and once, so the choice is
+		// on the record rather than a surprise in a packet capture.
+		slog.Warn("SMTP AUTH is accepted without TLS on a listener reachable from other hosts",
+			"addr", addr,
+			"detail", "an API key is sent as the SMTP password and carries the tenant's full sending authority",
+			"fix", "pass --smtp-tls-cert and --smtp-tls-key, or bind --smtp-addr to loopback")
+	}
+
+	return emailsmtp.NewServer(cfg, verifier, sender, slog.Default())
 }
