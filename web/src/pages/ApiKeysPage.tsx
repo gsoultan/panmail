@@ -22,6 +22,7 @@ import { IconKey, IconPlus, IconTrash, IconCopy, IconCheck, IconAlertCircle, Ico
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiKeyService } from '../features/auth/services/apiKey';
 import { notifications } from '@mantine/notifications';
+import { SmtpIntegrationPanel } from '../features/settings/components/SmtpIntegrationPanel';
 
 export const ApiKeysPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -140,6 +141,8 @@ export const ApiKeysPage: React.FC = () => {
             </Button>
           </Group>
         </Group>
+
+        <SmtpIntegrationPanel />
 
         <Box style={{
           backgroundColor: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',

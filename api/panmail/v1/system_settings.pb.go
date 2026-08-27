@@ -58,10 +58,13 @@ func (*GetSettingsRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetSettingsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Settings      *SystemSettings        `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Settings *SystemSettings        `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	// How this process is accepting SMTP submissions. Read-only: it reports
+	// process state, not configuration, and UpdateSettings does not accept it.
+	SmtpSubmission *SmtpSubmission `protobuf:"bytes,2,opt,name=smtp_submission,json=smtpSubmission,proto3" json:"smtp_submission,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetSettingsResponse) Reset() {
@@ -97,6 +100,13 @@ func (*GetSettingsResponse) Descriptor() ([]byte, []int) {
 func (x *GetSettingsResponse) GetSettings() *SystemSettings {
 	if x != nil {
 		return x.Settings
+	}
+	return nil
+}
+
+func (x *GetSettingsResponse) GetSmtpSubmission() *SmtpSubmission {
+	if x != nil {
+		return x.SmtpSubmission
 	}
 	return nil
 }
@@ -189,6 +199,98 @@ func (x *UpdateSettingsResponse) GetSettings() *SystemSettings {
 	return nil
 }
 
+// SmtpSubmission reports the SMTP submission listener, so the dashboard can
+// show an integrator real connection details instead of guessing at them.
+//
+// It is deliberately not part of SystemSettings. The listener is configured by
+// process flags and cannot be changed by an administrator at runtime, and a
+// field that appears in an editable form but silently ignores edits is worse
+// than one that is absent.
+type SmtpSubmission struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether this process is listening for submissions at all.
+	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// The hostname clients should connect to, empty when the listener binds
+	// every interface. A wildcard bind gives no hostname worth reporting, and
+	// inventing one would send integrators somewhere that does not answer; the
+	// dashboard falls back to the host in base_url and says what it did.
+	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	Port int32  `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+	// Whether the listener offers STARTTLS.
+	Starttls bool `protobuf:"varint,4,opt,name=starttls,proto3" json:"starttls,omitempty"`
+	// Whether AUTH is accepted on an unencrypted connection. True means an API
+	// key can cross the network in the clear, which is a deployment decision
+	// worth showing rather than burying in a log line at startup.
+	InsecureAuthAllowed bool `protobuf:"varint,5,opt,name=insecure_auth_allowed,json=insecureAuthAllowed,proto3" json:"insecure_auth_allowed,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *SmtpSubmission) Reset() {
+	*x = SmtpSubmission{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SmtpSubmission) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SmtpSubmission) ProtoMessage() {}
+
+func (x *SmtpSubmission) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SmtpSubmission.ProtoReflect.Descriptor instead.
+func (*SmtpSubmission) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SmtpSubmission) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *SmtpSubmission) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *SmtpSubmission) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *SmtpSubmission) GetStarttls() bool {
+	if x != nil {
+		return x.Starttls
+	}
+	return false
+}
+
+func (x *SmtpSubmission) GetInsecureAuthAllowed() bool {
+	if x != nil {
+		return x.InsecureAuthAllowed
+	}
+	return false
+}
+
 // SystemSettings holds the global, admin-editable configuration.
 //
 // Every *_retention_days field is a whole number of days, and zero always
@@ -223,7 +325,7 @@ type SystemSettings struct {
 
 func (x *SystemSettings) Reset() {
 	*x = SystemSettings{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -235,7 +337,7 @@ func (x *SystemSettings) String() string {
 func (*SystemSettings) ProtoMessage() {}
 
 func (x *SystemSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -248,7 +350,7 @@ func (x *SystemSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemSettings.ProtoReflect.Descriptor instead.
 func (*SystemSettings) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{4}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SystemSettings) GetBaseUrl() string {
@@ -320,13 +422,20 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\n" +
 	" panmail/v1/system_settings.proto\x12\n" +
 	"panmail.v1\"\x14\n" +
-	"\x12GetSettingsRequest\"M\n" +
+	"\x12GetSettingsRequest\"\x92\x01\n" +
 	"\x13GetSettingsResponse\x126\n" +
-	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"O\n" +
+	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\x12C\n" +
+	"\x0fsmtp_submission\x18\x02 \x01(\v2\x1a.panmail.v1.SmtpSubmissionR\x0esmtpSubmission\"O\n" +
 	"\x15UpdateSettingsRequest\x126\n" +
 	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"P\n" +
 	"\x16UpdateSettingsResponse\x126\n" +
-	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"\xbf\x03\n" +
+	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"\xa2\x01\n" +
+	"\x0eSmtpSubmission\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x12\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1a\n" +
+	"\bstarttls\x18\x04 \x01(\bR\bstarttls\x122\n" +
+	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\"\xbf\x03\n" +
 	"\x0eSystemSettings\x12\x19\n" +
 	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12,\n" +
 	"\x12log_retention_days\x18\x02 \x01(\x05R\x10logRetentionDays\x12#\n" +
@@ -356,27 +465,29 @@ func file_panmail_v1_system_settings_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_system_settings_proto_rawDescData
 }
 
-var file_panmail_v1_system_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_panmail_v1_system_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_panmail_v1_system_settings_proto_goTypes = []any{
 	(*GetSettingsRequest)(nil),     // 0: panmail.v1.GetSettingsRequest
 	(*GetSettingsResponse)(nil),    // 1: panmail.v1.GetSettingsResponse
 	(*UpdateSettingsRequest)(nil),  // 2: panmail.v1.UpdateSettingsRequest
 	(*UpdateSettingsResponse)(nil), // 3: panmail.v1.UpdateSettingsResponse
-	(*SystemSettings)(nil),         // 4: panmail.v1.SystemSettings
+	(*SmtpSubmission)(nil),         // 4: panmail.v1.SmtpSubmission
+	(*SystemSettings)(nil),         // 5: panmail.v1.SystemSettings
 }
 var file_panmail_v1_system_settings_proto_depIdxs = []int32{
-	4, // 0: panmail.v1.GetSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
-	4, // 1: panmail.v1.UpdateSettingsRequest.settings:type_name -> panmail.v1.SystemSettings
-	4, // 2: panmail.v1.UpdateSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
-	0, // 3: panmail.v1.SystemSettingsService.GetSettings:input_type -> panmail.v1.GetSettingsRequest
-	2, // 4: panmail.v1.SystemSettingsService.UpdateSettings:input_type -> panmail.v1.UpdateSettingsRequest
-	1, // 5: panmail.v1.SystemSettingsService.GetSettings:output_type -> panmail.v1.GetSettingsResponse
-	3, // 6: panmail.v1.SystemSettingsService.UpdateSettings:output_type -> panmail.v1.UpdateSettingsResponse
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	5, // 0: panmail.v1.GetSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
+	4, // 1: panmail.v1.GetSettingsResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
+	5, // 2: panmail.v1.UpdateSettingsRequest.settings:type_name -> panmail.v1.SystemSettings
+	5, // 3: panmail.v1.UpdateSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
+	0, // 4: panmail.v1.SystemSettingsService.GetSettings:input_type -> panmail.v1.GetSettingsRequest
+	2, // 5: panmail.v1.SystemSettingsService.UpdateSettings:input_type -> panmail.v1.UpdateSettingsRequest
+	1, // 6: panmail.v1.SystemSettingsService.GetSettings:output_type -> panmail.v1.GetSettingsResponse
+	3, // 7: panmail.v1.SystemSettingsService.UpdateSettings:output_type -> panmail.v1.UpdateSettingsResponse
+	6, // [6:8] is the sub-list for method output_type
+	4, // [4:6] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_system_settings_proto_init() }
@@ -390,7 +501,7 @@ func file_panmail_v1_system_settings_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_system_settings_proto_rawDesc), len(file_panmail_v1_system_settings_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
