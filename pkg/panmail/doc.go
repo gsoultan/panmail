@@ -1,6 +1,23 @@
 // Package panmail is the Go client for sending mail through a panmail
 // gateway.
 //
+// Deprecated: the clients now live in their own repository,
+// github.com/gsoultan/panmail-sdk, in Go, PHP, Java and Node. Move with:
+//
+//	go get github.com/gsoultan/panmail-sdk
+//	import panmail "github.com/gsoultan/panmail-sdk"
+//
+// The API is unchanged apart from two things: WithConnectOptions is gone,
+// because the new client speaks the Connect protocol's JSON mode directly and
+// has no ConnectRPC underneath for options to reach — WithHTTPClient covers
+// the transport, proxy and TLS cases it was used for. And Status is a string
+// type of the SDK's own rather than an alias for the generated enum; the
+// constants compare equal to the same wire values.
+//
+// This package still works and is not going to be removed without notice, but
+// fixes land in panmail-sdk. It cannot move with you either way: this module
+// is going private, and a private module cannot be go-got.
+//
 // It talks to the same ConnectRPC endpoint the web UI uses, authenticating
 // with an API key rather than a session. Create the key in Settings → API
 // Keys with the email:send scope; the key carries the tenant, so there is
