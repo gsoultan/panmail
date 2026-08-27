@@ -287,6 +287,10 @@ panmail --smtp-addr :587 \
         --smtp-tls-key  /etc/panmail/tls.key
 ```
 
+The dashboard shows the live connection details under **API Keys → SMTP
+submission**, including a per-provider username you can copy. It reads them
+from the running process, so if it says the listener is off, it is off.
+
 Then point the application at it:
 
 | Setting | Value |

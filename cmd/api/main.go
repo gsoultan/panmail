@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,7 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpchealth"
+	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
 	authmiddlewares "github.com/gsoultan/panmail/internal/auth/middlewares"
 	authstores "github.com/gsoultan/panmail/internal/auth/repositories/stores/postgres"
@@ -422,7 +424,10 @@ func main() {
 	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })
 
 	settingsUsecase := settingsusecases.NewSettingsUsecase(retentionWorker)
-	settingsService := settingsservices.NewSettingsService(settingsUsecase)
+	settingsService := settingsservices.NewSettingsService(
+		settingsUsecase,
+		describeSMTPSubmission(*smtpAddrFlag, *smtpTLSCertFlag, *smtpTLSKeyFlag, *smtpAllowInsecureFlag),
+	)
 
 	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase, trackingSigner)
 
@@ -1528,4 +1533,53 @@ func buildSMTPServer(
 	}
 
 	return emailsmtp.NewServer(cfg, verifier, sender, slog.Default())
+}
+
+// describeSMTPSubmission reports the SMTP listener this process is running, so
+// the dashboard can show an integrator real connection details.
+//
+// It describes the flags rather than the running server on purpose: the two
+// cannot disagree, because a listener that failed to build is fatal at
+// startup, and nothing can change either of them afterwards.
+func describeSMTPSubmission(addr, certFile, keyFile string, allowInsecure bool) *panmailv1.SmtpSubmission {
+	if addr == "" {
+		return &panmailv1.SmtpSubmission{Enabled: false}
+	}
+
+	starttls := certFile != "" && keyFile != ""
+	submission := &panmailv1.SmtpSubmission{
+		Enabled:             true,
+		Starttls:            starttls,
+		InsecureAuthAllowed: !starttls && allowInsecure,
+	}
+
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		// An address the listener accepted but this cannot split is not worth
+		// guessing at. Reporting the port as zero tells the dashboard it has
+		// nothing to show, which is the truth.
+		return submission
+	}
+	if parsed, convErr := strconv.Atoi(port); convErr == nil {
+		submission.Port = int32(parsed)
+	}
+
+	// A wildcard bind names no host a client could dial. Reporting it would
+	// send an integrator to 0.0.0.0; reporting nothing lets the dashboard say
+	// it is falling back to the base URL, which is at least a host that
+	// answers.
+	if !isWildcardHost(host) {
+		submission.Host = host
+	}
+	return submission
+}
+
+// isWildcardHost reports whether a bind host stands for every interface rather
+// than for somewhere a client can connect to.
+func isWildcardHost(host string) bool {
+	if host == "" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsUnspecified()
 }
