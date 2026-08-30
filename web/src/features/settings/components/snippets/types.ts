@@ -58,9 +58,24 @@ export function phpArray(values: string[]): string {
   return `[${values.map((v) => `'${phpString(v)}'`).join(', ')}]`;
 }
 
+/** JavaScript string literal contents, for a single-quoted string. */
+export function jsString(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
 /** A Java List.of(...) literal. */
 export function javaList(values: string[]): string {
   return `List.of(${values.map((v) => `"${javaString(v)}"`).join(', ')})`;
+}
+
+/** A JavaScript array literal. */
+export function jsArray(values: string[]): string {
+  return `[${values.map((v) => `'${jsString(v)}'`).join(', ')}]`;
 }
 
 /** The address lists, with the fallbacks the snippets show for an empty form. */

@@ -196,10 +196,19 @@ Two things to set up first:
 
 Authenticate with the `X-API-Key` header — *not* `Authorization`, which carries a dashboard session and will reject a key as a malformed token.
 
-#### Go
+#### With an SDK
+
+The clients live in their own repo, **[gsoultan/panmail-sdk](https://github.com/gsoultan/panmail-sdk)**, in four languages. They are the same small library each time: one call, typed refusals you can act on, and a deliberate refusal to retry anything whose outcome is unknown.
+
+| Language | Install | Runtime deps |
+| --- | --- | --- |
+| Go | `go get github.com/gsoultan/panmail-sdk` | none — stdlib only |
+| PHP | `composer require gsoultan/panmail-sdk` | ext-curl, ext-json |
+| Java | `io.github.gsoultan:panmail-sdk` | jackson-databind |
+| Node | `npm i @gsoultan/panmail-sdk` | none — `fetch` |
 
 ```go
-import "github.com/gsoultan/panmail/pkg/panmail"
+import panmail "github.com/gsoultan/panmail-sdk"
 
 client, err := panmail.New("https://mail.example.com", os.Getenv("PANMAIL_API_KEY"))
 if err != nil {
@@ -220,9 +229,11 @@ if err != nil {
 log.Printf("queued as %s", result.MessageID)
 ```
 
-`go get github.com/gsoultan/panmail` brings it in. Only the packages you import are compiled, so this pulls in the generated API and ConnectRPC — not the gateway's database or storage engines. Templates, attachments and the error handling below are covered by the runnable examples in `pkg/panmail/example_test.go`.
+None of the SDKs depends on this repo — they speak the wire protocol directly, which is written down in full in [`docs/WIRE.md`](https://github.com/gsoultan/panmail-sdk/blob/main/docs/WIRE.md). That document is also what you want if you would rather not take a dependency at all: it covers the JSON contract *and* the SMTP door below.
 
-**The client does not retry a send whose outcome it does not know.** Sending is not idempotent and there is no de-duplication key, so retrying after a timeout is retrying a message that may already be on its way. The one safe case is a refusal, where the gateway says plainly that it did not accept the message — `panmail.WithRateLimitRetries(n)` turns that on.
+**No SDK retries a send whose outcome it does not know.** Sending is not idempotent and there is no de-duplication key, so retrying after a timeout is retrying a message that may already be on its way. The one safe case is a refusal, where the gateway says plainly that it did not accept the message — `WithRateLimitRetries(n)` and its equivalents turn that on.
+
+> The in-repo `pkg/panmail` is the SDK's predecessor and is **deprecated**. It still works, but it is not where fixes land.
 
 #### cURL
 

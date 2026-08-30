@@ -129,4 +129,45 @@ describe('SendEmailForm', () => {
 
     expect(inputFor(container, 'Email Provider').value).toContain('Mailgun');
   });
+
+  // Three ways into the gateway, and they are genuinely different integrations
+  // rather than three renderings of one. The SDK tab is the recommended path;
+  // the other two are the same send without the dependency.
+  test('offers the SDK alongside the raw HTTP and SMTP paths', async () => {
+    templatesResult = Promise.resolve({ templates: [] });
+    providersResult = Promise.resolve({ providers: PROVIDERS });
+
+    await renderForm();
+
+    for (const tab of ['Test Form', 'SDK', 'API Request', 'SMTP Request']) {
+      expect(screen.getByRole('tab', { name: tab }), tab).toBeTruthy();
+    }
+  });
+
+  test('the SDK tab shows the published client, not a hand-rolled request', async () => {
+    templatesResult = Promise.resolve({ templates: [] });
+    providersResult = Promise.resolve({ providers: PROVIDERS });
+
+    await renderForm();
+
+    const tab = screen.getByRole('tab', { name: 'SDK' });
+    await act(async () => {
+      fireEvent.click(tab);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // Scoped to this panel: Mantine keeps every panel mounted, so the whole
+    // tree also holds the API tab's cURL — which names the endpoint on purpose.
+    const panelId = tab.getAttribute('aria-controls');
+    const panel = panelId ? document.getElementById(panelId) : null;
+    if (!panel) throw new Error('the SDK tab controls no panel');
+
+    // Go leads the SDK tab, so its snippet is the one on screen.
+    const shown = panel.textContent ?? '';
+    expect(shown).toContain('github.com/gsoultan/panmail-sdk');
+    expect(shown).toContain('client.Send(context.Background()');
+    // The client owns the endpoint; spelling it out here would mean the
+    // snippet had stopped going through the client.
+    expect(shown).not.toContain('/panmail.v1.EmailService/SendEmail');
+  });
 });

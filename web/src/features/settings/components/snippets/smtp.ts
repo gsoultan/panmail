@@ -6,6 +6,7 @@ import {
   goString,
   goStringSlice,
   javaString,
+  jsString,
   phpString,
   resolved,
 } from './types';
@@ -208,6 +209,60 @@ ${recipients.join('\n')}
         Transport.send(message);
         System.out.println("submitted");
     }
+}
+`;
+}
+
+/** Node, using nodemailer — what most existing Node applications already have. */
+export function nodeSmtpSnippet(values: SnippetValues, connection: SmtpConnection): string {
+  const v = resolved(values);
+  const { host, port, starttls } = endpointOf(connection);
+  const isHtml = Boolean(v.bodyHtml.trim());
+
+  const message = [
+    `  from: '${jsString(v.from)}',`,
+    `  to: '${jsString(v.to.join(', '))}',`,
+  ];
+  if (v.cc.length > 0) message.push(`  cc: '${jsString(v.cc.join(', '))}',`);
+  // nodemailer puts a bcc in the envelope without writing the header, so
+  // naming them here keeps them blind.
+  if (v.bcc.length > 0) message.push(`  bcc: '${jsString(v.bcc.join(', '))}',`);
+  message.push(`  subject: '${jsString(v.subject)}',`);
+  message.push(
+    isHtml
+      ? `  html: '${jsString(v.bodyHtml)}',`
+      : `  text: '${jsString(v.bodyText)}',`,
+  );
+  if (isHtml && v.bodyText) message.push(`  text: '${jsString(v.bodyText)}',`);
+
+  return `import nodemailer from 'nodemailer';
+
+const transporter = nodemailer.createTransport({
+  host: '${jsString(host)}',
+  port: ${port},
+${
+  starttls
+    ? '  secure: false,\n  requireTLS: true,'
+    : "  secure: false,\n  // This listener offers no STARTTLS, so the API key crosses the network\n  // in the clear. Only do this where the hop is already private.\n  ignoreTLS: true,"
+}
+  auth: {
+    // The provider id is the username, because SMTP has nowhere else to say
+    // which provider a message goes out through. The password is an API key
+    // with the email:send scope.
+    user: '${jsString(v.providerId)}',
+    pass: process.env.PANMAIL_API_KEY,
+  },
+});
+
+try {
+  const info = await transporter.sendMail({
+${message.join('\n')}
+  });
+  console.log('submitted', info.messageId);
+} catch (error) {
+  // A 4xx reply means the message was not queued, so a retry cannot duplicate
+  // it. A 5xx will not succeed on a retry.
+  throw error;
 }
 `;
 }

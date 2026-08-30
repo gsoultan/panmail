@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { goApiSnippet, phpApiSnippet, javaApiSnippet } from './api';
-import { goSmtpSnippet, phpSmtpSnippet, javaSmtpSnippet } from './smtp';
+import { goApiSnippet, phpApiSnippet, javaApiSnippet, nodeApiSnippet } from './api';
+import { goSdkSnippet, phpSdkSnippet, javaSdkSnippet, nodeSdkSnippet } from './sdk';
+import { goSmtpSnippet, phpSmtpSnippet, javaSmtpSnippet, nodeSmtpSnippet } from './smtp';
 import type { SnippetValues } from './types';
 import type { SmtpConnection } from '../smtpConnection';
 
@@ -32,12 +33,28 @@ const apiGenerators = [
   { name: 'Go', build: goApiSnippet },
   { name: 'PHP', build: phpApiSnippet },
   { name: 'Java', build: javaApiSnippet },
+  { name: 'Node', build: nodeApiSnippet },
+];
+
+const sdkGenerators = [
+  { name: 'Go', build: goSdkSnippet },
+  { name: 'PHP', build: phpSdkSnippet },
+  { name: 'Java', build: javaSdkSnippet },
+  { name: 'Node', build: nodeSdkSnippet },
+];
+
+// The two API-shaped tab groups share every generic assertion: same form
+// values, same origin, same key from the environment.
+const sendGenerators = [
+  ...apiGenerators.map((g) => ({ ...g, name: `API ${g.name}` })),
+  ...sdkGenerators.map((g) => ({ ...g, name: `SDK ${g.name}` })),
 ];
 
 const smtpGenerators = [
   { name: 'Go', build: goSmtpSnippet },
   { name: 'PHP', build: phpSmtpSnippet },
   { name: 'Java', build: javaSmtpSnippet },
+  { name: 'Node', build: nodeSmtpSnippet },
 ];
 
 /**
@@ -46,8 +63,8 @@ const smtpGenerators = [
  * a user typed cannot break out of the string literal holding it, and that a
  * Bcc stays blind.
  */
-describe('API snippets', () => {
-  for (const { name, build } of apiGenerators) {
+describe('API and SDK snippets', () => {
+  for (const { name, build } of sendGenerators) {
     describe(name, () => {
       test('carries the form values', () => {
         const code = build(values(), BASE);
@@ -80,33 +97,65 @@ describe('API snippets', () => {
     });
   }
 
-  // The API takes bcc as its own field, so the gateway keeps it out of the
-  // headers. That is the opposite of SMTP and worth not confusing.
-  test('Go uses the published client rather than hand-rolled HTTP', () => {
-    const code = goApiSnippet(values(), BASE);
-    expect(code).toContain('github.com/gsoultan/panmail/pkg/panmail');
-    expect(code).toContain('client.Send(context.Background()');
+  test('each SDK snippet uses its published client', () => {
+    expect(goSdkSnippet(values(), BASE)).toContain('github.com/gsoultan/panmail-sdk');
+    expect(phpSdkSnippet(values(), BASE)).toContain('use Panmail\\Client;');
+    expect(javaSdkSnippet(values(), BASE)).toContain('io.github.gsoultan.panmail.PanmailClient');
+    expect(nodeSdkSnippet(values(), BASE)).toContain("from '@gsoultan/panmail-sdk'");
   });
 
-  // The hand-rolled clients name the endpoint themselves; the Go client is
-  // given a base URL and derives the path.
-  test('the hand-rolled clients post to the send endpoint', () => {
-    for (const build of [phpApiSnippet, javaApiSnippet]) {
-      expect(build(values(), BASE)).toContain(
+  // The client is given a base URL and derives the procedure path itself, so an
+  // SDK snippet that spells the path out has stopped going through the client.
+  test('no SDK snippet names the procedure path itself', () => {
+    for (const { name, build } of sdkGenerators) {
+      expect(build(values(), BASE), name).not.toContain('/panmail.v1.EmailService/SendEmail');
+    }
+  });
+
+  // The API tab is the one that shows the endpoint, because holding the HTTP
+  // yourself is the whole point of it.
+  test('every API snippet posts to the send endpoint', () => {
+    for (const { name, build } of apiGenerators) {
+      expect(build(values(), BASE), name).toContain(
         'https://mail.example.com/panmail.v1.EmailService/SendEmail',
       );
     }
   });
 
+  // The API snippets set the header themselves; the SDKs do it internally.
+  test('every API snippet sends the key as X-API-Key', () => {
+    for (const { name, build } of apiGenerators) {
+      expect(build(values(), BASE), name).toContain('X-API-Key');
+    }
+  });
+
   // Authorization carries a dashboard session, and a key sent as a bearer
-  // token is rejected as a malformed session rather than as a bad key. The
-  // snippets say so in a comment, so this checks it is not used as a header.
-  test('the API key goes in X-API-Key, never as an Authorization header', () => {
-    for (const build of [phpApiSnippet, javaApiSnippet]) {
+  // token is rejected as a malformed session rather than as a bad key.
+  test('no snippet sets an Authorization header', () => {
+    for (const { name, build } of sendGenerators) {
       const code = build(values(), BASE);
-      expect(code).toContain('X-API-Key');
-      expect(code).not.toContain("'Authorization:");
-      expect(code).not.toContain('"Authorization"');
+      expect(code, name).not.toContain("'Authorization:");
+      expect(code, name).not.toContain('"Authorization"');
+    }
+  });
+
+  // Both capacity refusals answer 429 and only one carries a Retry-After. A
+  // snippet that treats them alike teaches the wrong lesson — and the wrong
+  // lesson here is an immediate retry against a queue that is already too deep.
+  test('each SDK snippet catches the two capacity refusals separately', () => {
+    for (const { name, build } of sdkGenerators) {
+      const code = build(values(), BASE);
+      expect(code, name).toContain('RateLimited');
+      expect(code, name).toContain('BacklogFull');
+    }
+  });
+
+  test('each API snippet tells the two 429s apart by Retry-After', () => {
+    for (const { name, build } of apiGenerators) {
+      const code = build(values(), BASE);
+      expect(code, name).toContain('429');
+      expect(code, name).toContain('Retry-After');
+      expect(code, name).toContain('the queue is too deep');
     }
   });
 });
@@ -177,6 +226,63 @@ describe('SMTP snippets', () => {
 });
 
 /**
+ * These snippets are pasted into real projects, so "it renders" is not the bar —
+ * it has to compile. Each case here is a defect found by generating the snippet
+ * and running the real compiler on it, kept so it cannot come back without a
+ * toolchain in CI.
+ */
+describe('generated code is valid in its own language', () => {
+  const goGenerators = [
+    { name: 'API Go', build: goApiSnippet, arg: BASE },
+    { name: 'SDK Go', build: goSdkSnippet, arg: BASE },
+  ];
+
+  // A Go file without one is not gofmt-clean, and every editor fixes it on
+  // save — which makes the snippet look like it was never run.
+  test('Go snippets end with a newline', () => {
+    for (const { name, build, arg } of goGenerators) {
+      expect(build(values(), arg).endsWith('\n'), name).toBe(true);
+    }
+  });
+
+  // gofmt aligns a map literal's values. Emitting it unaligned means the file
+  // reformats the moment it is saved.
+  test('the Go map literal is aligned the way gofmt would align it', () => {
+    const code = goApiSnippet(
+      values({ cc: ['c@example.net'], bcc: ['b@example.net'] }),
+      BASE,
+    );
+    const columns = code
+      .split('\n')
+      .map((line) => line.match(/^\t\t"[a-zA-Z]+":( +)\S/))
+      .filter((match): match is RegExpMatchArray => match !== null)
+      .map((match) => match[0].indexOf(match[1]!) + match[1]!.length);
+
+    expect(columns.length).toBeGreaterThan(3);
+    expect(new Set(columns).size, 'every value starts in the same column').toBe(1);
+  });
+
+  // javac does not care that the reference is obvious; the import has to be
+  // there. The SDK snippet renders List.of(...) for every recipient list.
+  test('Java snippets import everything they reference', () => {
+    for (const { name, build } of [
+      { name: 'API Java', build: javaApiSnippet },
+      { name: 'SDK Java', build: javaSdkSnippet },
+    ]) {
+      const code = build(values({ cc: ['c@example.net'], bcc: ['b@example.net'] }), BASE);
+      if (code.includes('List.of(')) {
+        expect(code, `${name} uses List.of without importing List`).toContain(
+          'import java.util.List;',
+        );
+      }
+      if (code.includes('new LinkedHashMap')) {
+        expect(code, name).toContain('import java.util.LinkedHashMap;');
+      }
+    }
+  });
+});
+
+/**
  * A subject or body is free text that lands inside a string literal. Each
  * language disagrees about what closes one, so each is checked on its own
  * terms: a snippet that will not compile is worse than no snippet.
@@ -186,7 +292,7 @@ describe('injection into string literals', () => {
 newline`;
 
   test('Go escapes quotes, backslashes and newlines', () => {
-    const code = goApiSnippet(values({ subject: nasty }), BASE);
+    const code = goSdkSnippet(values({ subject: nasty }), BASE);
     const line = code.split('\n').find((l) => l.includes('Subject:'))!;
     expect(line).toContain('\\"hi\\"');
     expect(line).toContain('\\\\');
@@ -195,15 +301,34 @@ newline`;
   });
 
   test('PHP escapes the single quote that would close its literal', () => {
-    const code = phpApiSnippet(values({ subject: nasty }), BASE);
+    const code = phpSdkSnippet(values({ subject: nasty }), BASE);
     expect(code).toContain("it\\'s");
   });
 
   test('Java escapes quotes and newlines', () => {
-    const code = javaApiSnippet(values({ subject: nasty }), BASE);
-    const line = code.split('\n').find((l) => l.includes('"subject"'))!;
+    const code = javaSdkSnippet(values({ subject: nasty }), BASE);
+    const line = code.split('\n').find((l) => l.includes('.subject('))!;
     expect(line).toContain('\\"hi\\"');
     expect(line).toContain('\\n');
+  });
+
+  test('Node escapes the single quote that would close its literal', () => {
+    const code = nodeSdkSnippet(values({ subject: nasty }), BASE);
+    const line = code.split('\n').find((l) => l.includes('subject:'))!;
+    expect(line).toContain("it\\'s");
+    // The literal must stay on one line.
+    expect(line).toContain('\\n');
+  });
+
+  // The per-language tests above pin the exact escape each one needs. This is
+  // the invariant behind all of them, checked on both tab groups: if the text a
+  // user typed survives into the snippet untouched, nothing escaped it.
+  test('no generator emits the raw text verbatim', () => {
+    for (const { name, build } of sendGenerators) {
+      const code = build(values({ subject: nasty }), BASE);
+      expect(code, name).not.toContain(nasty);
+      expect(code, name).not.toContain('He said "hi" it\'s');
+    }
   });
 
   test('a backtick in the body cannot close the Go raw literal', () => {
