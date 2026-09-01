@@ -14,6 +14,7 @@ import (
 type stubRepo struct {
 	written  []*entities.InboundEmail
 	writeErr error
+	found    *entities.InboundEmail
 }
 
 func (s *stubRepo) Write(_ context.Context, e *entities.InboundEmail) error {
@@ -26,8 +27,13 @@ func (s *stubRepo) Write(_ context.Context, e *entities.InboundEmail) error {
 func (s *stubRepo) List(context.Context, string, int, string) ([]*entities.InboundEmail, string, error) {
 	return nil, "", nil
 }
-func (s *stubRepo) GetByID(context.Context, string, string) (*entities.InboundEmail, error) {
-	return nil, errors.New("not found")
+func (s *stubRepo) GetByID(_ context.Context, _, _ string) (*entities.InboundEmail, error) {
+	if s.found == nil {
+		// De-duplication treats a lookup failure as not-seen, which is what
+		// every test that is not about release wants.
+		return nil, errors.New("not found")
+	}
+	return s.found, nil
 }
 func (s *stubRepo) Count(context.Context, string, time.Time, time.Time) (int64, error) {
 	return 0, nil
@@ -175,5 +181,37 @@ func TestWithoutAScreenerInboundIsUnchanged(t *testing.T) {
 	}
 	if len(repo.written) != 1 || trigger.enqueued != 1 {
 		t.Errorf("stored=%d webhooks=%d, want unfiltered behaviour", len(repo.written), trigger.enqueued)
+	}
+}
+
+// A hold suppresses the webhook rather than discarding the mail, so releasing
+// one is firing the notification that was withheld.
+func TestReleasingAHeldInboundMessageFiresTheWebhook(t *testing.T) {
+	repo := &stubRepo{}
+	trigger := &stubTrigger{}
+
+	// The message is on disk, as a hold leaves it.
+	if err := repo.Write(context.Background(), &entities.InboundEmail{
+		ID: "msg-1", TenantID: "tenant-1", From: "sender@outside.example",
+		To: []string{"support@example.com"}, Subject: "Invoice",
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	repo.found = repo.written[0]
+
+	releaser := NewHeldReleaser(repo, trigger)
+	if err := releaser.ReleaseHeld(context.Background(), "tenant-1", "msg-1"); err != nil {
+		t.Fatalf("ReleaseHeld: %v", err)
+	}
+	if trigger.enqueued != 1 {
+		t.Errorf("webhook fired %d times, want 1", trigger.enqueued)
+	}
+}
+
+// A reviewer told the message went out has to be right about that.
+func TestReleasingAMessageThatIsNoLongerStoredIsAnError(t *testing.T) {
+	releaser := NewHeldReleaser(&stubRepo{}, &stubTrigger{})
+	if err := releaser.ReleaseHeld(context.Background(), "tenant-1", "gone"); err == nil {
+		t.Fatal("ReleaseHeld reported success for a message that is not there")
 	}
 }

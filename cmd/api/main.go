@@ -427,7 +427,7 @@ func main() {
 	filterReviewer := emailfilter.NewReviewer(
 		filterQuarantineStore,
 		emailusecases.NewHeldReleaser(outboxRepo, queueWorker),
-		nil,
+		inboundusecases.NewHeldReleaser(inboundRepo, outboundWebhookWorker),
 	)
 	emailFilterService := emailfilterservices.NewService(filterRuleStore, filterQuarantineStore, filterReviewer)
 	runWorker(&workers, workerCtx, "outbox-queue", func() { queueWorker.Start(workerCtx) })
