@@ -19,6 +19,14 @@ const (
 	ScopeWebhooksWrite     Scope = "webhooks:write"
 	ScopeEventsRead        Scope = "events:read"
 	ScopeInboundRead       Scope = "inbound:read"
+	ScopeFiltersRead       Scope = "filters:read"
+	ScopeFiltersWrite      Scope = "filters:write"
+	// ScopeFiltersRelease is separate from write on purpose.
+	// Editing a rule changes what happens next; releasing a held
+	// message puts mail on the wire now, and those are not the same
+	// trust. An integration that manages rules should not be able to
+	// empty the quarantine.
+	ScopeFiltersRelease Scope = "filters:release"
 )
 
 // AllScopes is the set a caller may choose from when minting a key.
@@ -34,6 +42,9 @@ var AllScopes = []Scope{
 	ScopeWebhooksWrite,
 	ScopeEventsRead,
 	ScopeInboundRead,
+	ScopeFiltersRead,
+	ScopeFiltersWrite,
+	ScopeFiltersRelease,
 }
 
 // DefaultScopes is what a key receives when none are requested. Sending mail is

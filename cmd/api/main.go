@@ -46,6 +46,9 @@ import (
 	providerservices "github.com/gsoultan/panmail/internal/email_provider/services"
 	providerconnect "github.com/gsoultan/panmail/internal/email_provider/transports/connect"
 	providerusecases "github.com/gsoultan/panmail/internal/email_provider/usecases"
+	"github.com/gsoultan/panmail/internal/emailfilter"
+	emailfilterservices "github.com/gsoultan/panmail/internal/emailfilter/services"
+	emailfilterpostgres "github.com/gsoultan/panmail/internal/emailfilter/stores/postgres"
 	eventstores "github.com/gsoultan/panmail/internal/event/repositories/stores/pebble"
 	eventservices "github.com/gsoultan/panmail/internal/event/services"
 	eventhttp "github.com/gsoultan/panmail/internal/event/transports/http"
@@ -354,6 +357,10 @@ func main() {
 	manageSuppressionsUsecase := suppressionusecases.NewManageSuppressionsUsecase(suppressionRepo)
 	suppressionService := suppressionservices.NewSuppressionService(manageSuppressionsUsecase)
 
+	filterRuleStore := emailfilterpostgres.NewRuleStore(conn)
+	filterQuarantineStore := emailfilterpostgres.NewQuarantineStore(conn)
+	filterScreener := emailfilter.NewScreener(filterRuleStore, filterQuarantineStore, 0)
+
 	webhookUsecase := webhookusecases.NewWebhookUsecase(webhookRepo)
 	webhookService := webhookservices.NewWebhookService(webhookUsecase)
 
@@ -375,6 +382,11 @@ func main() {
 	webhookHandler := eventhttp.NewWebhookHandler(processEventUsecase, providerRepo)
 
 	inboundUsecase := inboundusecases.NewInboundUsecase(inboundRepo, processEventUsecase, outboundWebhookWorker)
+	if screenable, ok := inboundUsecase.(interface {
+		WithScreener(emailfilter.Screener) inboundusecases.InboundUsecase
+	}); ok {
+		inboundUsecase = screenable.WithScreener(filterScreener)
+	}
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
 	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase)
 
@@ -403,11 +415,21 @@ func main() {
 		TrackingSigner:  trackingSigner,
 		Limiter:         sendLimiter,
 		SendLimits:      emailusecases.NewTenantSendLimits(tenantUsecase),
+		Screener:        filterScreener,
 	})
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
 	queueWorker := emailusecases.NewQueueWorker(outboxRepo, sendEmailUsecase, manageSuppressionsUsecase, tenantUsecase, 5*time.Second)
 	sendEmailUsecase.RegisterQueueWorker(queueWorker)
+
+	// Built here rather than above because releasing a held message has to be
+	// able to wake the worker, and the worker does not exist until now.
+	filterReviewer := emailfilter.NewReviewer(
+		filterQuarantineStore,
+		emailusecases.NewHeldReleaser(outboxRepo, queueWorker),
+		nil,
+	)
+	emailFilterService := emailfilterservices.NewService(filterRuleStore, filterQuarantineStore, filterReviewer)
 	runWorker(&workers, workerCtx, "outbox-queue", func() { queueWorker.Start(workerCtx) })
 
 	// One worker owns every retention. It reads the configuration on each pass
@@ -696,6 +718,9 @@ func main() {
 	})
 	rpc.register(func(o connect.Option) (string, http.Handler) {
 		return panmailv1connect.NewSuppressionServiceHandler(suppressionService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewEmailFilterServiceHandler(emailFilterService, o)
 	})
 	rpc.register(func(o connect.Option) (string, http.Handler) {
 		return panmailv1connect.NewWebhookServiceHandler(webhookService, o)

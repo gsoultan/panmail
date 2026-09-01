@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+// Which pipeline a rule applies to. A rule is written for one: "the sender is
+// outside the company" means opposite things on the way in and the way out.
+enum FilterDirection {
+  FILTER_DIRECTION_UNSPECIFIED = 0;
+  FILTER_DIRECTION_OUTBOUND = 1;
+  FILTER_DIRECTION_INBOUND = 2;
+}
+
+// What happens to a message a rule matched.
+enum FilterAction {
+  FILTER_ACTION_UNSPECIFIED = 0;
+  // Quarantine for review. Not delivered and not lost.
+  FILTER_ACTION_HOLD = 1;
+  // Refuse outright. Outbound the caller is told while it is still listening.
+  FILTER_ACTION_REJECT = 2;
+  // Deliver and record, for a rule you want to watch before trusting it.
+  FILTER_ACTION_TAG = 3;
+  // Deliver and stop evaluating, so a narrow exemption can sit above a broad
+  // rule rather than being copied as an exception onto every one of them.
+  FILTER_ACTION_ALLOW = 4;
+}
+
+// Where a filtered message is in its review.
+enum FilterStatus {
+  FILTER_STATUS_UNSPECIFIED = 0;
+  FILTER_STATUS_PENDING = 1;
+  FILTER_STATUS_RELEASED = 2;
+  FILTER_STATUS_REJECTED = 3;
+  // Retention reached it before a reviewer did. Distinct from rejected on
+  // purpose: nobody decided this, the clock did.
+  FILTER_STATUS_EXPIRED = 4;
+}
+
+// One test. Values are ORed against each other; separate conditions are ANDed
+// by the rule.
+message FilterCondition {
+  // from, to, cc, bcc, any_recipient, subject, body, subject_or_body, header,
+  // attachment_name, attachment_extension, attachment_count, attachment_size,
+  // total_attachment_size, message_size, recipient_count, has_attachment,
+  // has_executable_attachment, provider, spf, dkim, dmarc.
+  string field = 1;
+
+  // contains, matches, equals, domain_is, in, gte, is_true, exists.
+  string operator = 2;
+
+  repeated string values = 3;
+
+  // The header name, when field is "header".
+  string header = 4;
+
+  // The threshold for the numeric fields. Sizes are in bytes.
+  int64 number = 5;
+}
+
+message FilterRule {
+  string id = 1;
+  string name = 2;
+  FilterDirection direction = 3;
+  FilterAction action = 4;
+
+  // Lowest first, and the first rule that matches decides.
+  int32 priority = 5;
+  bool enabled = 6;
+
+  repeated FilterCondition conditions = 7;
+  repeated FilterCondition exceptions = 8;
+
+  // The label recorded when action is tag.
+  string tag = 9;
+
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+// One decision, recorded. Carries the envelope and the reason — which is what
+// a reviewer triages on — and a reference to the payload rather than the
+// payload itself.
+message FilteredMessage {
+  string id = 1;
+  FilterDirection direction = 2;
+
+  // The rule reference may be empty and the name never is: deleting a rule
+  // must not erase the reason a message was held.
+  string rule_id = 3;
+  string rule_name = 4;
+
+  FilterAction action = 5;
+  FilterStatus status = 6;
+
+  string message_id = 7;
+  string provider_id = 8;
+  string from = 9;
+  repeated string recipients = 10;
+  string subject = 11;
+  int64 size_bytes = 12;
+  int32 attachment_count = 13;
+  repeated string attachment_names = 14;
+
+  // Which conditions fired. "Held by rule 7" is not reviewable.
+  repeated FilterCondition matched = 15;
+
+  string reviewed_by = 16;
+  google.protobuf.Timestamp reviewed_at = 17;
+  string review_note = 18;
+
+  google.protobuf.Timestamp created_at = 19;
+  google.protobuf.Timestamp expires_at = 20;
+}

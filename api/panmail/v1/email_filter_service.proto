@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+import "panmail/v1/email_filter.proto";
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+service EmailFilterService {
+  rpc ListFilterRules(ListFilterRulesRequest) returns (ListFilterRulesResponse);
+  rpc CreateFilterRule(CreateFilterRuleRequest) returns (CreateFilterRuleResponse);
+  rpc UpdateFilterRule(UpdateFilterRuleRequest) returns (UpdateFilterRuleResponse);
+  rpc DeleteFilterRule(DeleteFilterRuleRequest) returns (DeleteFilterRuleResponse);
+
+  rpc ListFilteredMessages(ListFilteredMessagesRequest) returns (ListFilteredMessagesResponse);
+  rpc GetFilteredMessage(GetFilteredMessageRequest) returns (GetFilteredMessageResponse);
+  rpc ReleaseFilteredMessage(ReleaseFilteredMessageRequest) returns (ReleaseFilteredMessageResponse);
+  rpc RejectFilteredMessage(RejectFilteredMessageRequest) returns (RejectFilteredMessageResponse);
+}
+
+message ListFilterRulesRequest {}
+message ListFilterRulesResponse {
+  repeated FilterRule rules = 1;
+}
+
+message CreateFilterRuleRequest {
+  FilterRule rule = 1;
+}
+message CreateFilterRuleResponse {
+  FilterRule rule = 1;
+}
+
+message UpdateFilterRuleRequest {
+  FilterRule rule = 1;
+}
+message UpdateFilterRuleResponse {
+  FilterRule rule = 1;
+}
+
+message DeleteFilterRuleRequest {
+  string id = 1;
+}
+message DeleteFilterRuleResponse {}
+
+message ListFilteredMessagesRequest {
+  FilterDirection direction = 1;
+  FilterStatus status = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+message ListFilteredMessagesResponse {
+  repeated FilteredMessage messages = 1;
+  string next_page_token = 2;
+}
+
+message GetFilteredMessageRequest {
+  string id = 1;
+}
+message GetFilteredMessageResponse {
+  FilteredMessage message = 1;
+}
+
+message ReleaseFilteredMessageRequest {
+  string id = 1;
+  string note = 2;
+}
+message ReleaseFilteredMessageResponse {
+  FilteredMessage message = 1;
+}
+
+message RejectFilteredMessageRequest {
+  string id = 1;
+  string note = 2;
+}
+message RejectFilteredMessageResponse {
+  FilteredMessage message = 1;
+}
