@@ -20,6 +20,7 @@ import (
 	"github.com/gsoultan/panmail/internal/email/repositories/stores"
 	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	"github.com/gsoultan/panmail/internal/emailfilter"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
 	"github.com/gsoultan/panmail/internal/ratelimit"
 	suppressionStores "github.com/gsoultan/panmail/internal/suppression/repositories/stores"
@@ -59,6 +60,10 @@ type SendEmailDeps struct {
 	// every deployment had before the ceiling existed.
 	Limiter    *ratelimit.Limiter
 	SendLimits SendLimits
+
+	// Screener is optional too. A nil one sends every message, which is what
+	// a deployment with no filter rules configured must do.
+	Screener emailfilter.Screener
 }
 
 type sendEmailUsecase struct {
@@ -75,6 +80,7 @@ type sendEmailUsecase struct {
 	baseURL         string
 	trackingSigner  *tracking.Signer
 	queueWorker     QueueWorker
+	screener        emailfilter.Screener
 
 	providerCache *cache.TTLCache[[]*providerEntities.EmailProvider]
 	templateCache *cache.TTLCache[*templateEntities.Template]
@@ -94,6 +100,7 @@ func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 		renderer:        deps.Renderer,
 		baseURL:         strings.TrimSuffix(deps.BaseURL, "/"),
 		trackingSigner:  deps.TrackingSigner,
+		screener:        deps.Screener,
 		providerCache:   cache.New[[]*providerEntities.EmailProvider](providerCacheTTL),
 		templateCache:   cache.New[*templateEntities.Template](templateCacheTTL),
 	}
@@ -253,6 +260,80 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, err
 	}
 
+	// Filter rules run here: in client mode only, and after the template has
+	// been rendered.
+	//
+	// Client mode only, because the outbox worker calls SendEmail a second
+	// time to deliver. A message screened again on that pass would be held
+	// again the instant a reviewer released it — the release would hand it
+	// straight back to the rule that stopped it, and nothing would ever leave.
+	// The worker-mode branch returns long before this line, which is what
+	// makes that true.
+	//
+	// After rendering, because a rule about the subject or the body has to see
+	// what the recipient will see. Screening the raw request instead would
+	// silently miss every templated message, and templated messages are most
+	// of what a gateway sends.
+	outboxStatus := entities.OutboxStatusPending
+	var held *emailfilter.FilteredMessage
+
+	if u.screener != nil {
+		screened := emailfilter.Message{
+			From: req.From, To: req.To, Cc: req.Cc, Bcc: req.Bcc,
+			Subject: subject, HTML: bodyHTML, Text: bodyText,
+			Attachments: filterAttachments(req.Attachments),
+			Size:        approximateSize(subject, bodyHTML, bodyText, req.Attachments),
+			ProviderID:  req.ProviderId,
+		}
+
+		decision, err := u.screener.Screen(ctx, tenantID, emailfilter.DirectionOutbound, screened)
+		if err != nil {
+			// Reported, not swallowed. Filtering exists to stop things, and a
+			// gateway that sends everything whenever its database is briefly
+			// unreachable is a filter that fails open at the one moment it
+			// was supposed to work. The caller can retry.
+			slog.Error("failed to screen outbound message", "error", err, "id", messageID)
+			return nil, fmt.Errorf("failed to screen message: %w", err)
+		}
+
+		if decision.Action != "" {
+			record := emailfilter.NewFilteredMessage(tenantID, emailfilter.DirectionOutbound, screened, decision)
+			record.MessageID = messageID
+
+			switch decision.Action {
+			case emailfilter.ActionReject:
+				// Refused while the caller is still listening. A rejection
+				// nobody is told about is a message that silently vanished.
+				if err := u.screener.Record(ctx, &record); err != nil {
+					slog.Error("failed to record a rejected message", "error", err, "id", messageID)
+				}
+				for _, recipient := range recipients.addresses {
+					_ = u.RecordEvent(ctx, tenantID, req.ProviderId, messageID,
+						panmailv1.EmailEventType_EMAIL_EVENT_TYPE_REJECTED, recipient, "",
+						"filter rule: "+record.RuleName, nil)
+				}
+				return nil, fmt.Errorf("message refused by filter rule %q", record.RuleName)
+
+			case emailfilter.ActionHold:
+				// The outbox is where it waits. The claim query takes PENDING,
+				// DEFERRED and expired SENDING rows, so a HELD one is already
+				// invisible to the worker — the bytes are durable, bounded by
+				// the outbox's own retention, and releasing is a status flip
+				// rather than a second copy of the same request.
+				outboxStatus = entities.OutboxStatusHeld
+				record.PayloadRef = messageID
+				held = &record
+
+			case emailfilter.ActionTag:
+				// Delivered, and recorded so the rule can be watched before
+				// anyone trusts it enough to hold on.
+				if err := u.screener.Record(ctx, &record); err != nil {
+					slog.Error("failed to record a tagged message", "error", err, "id", messageID)
+				}
+			}
+		}
+	}
+
 	// Save message content for analytics (before tracking injection for clean preview)
 	if err := u.eventUsecase.SaveMessage(ctx, &panmailv1.EmailMessage{
 		Id:          messageID,
@@ -280,7 +361,7 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		ID:          messageID,
 		TenantID:    tenantID,
 		Request:     reqBytes,
-		Status:      entities.OutboxStatusPending,
+		Status:      outboxStatus,
 		RetryCount:  0,
 		NextRetryAt: time.Now(), // Try immediately
 		CreatedAt:   time.Now(),
@@ -289,6 +370,20 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	if err := u.outboxRepo.Create(ctx, outboxEmail); err != nil {
 		slog.Error("failed to create outbox email", "error", err, "id", messageID)
 		return nil, fmt.Errorf("failed to enqueue email: %w", err)
+	}
+
+	// Recorded only after the payload is durably in the outbox. The other
+	// order would leave a review queue entry pointing at a message that does
+	// not exist if the process died between the two writes.
+	if held != nil {
+		if err := u.screener.Record(ctx, held); err != nil {
+			slog.Error("failed to record a held message", "error", err, "id", messageID)
+		}
+		slog.Info("email held for review", "id", messageID, "tenant_id", tenantID, "rule", held.RuleName)
+		return &panmailv1.SendEmailResponse{
+			MessageId: messageID,
+			Status:    panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING,
+		}, nil
 	}
 
 	// Trigger worker to process immediately
