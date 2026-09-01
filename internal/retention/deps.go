@@ -1,6 +1,9 @@
 package retention
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // DefaultInterval is how often retention runs when no interval is given.
 // Retention is measured in days, so a daily pass is as precise as the policy
@@ -25,12 +28,26 @@ const DefaultStartupDelay = time.Minute
 // Deps are the stores retention acts on. Every field is optional: a nil store
 // is one this deployment does not have, and its policy is skipped rather than
 // panicking a background worker.
+// QuarantineExpirer moves held messages nobody reviewed out of PENDING.
+//
+// Not a pruner and not days-based: the expiry is stamped on each row when the
+// message is held, from the filter's own retention, so this asks "what is past
+// its own deadline" rather than "what is older than N days". Nothing is
+// deleted — the row becomes EXPIRED, which is a different fact from rejected
+// and worth being able to count.
+type QuarantineExpirer interface {
+	Expire(ctx context.Context, now time.Time, limit int) (int, error)
+}
+
 type Deps struct {
 	Events   EventPruner
 	Logs     LogPruner
 	Inbound  InboundPruner
 	Outbox   RetentionSetter
 	Webhooks RetentionSetter
+
+	// Quarantine is optional; without it nothing expires.
+	Quarantine QuarantineExpirer
 
 	// Interval between passes. Zero means DefaultInterval.
 	Interval time.Duration

@@ -399,3 +399,47 @@ func TestNilStoresAreSkipped(t *testing.T) {
 	// worker on its first pass.
 	w.RunOnce(t.Context())
 }
+
+// stubExpirer records the sweep and can fail it.
+type stubExpirer struct {
+	calls  int
+	limit  int
+	result int
+	err    error
+}
+
+func (s *stubExpirer) Expire(_ context.Context, _ time.Time, limit int) (int, error) {
+	s.calls++
+	s.limit = limit
+	return s.result, s.err
+}
+
+func TestRetentionExpiresHeldMessages(t *testing.T) {
+	expirer := &stubExpirer{result: 3}
+	w := NewWorker(Deps{Quarantine: expirer, StartupDelay: -1})
+
+	w.RunOnce(context.Background())
+
+	if expirer.calls != 1 {
+		t.Fatalf("expiry ran %d times, want 1", expirer.calls)
+	}
+	// Bounded, so a quarantine nobody reviews cannot hold a long write while
+	// the rest of retention waits behind it.
+	if expirer.limit <= 0 {
+		t.Errorf("limit = %d, want the sweep bounded", expirer.limit)
+	}
+}
+
+// Expiry is housekeeping. Letting it stop the prunes that reclaim actual disk
+// would be the wrong thing to protect.
+func TestAFailedExpirySweepDoesNotStopThePass(t *testing.T) {
+	expirer := &stubExpirer{err: errors.New("database unreachable")}
+	events := &fakeEvents{}
+	w := NewWorker(Deps{Quarantine: expirer, Events: events, StartupDelay: -1})
+
+	w.RunOnce(context.Background())
+
+	if !events.events.ran {
+		t.Error("a failed expiry sweep stopped the rest of the pass")
+	}
+}

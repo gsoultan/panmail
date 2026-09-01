@@ -122,6 +122,8 @@ func (w *Worker) RunOnce(ctx context.Context) {
 	policy := Resolve(cfg)
 	w.pushToWorkers(policy)
 
+	w.expireQuarantine(ctx)
+
 	for _, job := range w.jobs(policy) {
 		if ctx.Err() != nil {
 			// Cut short, so this is not a completed pass. Recording it as one
@@ -133,6 +135,32 @@ func (w *Worker) RunOnce(ctx context.Context) {
 	}
 
 	w.lastRun.Store(w.now().UnixNano())
+}
+
+// maxQuarantineExpiriesPerPass bounds one sweep. A quarantine nobody reviews
+// grows without limit, and a pass that tried to expire all of it at once would
+// hold a long write while the rest of retention waited behind it.
+const maxQuarantineExpiriesPerPass = 500
+
+// expireQuarantine moves held messages past their own deadline to EXPIRED.
+//
+// A failure is logged and the pass continues. Expiry is housekeeping; letting
+// it stop the prunes that reclaim actual disk would be the wrong thing to
+// protect.
+func (w *Worker) expireQuarantine(ctx context.Context) {
+	if w.deps.Quarantine == nil {
+		return
+	}
+	expired, err := w.deps.Quarantine.Expire(ctx, w.now(), maxQuarantineExpiriesPerPass)
+	if err != nil {
+		slog.Error("could not expire held messages", "error", err)
+		return
+	}
+	if expired > 0 {
+		// Worth a line at info: a queue expiring in bulk means nobody is
+		// working it, which is a process problem rather than a mail one.
+		slog.Info("held messages expired unreviewed", "count", expired)
+	}
 }
 
 // pushToWorkers hands the outbox and webhook queues their own retention. They

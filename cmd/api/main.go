@@ -437,11 +437,12 @@ func main() {
 	// policies come from the settings page and a change applies without a
 	// restart. Started last because it needs the workers it configures.
 	retentionWorker := retention.NewWorker(retention.Deps{
-		Events:   eventRepo,
-		Logs:     logStore,
-		Inbound:  inboundRepo,
-		Outbox:   queueWorker,
-		Webhooks: outboundWebhookWorker,
+		Events:     eventRepo,
+		Logs:       logStore,
+		Inbound:    inboundRepo,
+		Outbox:     queueWorker,
+		Webhooks:   outboundWebhookWorker,
+		Quarantine: filterQuarantineStore,
 	})
 	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })
 
