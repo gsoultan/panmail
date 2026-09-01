@@ -38,7 +38,8 @@ import {
   IconWebhook,
   IconBuildingCommunity,
   IconUsers,
-  IconSend
+  IconSend,
+  IconFilter
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, Link, useLocation } from '@tanstack/react-router';
 import { useAuthStore } from '../store/authStore';
@@ -308,6 +309,13 @@ export const AppLayout: React.FC = () => {
                 label="Delivery"
                 to="/test-delivery"
                 active={location.pathname === '/test-delivery'}
+              />
+
+              <NavItem
+                icon={IconFilter}
+                label="Filtering"
+                to="/filters"
+                active={location.pathname === '/filters'}
               />
 
               {(user?.role === UserRole.SUPER_ADMIN || user?.role === UserRole.ADMIN) && (

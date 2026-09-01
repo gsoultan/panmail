@@ -2,10 +2,12 @@ package usecases
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	"github.com/gsoultan/panmail/internal/emailfilter"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
 	"github.com/gsoultan/panmail/internal/inbound/repositories/entities"
 	"github.com/gsoultan/panmail/internal/inbound/repositories/stores"
@@ -16,6 +18,10 @@ type inboundUsecase struct {
 	repo           stores.InboundRepository
 	eventUsecase   eventusecases.ProcessEventUsecase
 	webhookTrigger WebhookTrigger
+
+	// screener is optional. A nil one accepts every message, which is what a
+	// gateway with no inbound rules configured must do.
+	screener emailfilter.Screener
 }
 
 func NewInboundUsecase(repo stores.InboundRepository, eventUsecase eventusecases.ProcessEventUsecase, webhookTrigger WebhookTrigger) InboundUsecase {
@@ -24,6 +30,13 @@ func NewInboundUsecase(repo stores.InboundRepository, eventUsecase eventusecases
 		eventUsecase:   eventUsecase,
 		webhookTrigger: webhookTrigger,
 	}
+}
+
+// WithScreener turns on inbound filtering. Separate from the constructor so
+// every existing caller keeps working unchanged and unfiltered.
+func (u *inboundUsecase) WithScreener(s emailfilter.Screener) InboundUsecase {
+	u.screener = s
+	return u
 }
 
 func (u *inboundUsecase) Process(ctx context.Context, email *panmailv1.InboundEmail) error {
@@ -65,6 +78,71 @@ func (u *inboundUsecase) Process(ctx context.Context, email *panmailv1.InboundEm
 
 	// Basic Bounce Detection
 	u.detectAndRecordBounce(ctx, email)
+
+	// Filter rules run after de-duplication and before anything is surfaced.
+	//
+	// After de-duplication because the poller re-reads the same messages every
+	// tick, and screening a message the second time would record a second
+	// review-queue entry for one arrival.
+	if u.screener != nil {
+		screened := emailfilter.Message{
+			From:    email.From,
+			To:      email.To,
+			Subject: email.Subject,
+			HTML:    email.BodyHtml,
+			Text:    email.BodyText,
+			Headers: singleValueHeaders(email.Headers),
+			Size:    int64(len(email.BodyHtml) + len(email.BodyText) + len(email.Subject)),
+		}
+
+		decision, err := u.screener.Screen(ctx, email.TenantId, emailfilter.DirectionInbound, screened)
+		if err != nil {
+			// Inbound fails open, which is the opposite of the send path and
+			// deliberate. A message refused here is not retried by the sender
+			// — it has already been accepted over SMTP — so dropping it
+			// because a database was briefly unreachable would lose mail
+			// outright. Delivering something a rule would have held is
+			// recoverable; losing it is not.
+			slog.Error("failed to screen inbound message; delivering it",
+				"error", err, "id", email.Id, "tenant_id", email.TenantId)
+		} else if decision.Action != "" {
+			record := emailfilter.NewFilteredMessage(email.TenantId, emailfilter.DirectionInbound, screened, decision)
+			record.MessageID = email.Id
+			record.PayloadRef = email.Id
+
+			switch decision.Action {
+			case emailfilter.ActionReject:
+				// Recorded and dropped. No error: the message was accepted
+				// over SMTP already, and returning one would make the poller
+				// offer it again on every tick forever.
+				if err := u.screener.Record(ctx, &record); err != nil {
+					slog.Error("failed to record a rejected inbound message", "error", err, "id", email.Id)
+				}
+				return nil
+
+			case emailfilter.ActionHold:
+				// Stored, but not announced. Persisting anyway is the point:
+				// the mail has arrived and losing it would be worse than
+				// showing it to a reviewer. What the hold suppresses is the
+				// webhook, so nothing downstream acts on it until someone
+				// releases it.
+				if writeErr := u.repo.Write(ctx, e); writeErr != nil {
+					return writeErr
+				}
+				if err := u.screener.Record(ctx, &record); err != nil {
+					slog.Error("failed to record a held inbound message", "error", err, "id", email.Id)
+				}
+				slog.Info("inbound email held for review",
+					"id", email.Id, "tenant_id", email.TenantId, "rule", record.RuleName)
+				return nil
+
+			case emailfilter.ActionTag:
+				if err := u.screener.Record(ctx, &record); err != nil {
+					slog.Error("failed to record a tagged inbound message", "error", err, "id", email.Id)
+				}
+			}
+		}
+	}
 
 	err := u.repo.Write(ctx, e)
 	if err == nil && u.webhookTrigger != nil {
@@ -152,4 +230,20 @@ func (u *inboundUsecase) toProto(e *entities.InboundEmail) *panmailv1.InboundEma
 		Timestamp: timestamppb.New(e.Timestamp),
 		Headers:   e.Headers,
 	}
+}
+
+// singleValueHeaders adapts the inbound map, which carries one value per
+// header, to the multi-value shape rules are written against. A header may
+// legitimately repeat — Received always does — but the inbound representation
+// upstream of here has already collapsed them, and inventing values it does
+// not have would be worse than working with what arrived.
+func singleValueHeaders(in map[string]string) map[string][]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(in))
+	for name, value := range in {
+		out[strings.ToLower(strings.TrimSpace(name))] = []string{value}
+	}
+	return out
 }

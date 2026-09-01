@@ -20,6 +20,7 @@ import { TenantsPage } from './pages/TenantsPage';
 import { ArchivesPage } from './pages/ArchivesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TestDeliveryPage } from './pages/TestDeliveryPage';
+import { FiltersPage } from './pages/FiltersPage';
 import { AppLayout } from './layouts/AppLayout';
 import { useAuthStore } from './store/authStore';
 import { setupClient } from './services/client';
@@ -174,6 +175,12 @@ const archivesRoute = createRoute({
   component: ArchivesPage,
 });
 
+const filtersRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/filters',
+  component: FiltersPage,
+});
+
 const testDeliveryRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/test-delivery',
@@ -191,6 +198,7 @@ const routeTree = rootRoute.addChildren([
     analyticsRoute, 
     archivesRoute,
     testDeliveryRoute,
+    filtersRoute,
     suppressionsRoute, 
     inboundRoute, 
     apiKeysRoute, 
