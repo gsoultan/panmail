@@ -339,3 +339,58 @@ func TestTheHeldEventIsStableJSON(t *testing.T) {
 		}
 	}
 }
+
+// A change on the settings page reaches the screener without a restart,
+// through the same push the outbox and webhook queues get.
+func TestRetentionChangesApplyToNewHolds(t *testing.T) {
+	notifier := &countingNotifier{}
+	s := emailfilter.NewScreener(nil, newFakeQuarantine(), 0, notifier)
+
+	s.SetRetention(48 * time.Hour)
+
+	record := emailfilter.NewFilteredMessage("t1", emailfilter.DirectionOutbound, heldMessage(), holdDecision())
+	if err := s.Record(context.Background(), &record); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if record.ExpiresAt == nil {
+		t.Fatal("no expiry was stamped")
+	}
+	if got := record.ExpiresAt.Sub(record.CreatedAt); got != 48*time.Hour {
+		t.Errorf("expiry = %s after the hold, want 48h", got)
+	}
+}
+
+// Zero means forever, as it does for every other retention. A quarantine that
+// never expires grows; one that expires by accident loses mail nobody decided
+// about, and only one of those is recoverable.
+func TestZeroRetentionMeansNoDeadline(t *testing.T) {
+	s := emailfilter.NewScreener(nil, newFakeQuarantine(), 0, nil)
+	s.SetRetention(0)
+
+	record := emailfilter.NewFilteredMessage("t1", emailfilter.DirectionOutbound, heldMessage(), holdDecision())
+	if err := s.Record(context.Background(), &record); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if record.ExpiresAt != nil {
+		t.Errorf("expiry = %v, want none — zero is forever", record.ExpiresAt)
+	}
+}
+
+// The deadline was stamped at hold time and sent to subscribers in the held
+// event. Shortening the policy afterwards must not move a date already promised.
+func TestARetentionChangeDoesNotMoveAnExistingDeadline(t *testing.T) {
+	s := emailfilter.NewScreener(nil, newFakeQuarantine(), 0, nil)
+	s.SetRetention(72 * time.Hour)
+
+	record := emailfilter.NewFilteredMessage("t1", emailfilter.DirectionOutbound, heldMessage(), holdDecision())
+	if err := s.Record(context.Background(), &record); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	stamped := *record.ExpiresAt
+
+	s.SetRetention(1 * time.Hour)
+
+	if !record.ExpiresAt.Equal(stamped) {
+		t.Errorf("the deadline moved to %v; a date already sent to subscribers must stand", record.ExpiresAt)
+	}
+}

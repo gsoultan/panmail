@@ -242,3 +242,5 @@ func TestScreeningSeesTheRenderedMessage(t *testing.T) {
 		t.Errorf("provider = %q, want it available to outbound rules", screener.seen.ProviderID)
 	}
 }
+
+func (f *fakeScreener) SetRetention(time.Duration) {}

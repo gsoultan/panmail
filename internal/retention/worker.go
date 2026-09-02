@@ -173,6 +173,9 @@ func (w *Worker) pushToWorkers(p Policy) {
 	if w.deps.Webhooks != nil {
 		w.deps.Webhooks.SetRetention(Duration(p.WebhookDays))
 	}
+	if w.deps.Screener != nil {
+		w.deps.Screener.SetRetention(Duration(p.QuarantineDays))
+	}
 }
 
 func (w *Worker) jobs(p Policy) []pruneJob {

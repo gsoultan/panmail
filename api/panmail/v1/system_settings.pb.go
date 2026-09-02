@@ -319,8 +319,15 @@ type SystemSettings struct {
 	// The JSONL archives written when delivery events expire. This is the
 	// escape hatch for log_retention_days, so it also defaults to forever.
 	ArchiveRetentionDays int32 `protobuf:"varint,9,opt,name=archive_retention_days,json=archiveRetentionDays,proto3" json:"archive_retention_days,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// How long a message a filter rule held waits for a reviewer.
+	//
+	// Applies to messages held from now on, not to ones already waiting. Their
+	// deadline was stamped when they were held and sent to webhook subscribers
+	// in the mail.held event; moving it afterwards would break a date this
+	// gateway already promised.
+	QuarantineRetentionDays int32 `protobuf:"varint,10,opt,name=quarantine_retention_days,json=quarantineRetentionDays,proto3" json:"quarantine_retention_days,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *SystemSettings) Reset() {
@@ -416,6 +423,13 @@ func (x *SystemSettings) GetArchiveRetentionDays() int32 {
 	return 0
 }
 
+func (x *SystemSettings) GetQuarantineRetentionDays() int32 {
+	if x != nil {
+		return x.QuarantineRetentionDays
+	}
+	return 0
+}
+
 var File_panmail_v1_system_settings_proto protoreflect.FileDescriptor
 
 const file_panmail_v1_system_settings_proto_rawDesc = "" +
@@ -435,7 +449,7 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1a\n" +
 	"\bstarttls\x18\x04 \x01(\bR\bstarttls\x122\n" +
-	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\"\xbf\x03\n" +
+	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\"\xfb\x03\n" +
 	"\x0eSystemSettings\x12\x19\n" +
 	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12,\n" +
 	"\x12log_retention_days\x18\x02 \x01(\x05R\x10logRetentionDays\x12#\n" +
@@ -445,7 +459,9 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x16webhook_retention_days\x18\x06 \x01(\x05R\x14webhookRetentionDays\x123\n" +
 	"\x16app_log_retention_days\x18\a \x01(\x05R\x13appLogRetentionDays\x124\n" +
 	"\x16inbound_retention_days\x18\b \x01(\x05R\x14inboundRetentionDays\x124\n" +
-	"\x16archive_retention_days\x18\t \x01(\x05R\x14archiveRetentionDays2\xc0\x01\n" +
+	"\x16archive_retention_days\x18\t \x01(\x05R\x14archiveRetentionDays\x12:\n" +
+	"\x19quarantine_retention_days\x18\n" +
+	" \x01(\x05R\x17quarantineRetentionDays2\xc0\x01\n" +
 	"\x15SystemSettingsService\x12N\n" +
 	"\vGetSettings\x12\x1e.panmail.v1.GetSettingsRequest\x1a\x1f.panmail.v1.GetSettingsResponse\x12W\n" +
 	"\x0eUpdateSettings\x12!.panmail.v1.UpdateSettingsRequest\x1a\".panmail.v1.UpdateSettingsResponseB\xa4\x01\n" +

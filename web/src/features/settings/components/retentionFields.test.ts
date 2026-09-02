@@ -116,6 +116,7 @@ describe('retentionValues', () => {
       appLogRetentionDays: 5,
       inboundRetentionDays: 90,
       archiveRetentionDays: 365,
+      quarantineRetentionDays: 30,
     } as never);
 
     expect(values).toEqual({
@@ -126,6 +127,7 @@ describe('retentionValues', () => {
       appLogRetentionDays: 5,
       inboundRetentionDays: 90,
       archiveRetentionDays: 365,
+      quarantineRetentionDays: 30,
     });
   });
 
@@ -139,6 +141,7 @@ describe('retentionValues', () => {
       'logRetentionDays',
       'messageRetentionDays',
       'outboxRetentionDays',
+      'quarantineRetentionDays',
       'webhookRetentionDays',
     ];
     expect(RETENTION_FIELDS.map((f) => f.key).sort()).toEqual(expected.sort());

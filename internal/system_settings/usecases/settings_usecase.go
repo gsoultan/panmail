@@ -86,13 +86,14 @@ func (u *settingsUsecase) UpdateSettings(ctx context.Context, s *panmailv1.Syste
 // policyOf reads a retention policy out of a settings message.
 func policyOf(s *panmailv1.SystemSettings) retention.Policy {
 	return retention.Policy{
-		EventDays:   int(s.LogRetentionDays),
-		MessageDays: int(s.MessageRetentionDays),
-		OutboxDays:  int(s.OutboxRetentionDays),
-		WebhookDays: int(s.WebhookRetentionDays),
-		AppLogDays:  int(s.AppLogRetentionDays),
-		InboundDays: int(s.InboundRetentionDays),
-		ArchiveDays: int(s.ArchiveRetentionDays),
+		EventDays:      int(s.LogRetentionDays),
+		MessageDays:    int(s.MessageRetentionDays),
+		OutboxDays:     int(s.OutboxRetentionDays),
+		WebhookDays:    int(s.WebhookRetentionDays),
+		AppLogDays:     int(s.AppLogRetentionDays),
+		InboundDays:    int(s.InboundRetentionDays),
+		ArchiveDays:    int(s.ArchiveRetentionDays),
+		QuarantineDays: int(s.QuarantineRetentionDays),
 	}
 }
 
@@ -105,4 +106,5 @@ func applyPolicy(s *panmailv1.SystemSettings, p retention.Policy) {
 	s.AppLogRetentionDays = int32(p.AppLogDays)
 	s.InboundRetentionDays = int32(p.InboundDays)
 	s.ArchiveRetentionDays = int32(p.ArchiveDays)
+	s.QuarantineRetentionDays = int32(p.QuarantineDays)
 }

@@ -15,7 +15,8 @@ export type RetentionKey =
   | 'outboxRetentionDays'
   | 'webhookRetentionDays'
   | 'appLogRetentionDays'
-  | 'inboundRetentionDays';
+  | 'inboundRetentionDays'
+  | 'quarantineRetentionDays';
 
 export type RetentionGroup = 'delivery' | 'queues' | 'system';
 
@@ -111,6 +112,15 @@ export const RETENTION_FIELDS: RetentionField[] = [
       'Inbound messages and their bodies. This is the only copy panmail holds of mail somebody sent you; nothing archives it first.',
     destructive: true,
     foreverHint: 'Keep received mail forever.',
+  },
+  {
+    key: 'quarantineRetentionDays',
+    group: 'system',
+    label: 'Held for review',
+    description:
+      'Messages a filter rule stopped, waiting in the review queue. A message that expires here was never decided by anyone — it is simply not sent, and not received. Applies to messages held from now on; anything already waiting keeps the deadline it was given.',
+    destructive: true,
+    foreverHint: 'Hold messages until somebody reviews them.',
   },
 ];
 

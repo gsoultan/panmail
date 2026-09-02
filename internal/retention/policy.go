@@ -43,6 +43,9 @@ type Policy struct {
 	AppLogDays  int
 	InboundDays int
 	ArchiveDays int
+
+	// QuarantineDays is how long a held message waits for a reviewer.
+	QuarantineDays int
 }
 
 // Resolve reads the effective policy out of cfg, applying the defaults for the
@@ -73,6 +76,7 @@ func Resolve(cfg *config.Config) Policy {
 	p.AppLogDays = clampDays(cfg.App.AppLogRetentionDays)
 	p.InboundDays = clampDays(cfg.App.InboundRetentionDays)
 	p.ArchiveDays = clampDays(cfg.App.ArchiveRetentionDays)
+	p.QuarantineDays = clampDays(cfg.App.QuarantineRetentionDays)
 	return p
 }
 

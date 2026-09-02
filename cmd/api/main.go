@@ -446,6 +446,7 @@ func main() {
 		Outbox:     queueWorker,
 		Webhooks:   outboundWebhookWorker,
 		Quarantine: filterQuarantineStore,
+		Screener:   filterScreener,
 	})
 	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })
 

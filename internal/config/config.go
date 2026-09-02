@@ -87,6 +87,11 @@ type AppConfig struct {
 	InboundRetentionDays int `yaml:"inbound_retention_days"`
 	ArchiveRetentionDays int `yaml:"archive_retention_days"`
 
+	// How long a message a filter rule held waits for a reviewer. Zero means
+	// forever, as everywhere else here — a held message with no deadline waits
+	// until someone decides, which is safer than one that expires unreviewed.
+	QuarantineRetentionDays int `yaml:"quarantine_retention_days"`
+
 	RetryPattern []string `yaml:"retry_pattern"`
 }
 

@@ -110,6 +110,9 @@ func retentionChanges(before, after *panmailv1.SystemSettings) []string {
 		{"outbox", before.OutboxRetentionDays, after.OutboxRetentionDays, false},
 		{"webhooks", before.WebhookRetentionDays, after.WebhookRetentionDays, false},
 		{"app_logs", before.AppLogRetentionDays, after.AppLogRetentionDays, false},
+		// Destructive: a held message that expires was never decided by
+		// anyone, and shortening this is how one disappears.
+		{"quarantine", before.QuarantineRetentionDays, after.QuarantineRetentionDays, true},
 	}
 
 	var changes []string
