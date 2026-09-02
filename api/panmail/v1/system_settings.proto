@@ -88,4 +88,12 @@ message SystemSettings {
   // The JSONL archives written when delivery events expire. This is the
   // escape hatch for log_retention_days, so it also defaults to forever.
   int32 archive_retention_days = 9;
+
+  // How long a message a filter rule held waits for a reviewer.
+  //
+  // Applies to messages held from now on, not to ones already waiting. Their
+  // deadline was stamped when they were held and sent to webhook subscribers
+  // in the mail.held event; moving it afterwards would break a date this
+  // gateway already promised.
+  int32 quarantine_retention_days = 10;
 }

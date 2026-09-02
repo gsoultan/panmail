@@ -49,6 +49,11 @@ type Deps struct {
 	// Quarantine is optional; without it nothing expires.
 	Quarantine QuarantineExpirer
 
+	// Screener receives the quarantine retention the same way the outbox and
+	// webhook queues receive theirs, which is what makes a change on the
+	// settings page apply without a restart.
+	Screener RetentionSetter
+
 	// Interval between passes. Zero means DefaultInterval.
 	Interval time.Duration
 

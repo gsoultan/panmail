@@ -33,6 +33,13 @@ const (
 	WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED   WebhookTriggerEvent = 5
 	WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED  WebhookTriggerEvent = 6
 	WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND   WebhookTriggerEvent = 7
+	// A filter rule quarantined a message and it is waiting for review.
+	//
+	// Without this a hold is silent: nothing tells anyone a message stopped, so
+	// nobody opens the queue, and retention eventually expires it unreviewed. A
+	// message that vanishes because a queue went unwatched is worse than one
+	// that was refused, because nobody ever decided it.
+	WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_HELD WebhookTriggerEvent = 8
 )
 
 // Enum value maps for WebhookTriggerEvent.
@@ -46,6 +53,7 @@ var (
 		5: "WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED",
 		6: "WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED",
 		7: "WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND",
+		8: "WEBHOOK_TRIGGER_EVENT_MAIL_HELD",
 	}
 	WebhookTriggerEvent_value = map[string]int32{
 		"WEBHOOK_TRIGGER_EVENT_UNSPECIFIED":    0,
@@ -56,6 +64,7 @@ var (
 		"WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED":   5,
 		"WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED":  6,
 		"WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND":   7,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_HELD":      8,
 	}
 )
 
@@ -209,7 +218,7 @@ const file_panmail_v1_webhook_proto_rawDesc = "" +
 	"\x06active\x18\x06 \x01(\bR\x06active\x129\n" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x16\n" +
-	"\x06secret\x18\b \x01(\tR\x06secret*\xd3\x02\n" +
+	"\x06secret\x18\b \x01(\tR\x06secret*\xf8\x02\n" +
 	"\x13WebhookTriggerEvent\x12%\n" +
 	"!WEBHOOK_TRIGGER_EVENT_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fWEBHOOK_TRIGGER_EVENT_MAIL_SENT\x10\x01\x12(\n" +
@@ -218,7 +227,8 @@ const file_panmail_v1_webhook_proto_rawDesc = "" +
 	"\"WEBHOOK_TRIGGER_EVENT_MAIL_CLICKED\x10\x04\x12&\n" +
 	"\"WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED\x10\x05\x12'\n" +
 	"#WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED\x10\x06\x12&\n" +
-	"\"WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND\x10\aB\x9d\x01\n" +
+	"\"WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND\x10\a\x12#\n" +
+	"\x1fWEBHOOK_TRIGGER_EVENT_MAIL_HELD\x10\bB\x9d\x01\n" +
 	"\x0ecom.panmail.v1B\fWebhookProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"

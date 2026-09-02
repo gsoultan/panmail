@@ -215,3 +215,5 @@ func TestReleasingAMessageThatIsNoLongerStoredIsAnError(t *testing.T) {
 		t.Fatal("ReleaseHeld reported success for a message that is not there")
 	}
 }
+
+func (f *stubScreener) SetRetention(time.Duration) {}

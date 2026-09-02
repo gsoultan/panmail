@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/webhook.proto.
  */
 export const file_panmail_v1_webhook: GenFile = /*@__PURE__*/
-  fileDesc("ChhwYW5tYWlsL3YxL3dlYmhvb2sucHJvdG8SCnBhbm1haWwudjEixAEKB1dlYmhvb2sSCgoCaWQYASABKAkSEQoJdGVuYW50X2lkGAIgASgJEgwKBG5hbWUYAyABKAkSCwoDdXJsGAQgASgJEi8KBmV2ZW50cxgFIAMoDjIfLnBhbm1haWwudjEuV2ViaG9va1RyaWdnZXJFdmVudBIOCgZhY3RpdmUYBiABKAgSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc2VjcmV0GAggASgJKtMCChNXZWJob29rVHJpZ2dlckV2ZW50EiUKIVdFQkhPT0tfVFJJR0dFUl9FVkVOVF9VTlNQRUNJRklFRBAAEiMKH1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1NFTlQQARIoCiRXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9ERUxJVkVSRUQQAhIlCiFXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9PUEVORUQQAxImCiJXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9DTElDS0VEEAQSJgoiV0VCSE9PS19UUklHR0VSX0VWRU5UX01BSUxfQk9VTkNFRBAFEicKI1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1JFSkVDVEVEEAYSJgoiV0VCSE9PS19UUklHR0VSX0VWRU5UX01BSUxfSU5CT1VORBAHQp0BCg5jb20ucGFubWFpbC52MUIMV2ViaG9va1Byb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("ChhwYW5tYWlsL3YxL3dlYmhvb2sucHJvdG8SCnBhbm1haWwudjEixAEKB1dlYmhvb2sSCgoCaWQYASABKAkSEQoJdGVuYW50X2lkGAIgASgJEgwKBG5hbWUYAyABKAkSCwoDdXJsGAQgASgJEi8KBmV2ZW50cxgFIAMoDjIfLnBhbm1haWwudjEuV2ViaG9va1RyaWdnZXJFdmVudBIOCgZhY3RpdmUYBiABKAgSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc2VjcmV0GAggASgJKvgCChNXZWJob29rVHJpZ2dlckV2ZW50EiUKIVdFQkhPT0tfVFJJR0dFUl9FVkVOVF9VTlNQRUNJRklFRBAAEiMKH1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1NFTlQQARIoCiRXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9ERUxJVkVSRUQQAhIlCiFXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9PUEVORUQQAxImCiJXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9DTElDS0VEEAQSJgoiV0VCSE9PS19UUklHR0VSX0VWRU5UX01BSUxfQk9VTkNFRBAFEicKI1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1JFSkVDVEVEEAYSJgoiV0VCSE9PS19UUklHR0VSX0VWRU5UX01BSUxfSU5CT1VORBAHEiMKH1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX0hFTEQQCEKdAQoOY29tLnBhbm1haWwudjFCDFdlYmhvb2tQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message panmail.v1.Webhook
@@ -118,6 +118,18 @@ export enum WebhookTriggerEvent {
    * @generated from enum value: WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND = 7;
    */
   MAIL_INBOUND = 7,
+
+  /**
+   * A filter rule quarantined a message and it is waiting for review.
+   *
+   * Without this a hold is silent: nothing tells anyone a message stopped, so
+   * nobody opens the queue, and retention eventually expires it unreviewed. A
+   * message that vanishes because a queue went unwatched is worse than one
+   * that was refused, because nobody ever decided it.
+   *
+   * @generated from enum value: WEBHOOK_TRIGGER_EVENT_MAIL_HELD = 8;
+   */
+  MAIL_HELD = 8,
 }
 
 /**
