@@ -163,7 +163,16 @@ func newSupervisor(t *testing.T, providers *fakeProviders, factory *fakeFactory,
 
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	eventuallyWithin(t, 2*time.Second, what, cond)
+}
+
+// eventuallyWithin is eventually with a caller-chosen deadline, for the waits
+// that are establishing a precondition rather than asserting an outcome. Those
+// deserve more patience: a slow CI runner failing to establish IDLE in two
+// seconds is not the same fact as the code being wrong.
+func eventuallyWithin(t *testing.T, within time.Duration, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return

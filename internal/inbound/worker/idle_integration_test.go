@@ -111,6 +111,30 @@ func realSupervisor(t *testing.T, host string, port int, user string) (*IdleSupe
 	return s, usecase
 }
 
+// awaitIdleListening proves the IDLE session is established by making it
+// announce something, and reports how many messages that cost.
+//
+// Sessions() counts a goroutine, not an issued IDLE command, and IDLE announces
+// arrivals rather than backlog — so a message delivered in the gap between the
+// two lands in the mailbox unannounced and is never seen. Sleeping across that
+// gap is a guess: it holds on an idle laptop and fails on a loaded CI runner,
+// which is exactly what it did, twice, in two different ways.
+//
+// Delivering one message and waiting for it turns the guess into an
+// observation. When the probe arrives, IDLE is demonstrably listening, and
+// whatever the test delivers next cannot land in the gap.
+func awaitIdleListening(t *testing.T, s *IdleSupervisor, usecase *recordingUsecase, smtpAddr, user string) int {
+	t.Helper()
+
+	eventually(t, "the IDLE session goroutine", func() bool { return s.Sessions() == 1 })
+	deliver(t, smtpAddr, user, "idle-probe", "body")
+	eventuallyWithin(t, 20*time.Second,
+		"IDLE to announce the probe, which is what proves it is listening",
+		func() bool { return usecase.count() >= 1 })
+
+	return 1
+}
+
 func TestIdleDeliversAMessageFromARealServer(t *testing.T) {
 	host, port, smtpAddr := imapEndpoints(t)
 	user := "idle-basic@example.com"
@@ -120,16 +144,14 @@ func TestIdleDeliversAMessageFromARealServer(t *testing.T) {
 	defer cancel()
 	go s.Start(ctx)
 
-	// Wait for the session before delivering, or the message arrives before
-	// anything is listening and the poll — disabled here — would be what
-	// found it. The settle covers the gap between the goroutine existing and
-	// IDLE actually being issued.
-	eventually(t, "the IDLE session to open", func() bool { return s.Sessions() == 1 })
-	time.Sleep(1500 * time.Millisecond)
+	// Deliver only once IDLE is provably listening, or the message arrives
+	// before anything is watching and the poll — disabled here — would be what
+	// found it, which is the opposite of what this test is for.
+	probes := awaitIdleListening(t, s, usecase, smtpAddr, user)
 
 	deliver(t, smtpAddr, user, "hello-from-idle", "body")
 
-	eventually(t, "the message to arrive over IDLE", func() bool { return usecase.count() >= 1 })
+	eventually(t, "the message to arrive over IDLE", func() bool { return usecase.count() > probes })
 
 	usecase.mu.Lock()
 	defer usecase.mu.Unlock()
@@ -186,11 +208,7 @@ func TestIdleDeliversSeveralMessages(t *testing.T) {
 	defer cancel()
 	go s.Start(ctx)
 
-	eventually(t, "the session", func() bool { return s.Sessions() == 1 })
-	// Sessions() counts a goroutine, not an established IDLE. Delivering
-	// inside that window puts the message in the mailbox before IDLE starts,
-	// and IDLE announces arrivals rather than backlog.
-	time.Sleep(1500 * time.Millisecond)
+	probes := awaitIdleListening(t, s, usecase, smtpAddr, user)
 
 	var wg sync.WaitGroup
 	for i := range 3 {
@@ -202,7 +220,7 @@ func TestIdleDeliversSeveralMessages(t *testing.T) {
 	}
 	wg.Wait()
 
-	eventually(t, "all three messages", func() bool { return usecase.count() >= 3 })
+	eventually(t, "all three messages", func() bool { return usecase.count() >= probes+3 })
 }
 
 // The reason the poll runs alongside IDLE, demonstrated rather than asserted.
