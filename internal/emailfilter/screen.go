@@ -30,14 +30,19 @@ type screener struct {
 	rules      RuleRepository
 	quarantine QuarantineRepository
 	retention  time.Duration
+	notifier   HeldNotifier
 }
 
 // NewScreener wires the engine to its storage.
-func NewScreener(rules RuleRepository, quarantine QuarantineRepository, retention time.Duration) Screener {
+//
+// The notifier is optional. Without one a hold is silent, which is the
+// behaviour to avoid rather than the one to default to — but a deployment with
+// no webhook worker must still be able to filter.
+func NewScreener(rules RuleRepository, quarantine QuarantineRepository, retention time.Duration, notifier HeldNotifier) Screener {
 	if retention <= 0 {
 		retention = DefaultQuarantineRetention
 	}
-	return &screener{rules: rules, quarantine: quarantine, retention: retention}
+	return &screener{rules: rules, quarantine: quarantine, retention: retention, notifier: notifier}
 }
 
 // Screen evaluates a tenant's rules against a message.
@@ -82,5 +87,15 @@ func (s *screener) Record(ctx context.Context, record *FilteredMessage) error {
 	slog.Info("message filtered",
 		"id", record.ID, "tenant_id", record.TenantID, "direction", record.Direction,
 		"action", record.Action, "rule", record.RuleName)
+
+	// Only a hold is worth waking anyone for. A tag was delivered and a reject
+	// is already decided; neither is waiting on a person.
+	//
+	// After the write, so the notification can never arrive before the message
+	// it points at is fetchable. A subscriber that reacts instantly and gets a
+	// not-found would be a race this ordering removes rather than documents.
+	if record.Action == ActionHold && s.notifier != nil {
+		s.notifier.NotifyHeld(record.TenantID, heldEventFor(record))
+	}
 	return nil
 }

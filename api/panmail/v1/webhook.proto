@@ -15,6 +15,14 @@ enum WebhookTriggerEvent {
   WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED = 5;
   WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED = 6;
   WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND = 7;
+
+  // A filter rule quarantined a message and it is waiting for review.
+  //
+  // Without this a hold is silent: nothing tells anyone a message stopped, so
+  // nobody opens the queue, and retention eventually expires it unreviewed. A
+  // message that vanishes because a queue went unwatched is worse than one
+  // that was refused, because nobody ever decided it.
+  WEBHOOK_TRIGGER_EVENT_MAIL_HELD = 8;
 }
 
 message Webhook {

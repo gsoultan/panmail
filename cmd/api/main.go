@@ -359,8 +359,6 @@ func main() {
 
 	filterRuleStore := emailfilterpostgres.NewRuleStore(conn)
 	filterQuarantineStore := emailfilterpostgres.NewQuarantineStore(conn)
-	filterScreener := emailfilter.NewScreener(filterRuleStore, filterQuarantineStore, 0)
-
 	webhookUsecase := webhookusecases.NewWebhookUsecase(webhookRepo)
 	webhookService := webhookservices.NewWebhookService(webhookUsecase)
 
@@ -375,6 +373,11 @@ func main() {
 	// bounced is silent, unrecoverable loss.
 	webhookDeliveryRepo := webhookstores.NewDeliveryStore(conn)
 	outboundWebhookWorker := webhookworker.NewDurableWorker(webhookDeliveryRepo, webhookUsecase)
+
+	// After the webhook worker, because a held message notifies the tenant and
+	// a hold nobody is told about is a message that quietly expires unreviewed.
+	filterScreener := emailfilter.NewScreener(filterRuleStore, filterQuarantineStore, 0,
+		emailfilterservices.NewHeldNotifier(outboundWebhookWorker))
 	runWorker(&workers, workerCtx, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
 
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
