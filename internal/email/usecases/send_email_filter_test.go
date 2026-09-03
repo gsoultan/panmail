@@ -51,9 +51,10 @@ type filterHarness struct {
 
 type countingWorker struct{ triggers int }
 
-func (w *countingWorker) Start(context.Context)      {}
-func (w *countingWorker) Trigger()                   { w.triggers++ }
-func (w *countingWorker) SetRetention(time.Duration) {}
+func (w *countingWorker) Start(context.Context)                    {}
+func (w *countingWorker) Trigger()                                 { w.triggers++ }
+func (w *countingWorker) SetRetention(time.Duration)               {}
+func (w *countingWorker) SetRetryPatternSource(RetryPatternSource) {}
 
 func newFilterHarness(t *testing.T, screener *fakeScreener) *filterHarness {
 	t.Helper()

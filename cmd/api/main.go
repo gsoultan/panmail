@@ -69,6 +69,10 @@ import (
 	suppressionstores "github.com/gsoultan/panmail/internal/suppression/repositories/stores/postgres"
 	suppressionservices "github.com/gsoultan/panmail/internal/suppression/services"
 	suppressionusecases "github.com/gsoultan/panmail/internal/suppression/usecases"
+	systemsettings "github.com/gsoultan/panmail/internal/system_settings"
+	settingsentities "github.com/gsoultan/panmail/internal/system_settings/entities"
+	settingsrepos "github.com/gsoultan/panmail/internal/system_settings/repositories"
+	settingsstores "github.com/gsoultan/panmail/internal/system_settings/repositories/stores/postgres"
 	settingsservices "github.com/gsoultan/panmail/internal/system_settings/services"
 	settingsusecases "github.com/gsoultan/panmail/internal/system_settings/usecases"
 	templatestores "github.com/gsoultan/panmail/internal/template/repositories/stores/postgres"
@@ -331,6 +335,25 @@ func main() {
 	suppressionRepo := suppressionstores.NewStore(conn)
 	outboxRepo := emailstores.NewOutboxStore(conn)
 	webhookRepo := webhookstores.NewStore(conn, keyring)
+
+	// The settings an administrator edits live in the database, not in
+	// config.yaml, so that a save on one instance is what every instance
+	// enforces. seedSettingsFromConfig carries an upgrading deployment's
+	// existing values across the first time it starts.
+	settingsRepo := settingsstores.NewStore(conn)
+	seedSettingsFromConfig(settingsRepo, cfg)
+
+	// Published to the two readers on the send path — tracking links need the
+	// base URL, deferrals need the retry pattern — so neither queries the
+	// database per message. Refreshed on a timer, which is what carries a
+	// change to the instances that did not serve the save.
+	settingsProvider := systemsettings.NewProvider(settingsRepo, 0)
+	if err := settingsProvider.Refresh(context.Background()); err != nil {
+		// Not fatal: the defaults are serviceable and the refresh loop retries.
+		// Fatal here would mean a settings row that is briefly unreadable stops
+		// a gateway from booting at all.
+		slog.Warn("could not read system settings at startup; using defaults until the first refresh", "error", err)
+	}
 	eventRepo, err := eventstores.NewStore(*eventDirFlag)
 	if err != nil {
 		slog.Error("failed to open event store", "error", err)
@@ -393,11 +416,7 @@ func main() {
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
 	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase)
 
-	baseURL := ""
-	if cfg != nil {
-		baseURL = cfg.App.BaseURL
-	}
-	warnIfUnsubscribeLinksWillNotWork(baseURL)
+	warnIfUnsubscribeLinksWillNotWork(settingsProvider.BaseURL())
 	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo)
 	templateRenderer := emailusecases.NewTemplateRenderer()
 	// One limiter shared by the API path and the outbox worker, so a tenant
@@ -414,7 +433,7 @@ func main() {
 		EventUsecase:    processEventUsecase,
 		ProviderFactory: providerFactory,
 		Renderer:        templateRenderer,
-		BaseURL:         baseURL,
+		BaseURLSource:   settingsProvider,
 		TrackingSigner:  trackingSigner,
 		Limiter:         sendLimiter,
 		SendLimits:      emailusecases.NewTenantSendLimits(tenantUsecase),
@@ -423,6 +442,7 @@ func main() {
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
 	queueWorker := emailusecases.NewQueueWorker(outboxRepo, sendEmailUsecase, manageSuppressionsUsecase, tenantUsecase, 5*time.Second)
+	queueWorker.SetRetryPatternSource(settingsProvider)
 	sendEmailUsecase.RegisterQueueWorker(queueWorker)
 
 	// Built here rather than above because releasing a held message has to be
@@ -435,11 +455,22 @@ func main() {
 	emailFilterService := emailfilterservices.NewService(filterRuleStore, filterQuarantineStore, filterReviewer)
 	runWorker(&workers, workerCtx, "outbox-queue", func() { queueWorker.Start(workerCtx) })
 
+	// Re-reads the settings row so a change saved on another instance reaches
+	// this one's send path. Supervised like the rest: if it stopped, this
+	// gateway would go on serving the values it happened to hold at boot, and
+	// no health check can see that.
+	runWorker(&workers, workerCtx, "settings-refresh", func() { settingsProvider.Start(workerCtx) })
+
 	// One worker owns every retention. It reads the configuration on each pass
 	// and hands the outbox and webhook queues their own cutoffs, so all seven
 	// policies come from the settings page and a change applies without a
 	// restart. Started last because it needs the workers it configures.
 	retentionWorker := retention.NewWorker(retention.Deps{
+		// The repository rather than the provider. A pass runs immediately
+		// after a save, and the provider is a snapshot up to a refresh
+		// interval old — reading that would apply the previous policy and
+		// then wait a day to notice.
+		Settings:   settingsRepo,
 		Events:     eventRepo,
 		Logs:       logStore,
 		Inbound:    inboundRepo,
@@ -450,7 +481,7 @@ func main() {
 	})
 	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })
 
-	settingsUsecase := settingsusecases.NewSettingsUsecase(retentionWorker)
+	settingsUsecase := settingsusecases.NewSettingsUsecase(settingsRepo, retentionWorker)
 	settingsService := settingsservices.NewSettingsService(
 		settingsUsecase,
 		describeSMTPSubmission(*smtpAddrFlag, *smtpTLSCertFlag, *smtpTLSKeyFlag, *smtpAllowInsecureFlag),
@@ -1612,4 +1643,34 @@ func isWildcardHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsUnspecified()
+}
+
+// seedSettingsFromConfig copies the settings out of config.yaml into the
+// database the first time a deployment starts on a build that keeps them
+// there. Without it, upgrading would silently reset an administrator's base
+// URL, retry pattern and every retention policy to the defaults.
+//
+// It never overwrites. Every instance runs this at startup, and on all but the
+// first the row already exists — so the correct outcome is to do nothing, which
+// is what the ON CONFLICT DO NOTHING in seed_settings.sql expresses. That also
+// makes it safe during a rolling deploy, where old and new instances run at
+// once and the old one is still writing the file.
+//
+// A failure is logged, not fatal. The settings page still works — it reads and
+// writes the database directly — and the values it shows are the defaults,
+// which an administrator can correct. Refusing to boot would turn a first-run
+// hiccup into an outage.
+func seedSettingsFromConfig(repo settingsrepos.SettingsRepository, cfg *config.Config) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	seeded, err := repo.Seed(ctx, settingsentities.FromConfig(cfg))
+	if err != nil {
+		slog.Warn("could not seed system settings from the config file", "error", err)
+		return
+	}
+	if seeded {
+		slog.Info("system settings moved from the config file into the database",
+			"note", "the file is no longer read for these values; edit them on the settings page")
+	}
 }

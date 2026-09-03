@@ -2,11 +2,12 @@ package retention
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync/atomic"
 	"time"
 
-	"github.com/gsoultan/panmail/internal/config"
+	"github.com/gsoultan/panmail/internal/system_settings/entities"
 )
 
 const (
@@ -29,7 +30,11 @@ type Worker struct {
 	deps    Deps
 	trigger chan struct{}
 	now     func() time.Time
-	load    func() (*config.Config, error)
+
+	// Where the policy comes from on every pass. It reads the database rather
+	// than a file so that a change saved on one instance is enforced by all of
+	// them; see the package comment on system_settings/entities.
+	load func(context.Context) (*entities.Settings, error)
 
 	// Read by the metrics callbacks on whatever goroutine scrapes, written by
 	// the pass. See stats.go for what they are for.
@@ -49,13 +54,26 @@ func NewWorker(deps Deps) *Worker {
 	if deps.StartupDelay == 0 {
 		deps.StartupDelay = DefaultStartupDelay
 	}
-	return &Worker{
+	w := &Worker{
 		deps:      deps,
 		trigger:   make(chan struct{}, 1),
 		now:       time.Now,
-		load:      config.Load,
 		startedAt: time.Now(),
 	}
+
+	// Guarded rather than taken directly: a method value off a nil interface
+	// panics where it is written, which would be inside this constructor and
+	// so before any recover a worker is wrapped in. A missing source has to
+	// read as "policy unavailable" — RunOnce then logs and prunes nothing,
+	// which is the right answer to not knowing the policy.
+	if deps.Settings != nil {
+		w.load = deps.Settings.Get
+	} else {
+		w.load = func(context.Context) (*entities.Settings, error) {
+			return nil, errors.New("retention has no settings source")
+		}
+	}
+	return w
 }
 
 // Trigger asks for a pass now. A request already pending is enough — the
@@ -110,7 +128,7 @@ func (w *Worker) runPass(ctx context.Context) {
 // independent, and a corrupt archive directory is no reason to let the event
 // store grow for another day.
 func (w *Worker) RunOnce(ctx context.Context) {
-	cfg, err := w.load()
+	settings, err := w.load(ctx)
 	if err != nil {
 		// Pruning on a policy that could not be read would apply defaults to a
 		// deployment that had configured something else, and deletion is not
@@ -119,7 +137,7 @@ func (w *Worker) RunOnce(ctx context.Context) {
 		return
 	}
 
-	policy := Resolve(cfg)
+	policy := Resolve(settings)
 	w.pushToWorkers(policy)
 
 	w.expireQuarantine(ctx)

@@ -167,6 +167,44 @@ the instance serving the request has seen. Point Prometheus at every instance's
 `/metrics` and aggregate there rather than expecting one instance to hold the
 whole picture.
 
+### The settings file used to be in both lists
+
+`config.yaml` holds shared values — `auth.symmetric_key`, the database block —
+and it used to hold mutable ones too: `app.base_url`, `app.retry_pattern` and
+all seven retention policies. Settings -> Save wrote those back to the file, on
+**one** instance. The others kept the old values until they were restarted, with
+nothing to say they had diverged, and under Kubernetes the save failed outright
+because a Secret volume is read-only.
+
+They are in the database now, in a single `system_settings` row every instance
+reads:
+
+- **Retention** is re-read by the retention worker on every pass, and a save
+  triggers a pass immediately on the instance that served it.
+- **`base_url` and `retry_pattern`** are read through a snapshot refreshed once
+  a minute (`system_settings.Provider`), because both sit on the send path —
+  every tracking link needs the base URL, every deferral needs the pattern — and
+  a query per message is the round trip the send path was measured to remove.
+
+So a change reaches the instance that served it at once, and every other
+instance within a minute. The config file is now deployment configuration only:
+database, keys, paths.
+
+**Upgrading carries your values across.** The first instance to start on this
+version copies the settings out of `config.yaml` into the row and logs that it
+did. It never overwrites, so restarts and rolling deploys cannot reset a value
+an administrator has since changed. The fields stay in the file, unread, so a
+rollback still finds them.
+
+`config.yaml` must still be identical on every instance for the values that
+remain in it. A signing key that differs between two instances means a token
+minted by one is rejected by the other.
+
+This is specific to the settings *file*. Per-tenant configuration -- a tenant's
+`send_rate_per_minute`, a provider's `allowed_domains` and its credentials -- is
+in the database, so an edit to any of it is visible to every instance as soon as
+the caches expire.
+
 ## Deploys
 
 A rolling deploy signals each instance in turn, and SIGTERM always lands while

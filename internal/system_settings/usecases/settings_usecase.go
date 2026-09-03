@@ -5,8 +5,9 @@ import (
 	"errors"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
-	"github.com/gsoultan/panmail/internal/config"
 	"github.com/gsoultan/panmail/internal/retention"
+	"github.com/gsoultan/panmail/internal/system_settings/entities"
+	"github.com/gsoultan/panmail/internal/system_settings/repositories"
 )
 
 var defaultRetryPattern = []string{"5m", "15m", "30m", "1h", "3h", "6h", "12h", "24h"}
@@ -20,35 +21,41 @@ type SettingsUsecase interface {
 }
 
 type settingsUsecase struct {
+	// Settings live in the database rather than in config.yaml, so a save made
+	// on one instance is what every instance enforces. The file version wrote
+	// to whichever process served the request and left the others on the old
+	// values with nothing to say they had diverged.
+	repo repositories.SettingsRepository
+
 	// Notified after a save so a changed retention takes effect now rather
 	// than at the next daily pass. Optional: without it the policy still
 	// applies, just later.
 	retentionWorker RetentionTrigger
 }
 
-func NewSettingsUsecase(retentionWorker RetentionTrigger) SettingsUsecase {
-	return &settingsUsecase{retentionWorker: retentionWorker}
+func NewSettingsUsecase(repo repositories.SettingsRepository, retentionWorker RetentionTrigger) SettingsUsecase {
+	return &settingsUsecase{repo: repo, retentionWorker: retentionWorker}
 }
 
 func (u *settingsUsecase) GetSettings(ctx context.Context) (*panmailv1.SystemSettings, error) {
-	cfg, err := config.Load()
+	stored, err := u.repo.Get(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	settings := &panmailv1.SystemSettings{RetryPattern: defaultRetryPattern}
-	if cfg != nil {
-		settings.BaseUrl = cfg.App.BaseURL
-		if len(cfg.App.RetryPattern) > 0 {
-			settings.RetryPattern = cfg.App.RetryPattern
+	if stored != nil {
+		settings.BaseUrl = stored.BaseURL
+		if len(stored.RetryPattern) > 0 {
+			settings.RetryPattern = stored.RetryPattern
 		}
 	}
 
-	// Always the resolved policy, never the raw file. The page has to show
-	// what panmail is actually enforcing, and it is also what the form posts
-	// back — so a field left untouched must return exactly the value that is
-	// already in force.
-	applyPolicy(settings, retention.Resolve(cfg))
+	// Always the resolved policy, never the raw row. The page has to show what
+	// panmail is actually enforcing, and it is also what the form posts back —
+	// so a field left untouched must return exactly the value that is already
+	// in force.
+	applyPolicy(settings, retention.Resolve(stored))
 	return settings, nil
 }
 
@@ -57,19 +64,21 @@ func (u *settingsUsecase) UpdateSettings(ctx context.Context, s *panmailv1.Syste
 		return nil, ErrNoSettings
 	}
 
-	cfg, err := config.Load()
+	// Read first so a field the request does not carry keeps its stored value
+	// rather than reverting to the zero value of its column.
+	stored, err := u.repo.Get(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if cfg == nil {
-		cfg = &config.Config{}
+	if stored == nil {
+		stored = &entities.Settings{}
 	}
 
-	cfg.App.BaseURL = s.BaseUrl
-	cfg.App.RetryPattern = s.RetryPattern
-	policyOf(s).Apply(cfg)
+	stored.BaseURL = s.BaseUrl
+	stored.RetryPattern = s.RetryPattern
+	policyOf(s).Apply(stored)
 
-	if err := config.Save(cfg); err != nil {
+	if err := u.repo.Save(ctx, stored); err != nil {
 		return nil, err
 	}
 

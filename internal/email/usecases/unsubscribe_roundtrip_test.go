@@ -103,7 +103,7 @@ func TestALinkFromTheSendPathUnsubscribesAtTheHandler(t *testing.T) {
 
 	// The send path's own builder, on a usecase configured the way main does.
 	sender := &sendEmailUsecase{
-		baseURL:        "https://mail.example.com",
+		staticBaseURL:  "https://mail.example.com",
 		trackingSigner: signer,
 	}
 
@@ -161,7 +161,7 @@ func TestALinkFromTheSendPathIsRejectedIfAltered(t *testing.T) {
 	)
 
 	signer := tracking.NewSigner([]byte("a key for the round trip"))
-	sender := &sendEmailUsecase{baseURL: "https://mail.example.com", trackingSigner: signer}
+	sender := &sendEmailUsecase{staticBaseURL: "https://mail.example.com", trackingSigner: signer}
 
 	var msg gsmail.Email
 	if err := sender.setUnsubscribeHeaders(&msg, tenantID, messageID, recipient); err != nil {

@@ -38,8 +38,18 @@ type SecretsConfig struct {
 	DataKey string `yaml:"data_key,omitempty"`
 }
 
-// AppConfig holds the global settings an administrator edits, whether through
-// the settings page or by hand in the config file.
+// AppConfig holds the global settings as they appear in the config file.
+//
+// These are **seed values, read once**. The settings an administrator edits
+// live in the database — see internal/system_settings — because writing them
+// back to this file only ever reached the one instance that served the request,
+// and reached none at all where the file is mounted read-only. The first
+// gateway to start on a build that keeps them in the database copies what is
+// here into that row and never overwrites it afterwards.
+//
+// The fields stay so an existing deployment upgrades without losing its
+// configuration, and so a rollback still finds them. Nothing writes them at
+// runtime; editing this file afterwards has no effect.
 //
 // Every retention is a whole number of days and **zero means keep forever**.
 // The two pointer fields are the ones whose default is not zero: an absent

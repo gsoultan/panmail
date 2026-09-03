@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gsoultan/panmail/internal/config"
+	"github.com/gsoultan/panmail/internal/system_settings/entities"
 )
 
 type call struct {
@@ -53,20 +53,26 @@ func (f *fakeSetter) SetRetention(d time.Duration) {
 	f.calls++
 }
 
-// workerFor builds a worker over fakes with a fixed clock and a settings
-// loader that does not touch the real config file.
-func workerFor(cfg *config.Config, deps Deps) (*Worker, time.Time) {
+// stubSettings is a settings source that always answers with the same row.
+type stubSettings struct{ settings *entities.Settings }
+
+func (s stubSettings) Get(context.Context) (*entities.Settings, error) { return s.settings, nil }
+
+// workerFor builds a worker over fakes with a fixed clock, reading its policy
+// through the real Deps.Settings seam rather than by replacing the loader — so
+// these tests exercise the path a running gateway takes.
+func workerFor(cfg *entities.Settings, deps Deps) (*Worker, time.Time) {
 	now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	deps.Settings = stubSettings{cfg}
 	w := NewWorker(deps)
 	w.now = func() time.Time { return now }
-	w.load = func() (*config.Config, error) { return cfg, nil }
 	return w, now
 }
 
 func TestRunOncePrunesOnlyConfiguredClasses(t *testing.T) {
 	tests := []struct {
 		name         string
-		cfg          config.AppConfig
+		cfg          *entities.Settings
 		wantEvents   bool
 		wantMessages bool
 		wantArchives bool
@@ -78,12 +84,12 @@ func TestRunOncePrunesOnlyConfiguredClasses(t *testing.T) {
 			// deleting. Events still expire because that is what panmail
 			// already did before any of this was settable.
 			name:       "an unconfigured deployment only expires events",
-			cfg:        config.AppConfig{},
+			cfg:        &entities.Settings{},
 			wantEvents: true,
 		},
 		{
 			name: "each class runs when it is set",
-			cfg: config.AppConfig{
+			cfg: &entities.Settings{
 				MessageRetentionDays: 30,
 				ArchiveRetentionDays: 365,
 				AppLogRetentionDays:  7,
@@ -97,7 +103,7 @@ func TestRunOncePrunesOnlyConfiguredClasses(t *testing.T) {
 		},
 		{
 			name:       "zero means forever, so the pass does not touch it",
-			cfg:        config.AppConfig{LogRetentionDays: days(0)},
+			cfg:        &entities.Settings{LogRetentionDays: days(0)},
 			wantEvents: false,
 		},
 	}
@@ -108,7 +114,7 @@ func TestRunOncePrunesOnlyConfiguredClasses(t *testing.T) {
 			logs := &fakePruner{}
 			inbound := &fakePruner{}
 
-			w, _ := workerFor(&config.Config{App: tc.cfg}, Deps{
+			w, _ := workerFor(tc.cfg, Deps{
 				Events:  events,
 				Logs:    logs,
 				Inbound: inbound,
@@ -137,7 +143,7 @@ func TestRunOncePrunesOnlyConfiguredClasses(t *testing.T) {
 func TestRunOncePassesTheRightCutoff(t *testing.T) {
 	events := &fakeEvents{}
 	w, now := workerFor(
-		&config.Config{App: config.AppConfig{LogRetentionDays: days(14), MessageRetentionDays: 2}},
+		&entities.Settings{LogRetentionDays: days(14), MessageRetentionDays: 2},
 		Deps{Events: events},
 	)
 
@@ -158,10 +164,10 @@ func TestRunOncePushesRetentionToWorkers(t *testing.T) {
 	webhooks := &fakeSetter{}
 
 	w, _ := workerFor(
-		&config.Config{App: config.AppConfig{
+		&entities.Settings{
 			OutboxRetentionDays:  21,
 			WebhookRetentionDays: days(0),
-		}},
+		},
 		Deps{Outbox: outbox, Webhooks: webhooks},
 	)
 	w.RunOnce(t.Context())
@@ -181,7 +187,7 @@ func TestRunOnceSkipsEverythingWhenSettingsCannotBeRead(t *testing.T) {
 	outbox := &fakeSetter{}
 
 	w := NewWorker(Deps{Events: events, Outbox: outbox})
-	w.load = func() (*config.Config, error) { return nil, errors.New("permission denied") }
+	w.load = func(context.Context) (*entities.Settings, error) { return nil, errors.New("permission denied") }
 
 	w.RunOnce(t.Context())
 
@@ -201,7 +207,7 @@ func TestRunOnceContinuesAfterAFailedClass(t *testing.T) {
 	logs := &fakePruner{}
 
 	w, _ := workerFor(
-		&config.Config{App: config.AppConfig{MessageRetentionDays: 5, AppLogRetentionDays: 5}},
+		&entities.Settings{MessageRetentionDays: 5, AppLogRetentionDays: 5},
 		Deps{Events: events, Logs: logs},
 	)
 	w.RunOnce(t.Context())
@@ -219,7 +225,7 @@ func TestRunOnceStopsOnCancellation(t *testing.T) {
 	logs := &fakePruner{}
 
 	w, _ := workerFor(
-		&config.Config{App: config.AppConfig{MessageRetentionDays: 5, AppLogRetentionDays: 5}},
+		&entities.Settings{MessageRetentionDays: 5, AppLogRetentionDays: 5},
 		Deps{Events: events, Logs: logs},
 	)
 
@@ -235,7 +241,7 @@ func TestRunOnceStopsOnCancellation(t *testing.T) {
 func TestStatsRecordWhatThePassDid(t *testing.T) {
 	events := &fakeEvents{}
 	w, now := workerFor(
-		&config.Config{App: config.AppConfig{MessageRetentionDays: 5}},
+		&entities.Settings{MessageRetentionDays: 5},
 		Deps{Events: events},
 	)
 
@@ -274,7 +280,7 @@ func TestSinceLastRunMeasuresFromStartBeforeTheFirstPass(t *testing.T) {
 
 func TestAFailedClassIsCountedAndDoesNotCompleteSilently(t *testing.T) {
 	events := &fakeEvents{err: errors.New("store is busy")}
-	w, _ := workerFor(&config.Config{}, Deps{Events: events})
+	w, _ := workerFor(&entities.Settings{}, Deps{Events: events})
 
 	w.RunOnce(t.Context())
 
@@ -292,17 +298,17 @@ func TestAFailedClassIsCountedAndDoesNotCompleteSilently(t *testing.T) {
 func TestAnIncompletePassIsNotRecordedAsARun(t *testing.T) {
 	tests := []struct {
 		name string
-		load func() (*config.Config, error)
+		load func(context.Context) (*entities.Settings, error)
 		ctx  func(t *testing.T) context.Context
 	}{
 		{
 			name: "settings unreadable",
-			load: func() (*config.Config, error) { return nil, errors.New("permission denied") },
+			load: func(context.Context) (*entities.Settings, error) { return nil, errors.New("permission denied") },
 			ctx:  func(t *testing.T) context.Context { return t.Context() },
 		},
 		{
 			name: "cancelled mid-pass",
-			load: func() (*config.Config, error) { return &config.Config{}, nil },
+			load: func(context.Context) (*entities.Settings, error) { return &entities.Settings{}, nil },
 			ctx: func(t *testing.T) context.Context {
 				ctx, cancel := context.WithCancel(t.Context())
 				cancel()
@@ -332,7 +338,7 @@ func started(t *testing.T, deps Deps) *Worker {
 	t.Helper()
 
 	w := NewWorker(deps)
-	w.load = func() (*config.Config, error) { return &config.Config{}, nil }
+	w.load = func(context.Context) (*entities.Settings, error) { return &entities.Settings{}, nil }
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -393,7 +399,7 @@ func TestTriggerCutsTheWaitShort(t *testing.T) {
 }
 
 func TestNilStoresAreSkipped(t *testing.T) {
-	w, _ := workerFor(&config.Config{App: config.AppConfig{MessageRetentionDays: 5}}, Deps{})
+	w, _ := workerFor(&entities.Settings{MessageRetentionDays: 5}, Deps{})
 
 	// A deployment without one of these stores must not panic a background
 	// worker on its first pass.
@@ -416,7 +422,7 @@ func (s *stubExpirer) Expire(_ context.Context, _ time.Time, limit int) (int, er
 
 func TestRetentionExpiresHeldMessages(t *testing.T) {
 	expirer := &stubExpirer{result: 3}
-	w := NewWorker(Deps{Quarantine: expirer, StartupDelay: -1})
+	w := NewWorker(Deps{Settings: stubSettings{&entities.Settings{}}, Quarantine: expirer, StartupDelay: -1})
 
 	w.RunOnce(context.Background())
 
@@ -435,7 +441,7 @@ func TestRetentionExpiresHeldMessages(t *testing.T) {
 func TestAFailedExpirySweepDoesNotStopThePass(t *testing.T) {
 	expirer := &stubExpirer{err: errors.New("database unreachable")}
 	events := &fakeEvents{}
-	w := NewWorker(Deps{Quarantine: expirer, Events: events, StartupDelay: -1})
+	w := NewWorker(Deps{Settings: stubSettings{&entities.Settings{}}, Quarantine: expirer, Events: events, StartupDelay: -1})
 
 	w.RunOnce(context.Background())
 
