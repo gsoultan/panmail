@@ -26,3 +26,7 @@
 
 # Test binaries left behind by `go test -c` and profiling runs.
 *.test
+
+# goreleaser's output. Built from the tag, so committing it would ship a
+# snapshot of one machine's binaries as though they were the release.
+/dist/
