@@ -177,7 +177,12 @@ type QuarantineRepository interface {
 	// sends a message twice.
 	Review(ctx context.Context, tenantID, id string, status Status, reviewedBy, note string) (*FilteredMessage, error)
 
-	// Expire moves everything past its expiry out of PENDING, and reports how
-	// many it moved. Retention calls it.
-	Expire(ctx context.Context, now time.Time, limit int) (int, error)
+	// Expire moves everything past its expiry out of PENDING and returns the
+	// records it moved — not a count, because each one is announced to the
+	// tenant's webhook subscribers and a number cannot be. Retention calls it,
+	// through the sweeper in expiry.go.
+	//
+	// Only rows this call transitioned. A message a reviewer decided between
+	// the read and the write keeps their decision and must not appear here.
+	Expire(ctx context.Context, now time.Time, limit int) ([]FilteredMessage, error)
 }

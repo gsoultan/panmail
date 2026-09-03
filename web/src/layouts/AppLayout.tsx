@@ -274,6 +274,18 @@ export const AppLayout: React.FC = () => {
                 to="/inbound"
                 active={location.pathname === '/inbound'}
               />
+              {/* Beside Suppressions, and for the same reason: both are why a
+                  message did not go where it was addressed. Filtering screens
+                  mail in both directions and holds what it stops for review,
+                  so it belongs in the pipeline between what receives mail and
+                  what blocks it — not under Test, where it sat because it was
+                  added after the test-delivery item without its own heading. */}
+              <NavItem
+                icon={IconFilter}
+                label="Filtering"
+                to="/filters"
+                active={location.pathname === '/filters'}
+              />
               <NavItem
                 icon={IconShieldCancel}
                 label="Suppressions"
@@ -309,13 +321,6 @@ export const AppLayout: React.FC = () => {
                 label="Delivery"
                 to="/test-delivery"
                 active={location.pathname === '/test-delivery'}
-              />
-
-              <NavItem
-                icon={IconFilter}
-                label="Filtering"
-                to="/filters"
-                active={location.pathname === '/filters'}
               />
 
               {(user?.role === UserRole.SUPER_ADMIN || user?.role === UserRole.ADMIN) && (

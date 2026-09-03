@@ -399,8 +399,10 @@ func main() {
 
 	// After the webhook worker, because a held message notifies the tenant and
 	// a hold nobody is told about is a message that quietly expires unreviewed.
+	// One notifier for the whole lifecycle: held, released, rejected, expired.
+	filterNotifier := emailfilterservices.NewQuarantineNotifier(outboundWebhookWorker)
 	filterScreener := emailfilter.NewScreener(filterRuleStore, filterQuarantineStore, 0,
-		emailfilterservices.NewHeldNotifier(outboundWebhookWorker))
+		filterNotifier)
 	runWorker(&workers, workerCtx, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
 
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
@@ -451,6 +453,7 @@ func main() {
 		filterQuarantineStore,
 		emailusecases.NewHeldReleaser(outboxRepo, queueWorker),
 		inboundusecases.NewHeldReleaser(inboundRepo, outboundWebhookWorker),
+		filterNotifier,
 	)
 	emailFilterService := emailfilterservices.NewService(filterRuleStore, filterQuarantineStore, filterReviewer)
 	runWorker(&workers, workerCtx, "outbox-queue", func() { queueWorker.Start(workerCtx) })
@@ -470,13 +473,15 @@ func main() {
 		// after a save, and the provider is a snapshot up to a refresh
 		// interval old — reading that would apply the previous policy and
 		// then wait a day to notice.
-		Settings:   settingsRepo,
-		Events:     eventRepo,
-		Logs:       logStore,
-		Inbound:    inboundRepo,
-		Outbox:     queueWorker,
-		Webhooks:   outboundWebhookWorker,
-		Quarantine: filterQuarantineStore,
+		Settings: settingsRepo,
+		Events:   eventRepo,
+		Logs:     logStore,
+		Inbound:  inboundRepo,
+		Outbox:   queueWorker,
+		Webhooks: outboundWebhookWorker,
+		// The sweeper rather than the store: it announces each expiry to the
+		// tenant's subscribers and hands retention back the count it wants.
+		Quarantine: emailfilter.NewExpirySweeper(filterQuarantineStore, filterNotifier),
 		Screener:   filterScreener,
 	})
 	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })

@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/webhook.proto.
  */
 export const file_panmail_v1_webhook: GenFile = /*@__PURE__*/
-  fileDesc("ChhwYW5tYWlsL3YxL3dlYmhvb2sucHJvdG8SCnBhbm1haWwudjEixAEKB1dlYmhvb2sSCgoCaWQYASABKAkSEQoJdGVuYW50X2lkGAIgASgJEgwKBG5hbWUYAyABKAkSCwoDdXJsGAQgASgJEi8KBmV2ZW50cxgFIAMoDjIfLnBhbm1haWwudjEuV2ViaG9va1RyaWdnZXJFdmVudBIOCgZhY3RpdmUYBiABKAgSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc2VjcmV0GAggASgJKvgCChNXZWJob29rVHJpZ2dlckV2ZW50EiUKIVdFQkhPT0tfVFJJR0dFUl9FVkVOVF9VTlNQRUNJRklFRBAAEiMKH1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1NFTlQQARIoCiRXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9ERUxJVkVSRUQQAhIlCiFXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9PUEVORUQQAxImCiJXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9DTElDS0VEEAQSJgoiV0VCSE9PS19UUklHR0VSX0VWRU5UX01BSUxfQk9VTkNFRBAFEicKI1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1JFSkVDVEVEEAYSJgoiV0VCSE9PS19UUklHR0VSX0VWRU5UX01BSUxfSU5CT1VORBAHEiMKH1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX0hFTEQQCEKdAQoOY29tLnBhbm1haWwudjFCDFdlYmhvb2tQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("ChhwYW5tYWlsL3YxL3dlYmhvb2sucHJvdG8SCnBhbm1haWwudjEixAEKB1dlYmhvb2sSCgoCaWQYASABKAkSEQoJdGVuYW50X2lkGAIgASgJEgwKBG5hbWUYAyABKAkSCwoDdXJsGAQgASgJEi8KBmV2ZW50cxgFIAMoDjIfLnBhbm1haWwudjEuV2ViaG9va1RyaWdnZXJFdmVudBIOCgZhY3RpdmUYBiABKAgSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc2VjcmV0GAggASgJKv0DChNXZWJob29rVHJpZ2dlckV2ZW50EiUKIVdFQkhPT0tfVFJJR0dFUl9FVkVOVF9VTlNQRUNJRklFRBAAEiMKH1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1NFTlQQARIoCiRXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9ERUxJVkVSRUQQAhIlCiFXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9PUEVORUQQAxImCiJXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9DTElDS0VEEAQSJgoiV0VCSE9PS19UUklHR0VSX0VWRU5UX01BSUxfQk9VTkNFRBAFEicKI1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1JFSkVDVEVEEAYSJgoiV0VCSE9PS19UUklHR0VSX0VWRU5UX01BSUxfSU5CT1VORBAHEiMKH1dFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX0hFTEQQCBInCiNXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9SRUxFQVNFRBAJEjIKLldFQkhPT0tfVFJJR0dFUl9FVkVOVF9NQUlMX1FVQVJBTlRJTkVfUkVKRUNURUQQChImCiJXRUJIT09LX1RSSUdHRVJfRVZFTlRfTUFJTF9FWFBJUkVEEAtCnQEKDmNvbS5wYW5tYWlsLnYxQgxXZWJob29rUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message panmail.v1.Webhook
@@ -130,6 +130,39 @@ export enum WebhookTriggerEvent {
    * @generated from enum value: WEBHOOK_TRIGGER_EVENT_MAIL_HELD = 8;
    */
   MAIL_HELD = 8,
+
+  /**
+   * A reviewer released a held message. It is on its way — outbound goes back
+   * to the send queue, inbound is delivered to the subscriber the hold
+   * suppressed.
+   *
+   * @generated from enum value: WEBHOOK_TRIGGER_EVENT_MAIL_RELEASED = 9;
+   */
+  MAIL_RELEASED = 9,
+
+  /**
+   * A reviewer refused a held message. It will not be sent or delivered.
+   *
+   * Deliberately not MAIL_REJECTED, which already exists and means something
+   * else: a provider refusing a send, reported by the delivery pipeline. One
+   * is a person's decision about a quarantined message and the other is a
+   * remote server's answer, and a subscriber acting on "rejected" needs to
+   * know which it received.
+   *
+   * @generated from enum value: WEBHOOK_TRIGGER_EVENT_MAIL_QUARANTINE_REJECTED = 10;
+   */
+  MAIL_QUARANTINE_REJECTED = 10,
+
+  /**
+   * A held message reached its retention deadline with nobody having decided.
+   *
+   * This is the event MAIL_HELD exists to prevent, so it is the one worth
+   * alerting on: it does not say a message was refused, it says a queue went
+   * unwatched until the decision was made by a clock.
+   *
+   * @generated from enum value: WEBHOOK_TRIGGER_EVENT_MAIL_EXPIRED = 11;
+   */
+  MAIL_EXPIRED = 11,
 }
 
 /**

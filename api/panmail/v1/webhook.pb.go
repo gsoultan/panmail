@@ -40,31 +40,55 @@ const (
 	// message that vanishes because a queue went unwatched is worse than one
 	// that was refused, because nobody ever decided it.
 	WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_HELD WebhookTriggerEvent = 8
+	// A reviewer released a held message. It is on its way — outbound goes back
+	// to the send queue, inbound is delivered to the subscriber the hold
+	// suppressed.
+	WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_RELEASED WebhookTriggerEvent = 9
+	// A reviewer refused a held message. It will not be sent or delivered.
+	//
+	// Deliberately not MAIL_REJECTED, which already exists and means something
+	// else: a provider refusing a send, reported by the delivery pipeline. One
+	// is a person's decision about a quarantined message and the other is a
+	// remote server's answer, and a subscriber acting on "rejected" needs to
+	// know which it received.
+	WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_QUARANTINE_REJECTED WebhookTriggerEvent = 10
+	// A held message reached its retention deadline with nobody having decided.
+	//
+	// This is the event MAIL_HELD exists to prevent, so it is the one worth
+	// alerting on: it does not say a message was refused, it says a queue went
+	// unwatched until the decision was made by a clock.
+	WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_MAIL_EXPIRED WebhookTriggerEvent = 11
 )
 
 // Enum value maps for WebhookTriggerEvent.
 var (
 	WebhookTriggerEvent_name = map[int32]string{
-		0: "WEBHOOK_TRIGGER_EVENT_UNSPECIFIED",
-		1: "WEBHOOK_TRIGGER_EVENT_MAIL_SENT",
-		2: "WEBHOOK_TRIGGER_EVENT_MAIL_DELIVERED",
-		3: "WEBHOOK_TRIGGER_EVENT_MAIL_OPENED",
-		4: "WEBHOOK_TRIGGER_EVENT_MAIL_CLICKED",
-		5: "WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED",
-		6: "WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED",
-		7: "WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND",
-		8: "WEBHOOK_TRIGGER_EVENT_MAIL_HELD",
+		0:  "WEBHOOK_TRIGGER_EVENT_UNSPECIFIED",
+		1:  "WEBHOOK_TRIGGER_EVENT_MAIL_SENT",
+		2:  "WEBHOOK_TRIGGER_EVENT_MAIL_DELIVERED",
+		3:  "WEBHOOK_TRIGGER_EVENT_MAIL_OPENED",
+		4:  "WEBHOOK_TRIGGER_EVENT_MAIL_CLICKED",
+		5:  "WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED",
+		6:  "WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED",
+		7:  "WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND",
+		8:  "WEBHOOK_TRIGGER_EVENT_MAIL_HELD",
+		9:  "WEBHOOK_TRIGGER_EVENT_MAIL_RELEASED",
+		10: "WEBHOOK_TRIGGER_EVENT_MAIL_QUARANTINE_REJECTED",
+		11: "WEBHOOK_TRIGGER_EVENT_MAIL_EXPIRED",
 	}
 	WebhookTriggerEvent_value = map[string]int32{
-		"WEBHOOK_TRIGGER_EVENT_UNSPECIFIED":    0,
-		"WEBHOOK_TRIGGER_EVENT_MAIL_SENT":      1,
-		"WEBHOOK_TRIGGER_EVENT_MAIL_DELIVERED": 2,
-		"WEBHOOK_TRIGGER_EVENT_MAIL_OPENED":    3,
-		"WEBHOOK_TRIGGER_EVENT_MAIL_CLICKED":   4,
-		"WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED":   5,
-		"WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED":  6,
-		"WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND":   7,
-		"WEBHOOK_TRIGGER_EVENT_MAIL_HELD":      8,
+		"WEBHOOK_TRIGGER_EVENT_UNSPECIFIED":              0,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_SENT":                1,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_DELIVERED":           2,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_OPENED":              3,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_CLICKED":             4,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED":             5,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED":            6,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND":             7,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_HELD":                8,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_RELEASED":            9,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_QUARANTINE_REJECTED": 10,
+		"WEBHOOK_TRIGGER_EVENT_MAIL_EXPIRED":             11,
 	}
 )
 
@@ -218,7 +242,7 @@ const file_panmail_v1_webhook_proto_rawDesc = "" +
 	"\x06active\x18\x06 \x01(\bR\x06active\x129\n" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x16\n" +
-	"\x06secret\x18\b \x01(\tR\x06secret*\xf8\x02\n" +
+	"\x06secret\x18\b \x01(\tR\x06secret*\xfd\x03\n" +
 	"\x13WebhookTriggerEvent\x12%\n" +
 	"!WEBHOOK_TRIGGER_EVENT_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fWEBHOOK_TRIGGER_EVENT_MAIL_SENT\x10\x01\x12(\n" +
@@ -228,7 +252,11 @@ const file_panmail_v1_webhook_proto_rawDesc = "" +
 	"\"WEBHOOK_TRIGGER_EVENT_MAIL_BOUNCED\x10\x05\x12'\n" +
 	"#WEBHOOK_TRIGGER_EVENT_MAIL_REJECTED\x10\x06\x12&\n" +
 	"\"WEBHOOK_TRIGGER_EVENT_MAIL_INBOUND\x10\a\x12#\n" +
-	"\x1fWEBHOOK_TRIGGER_EVENT_MAIL_HELD\x10\bB\x9d\x01\n" +
+	"\x1fWEBHOOK_TRIGGER_EVENT_MAIL_HELD\x10\b\x12'\n" +
+	"#WEBHOOK_TRIGGER_EVENT_MAIL_RELEASED\x10\t\x122\n" +
+	".WEBHOOK_TRIGGER_EVENT_MAIL_QUARANTINE_REJECTED\x10\n" +
+	"\x12&\n" +
+	"\"WEBHOOK_TRIGGER_EVENT_MAIL_EXPIRED\x10\vB\x9d\x01\n" +
 	"\x0ecom.panmail.v1B\fWebhookProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"
