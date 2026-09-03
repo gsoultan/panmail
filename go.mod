@@ -12,6 +12,7 @@ require (
 	github.com/emersion/go-smtp v0.25.0
 	github.com/google/uuid v1.6.0
 	github.com/gsoultan/gsmail v0.9.1
+	github.com/gsoultan/panmail-sdk v0.1.0-rc.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/o1egl/paseto/v2 v2.1.1
 	github.com/pquerna/otp v1.5.0
