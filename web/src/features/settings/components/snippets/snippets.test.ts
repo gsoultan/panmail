@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { goApiSnippet, phpApiSnippet, javaApiSnippet, nodeApiSnippet } from './api';
-import { goSdkSnippet, phpSdkSnippet, javaSdkSnippet, nodeSdkSnippet } from './sdk';
+import { goSdkSnippet, phpSdkSnippet, nodeSdkSnippet } from './sdk';
 import { goSmtpSnippet, phpSmtpSnippet, javaSmtpSnippet, nodeSmtpSnippet } from './smtp';
 import type { SnippetValues } from './types';
 import type { SmtpConnection } from '../smtpConnection';
@@ -36,10 +36,13 @@ const apiGenerators = [
   { name: 'Node', build: nodeApiSnippet },
 ];
 
+// No Java. panmail-sdk ships in Go, PHP and Node; the Java client was withdrawn
+// before the first tag, so a Java SDK snippet would name a package that will
+// never resolve. Java is still covered in apiGenerators and smtpGenerators,
+// which need no package at all.
 const sdkGenerators = [
   { name: 'Go', build: goSdkSnippet },
   { name: 'PHP', build: phpSdkSnippet },
-  { name: 'Java', build: javaSdkSnippet },
   { name: 'Node', build: nodeSdkSnippet },
 ];
 
@@ -100,7 +103,6 @@ describe('API and SDK snippets', () => {
   test('each SDK snippet uses its published client', () => {
     expect(goSdkSnippet(values(), BASE)).toContain('github.com/gsoultan/panmail-sdk');
     expect(phpSdkSnippet(values(), BASE)).toContain('use Panmail\\Client;');
-    expect(javaSdkSnippet(values(), BASE)).toContain('io.github.gsoultan.panmail.PanmailClient');
     expect(nodeSdkSnippet(values(), BASE)).toContain("from '@gsoultan/panmail-sdk'");
   });
 
@@ -267,7 +269,6 @@ describe('generated code is valid in its own language', () => {
   test('Java snippets import everything they reference', () => {
     for (const { name, build } of [
       { name: 'API Java', build: javaApiSnippet },
-      { name: 'SDK Java', build: javaSdkSnippet },
     ]) {
       const code = build(values({ cc: ['c@example.net'], bcc: ['b@example.net'] }), BASE);
       if (code.includes('List.of(')) {
@@ -305,9 +306,11 @@ newline`;
     expect(code).toContain("it\\'s");
   });
 
+  // Through the API generator rather than an SDK one: javaString is the thing
+  // under test and there is no Java SDK snippet to reach it through.
   test('Java escapes quotes and newlines', () => {
-    const code = javaSdkSnippet(values({ subject: nasty }), BASE);
-    const line = code.split('\n').find((l) => l.includes('.subject('))!;
+    const code = javaApiSnippet(values({ subject: nasty }), BASE);
+    const line = code.split('\n').find((l) => l.includes('payload.put("subject"'))!;
     expect(line).toContain('\\"hi\\"');
     expect(line).toContain('\\n');
   });
