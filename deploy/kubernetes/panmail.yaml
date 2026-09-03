@@ -14,14 +14,21 @@ stringData:
   # provider password, DKIM private key, OAuth token and webhook secret is
   # permanently unreadable — nothing can recover them, they have to be re-entered
   # by hand from each customer. Back it up somewhere other than this cluster.
+  #
+  # Generate with: openssl rand -hex 32
   PANMAIL_SECRET_KEY: "replace-me-with-64-hex-characters"
 
 ---
+# A Secret rather than a ConfigMap, because config.yaml carries
+# auth.symmetric_key — see the comment on it below. A ConfigMap is readable by
+# anything holding get on the namespace and is not encrypted at rest unless the
+# cluster opts in; neither is a place for a signing key.
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
   name: panmail-config
-data:
+type: Opaque
+stringData:
   config.yaml: |
     database:
       type: postgres
@@ -48,9 +55,29 @@ data:
 
     auth:
       # Must be identical across replicas: a token minted by one is verified by
-      # another. Move this to the Secret for a real deployment.
+      # another. Rotating it signs every session out.
+      #
+      # It has a second job that is easy to miss: it is also the AES key for
+      # database.password in this same file, so the key and the ciphertext it
+      # protects live together. That is why the whole file is a Secret, and why
+      # a password set here should be left for the gateway to encrypt on its
+      # first write rather than pasted in as "enc:" text from another install.
+      #
+      # Generate with: openssl rand -hex 32
       symmetric_key: "replace-me-with-64-hex-characters"
 
+    # Seed values only, read once. base_url, retry_pattern and the seven
+    # retention policies live in the database — one system_settings row every
+    # replica reads — so that Settings → Save reaches all three rather than
+    # whichever pod served the request.
+    #
+    # The first replica to start copies what is here into that row and logs
+    # that it did. It never overwrites, so a rolling deploy cannot reset a
+    # value an administrator has since changed on the settings page. Editing
+    # this afterwards does nothing; edit it in the dashboard.
+    #
+    # Which is why the read-only mount below is correct rather than a
+    # limitation: nothing writes this file at runtime any more.
     app:
       base_url: https://mail.example.com
 
@@ -147,7 +174,12 @@ spec:
 
       volumes:
         - name: config
-          configMap: { name: panmail-config }
+          secret:
+            secretName: panmail-config
+            # Secret volume files are owned by root with the group set to
+            # fsGroup, so the gateway reads this by group. 0400 would lock out
+            # the very process that needs it.
+            defaultMode: 0440
 
   volumeClaimTemplates:
     - metadata:
