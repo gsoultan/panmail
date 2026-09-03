@@ -196,30 +196,100 @@ func (s *quarantineStore) Review(ctx context.Context, tenantID, id string, statu
 	return s.Get(ctx, tenantID, id)
 }
 
-const expireFiltered = `
-UPDATE filtered_messages
-   SET status = 'EXPIRED'
- WHERE id IN (
-     SELECT id FROM filtered_messages
-      WHERE status = 'PENDING' AND expires_at IS NOT NULL AND expires_at <= $1
-      ORDER BY expires_at
-      LIMIT $2
- )`
+// Three statements rather than one UPDATE ... RETURNING, matching the webhook
+// delivery store: RETURNING is the kind of thing the two engines disagree
+// about, and keeping the query identical is worth an extra round trip on a
+// sweep that runs once a day.
+//
+// The middle statement is the one that matters. Its `status = 'PENDING'` guard
+// is what makes the transition atomic, so a reviewer who decides between the
+// select and the update keeps their decision and is not announced as an
+// expiry. The final read then keeps only rows that really are EXPIRED, which
+// is why a concurrent decision cannot produce a wrong notification.
+const selectDueForExpiry = `
+SELECT id FROM filtered_messages
+ WHERE status = 'PENDING' AND expires_at IS NOT NULL AND expires_at <= $1
+ ORDER BY expires_at
+ LIMIT $2`
 
-func (s *quarantineStore) Expire(ctx context.Context, now time.Time, limit int) (int, error) {
+func (s *quarantineStore) Expire(ctx context.Context, now time.Time, limit int) ([]emailfilter.FilteredMessage, error) {
 	if limit <= 0 {
 		limit = maxPageSize
 	}
 	conn, err := s.getDB()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	result, err := conn.ExecContext(ctx, expireFiltered, now.UTC(), limit)
+
+	rows, err := conn.QueryContext(ctx, selectDueForExpiry, now.UTC(), limit)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	affected, err := result.RowsAffected()
-	return int(affected), err
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	list := placeholders(len(ids), 1)
+
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE filtered_messages SET status = 'EXPIRED' WHERE status = 'PENDING' AND id IN (`+list+`)`,
+		args...); err != nil {
+		return nil, err
+	}
+
+	read, err := conn.QueryContext(ctx,
+		`SELECT `+filteredColumns+` FROM filtered_messages WHERE status = 'EXPIRED' AND id IN (`+list+`)`,
+		args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = read.Close() }()
+
+	var expired []emailfilter.FilteredMessage
+	for read.Next() {
+		record, err := scanFiltered(read)
+		if err != nil {
+			return nil, err
+		}
+		expired = append(expired, *record)
+	}
+	return expired, read.Err()
+}
+
+// placeholders renders $from..$from+n-1 for an IN list. The driver rejects a
+// query built by interpolating ids, and these ids come from the database
+// rather than from a caller, but building the list by hand once is cheaper
+// than trusting that to stay true.
+func placeholders(n, from int) string {
+	out := make([]byte, 0, n*4)
+	for i := range n {
+		if i > 0 {
+			out = append(out, ',')
+		}
+		out = append(out, '$')
+		out = strconv.AppendInt(out, int64(from+i), 10)
+	}
+	return string(out)
 }
 
 func scanFiltered(row scanner) (*emailfilter.FilteredMessage, error) {

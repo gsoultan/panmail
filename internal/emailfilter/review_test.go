@@ -61,7 +61,9 @@ func (q *fakeQuarantine) Review(_ context.Context, _, id string, status emailfil
 	return &copied, nil
 }
 
-func (q *fakeQuarantine) Expire(context.Context, time.Time, int) (int, error) { return 0, nil }
+func (q *fakeQuarantine) Expire(context.Context, time.Time, int) ([]emailfilter.FilteredMessage, error) {
+	return nil, nil
+}
 
 type countingReleaser struct {
 	mu        sync.Mutex
@@ -95,7 +97,7 @@ func heldRecord() *emailfilter.FilteredMessage {
 func TestReleaseSendsTheMessageAndMarksIt(t *testing.T) {
 	q := newFakeQuarantine(heldRecord())
 	out := &countingReleaser{}
-	r := emailfilter.NewReviewer(q, out, nil)
+	r := emailfilter.NewReviewer(q, out, nil, nil)
 
 	record, err := r.Release(context.Background(), "t1", "q1", "alice", "looks fine")
 	if err != nil {
@@ -115,7 +117,7 @@ func TestReleaseSendsTheMessageAndMarksIt(t *testing.T) {
 func TestConcurrentReleasesSendTheMessageOnce(t *testing.T) {
 	q := newFakeQuarantine(heldRecord())
 	out := &countingReleaser{}
-	r := emailfilter.NewReviewer(q, out, nil)
+	r := emailfilter.NewReviewer(q, out, nil, nil)
 
 	const reviewers = 8
 	var wg sync.WaitGroup
@@ -153,7 +155,7 @@ func TestConcurrentReleasesSendTheMessageOnce(t *testing.T) {
 func TestAFailedDeliveryStillMarksTheMessageAndReportsIt(t *testing.T) {
 	q := newFakeQuarantine(heldRecord())
 	out := &countingReleaser{err: errors.New("outbox unreachable")}
-	r := emailfilter.NewReviewer(q, out, nil)
+	r := emailfilter.NewReviewer(q, out, nil, nil)
 
 	record, err := r.Release(context.Background(), "t1", "q1", "alice", "")
 	if err == nil {
@@ -167,7 +169,7 @@ func TestAFailedDeliveryStillMarksTheMessageAndReportsIt(t *testing.T) {
 func TestRejectDiscardsThePayload(t *testing.T) {
 	q := newFakeQuarantine(heldRecord())
 	out := &countingReleaser{}
-	r := emailfilter.NewReviewer(q, out, nil)
+	r := emailfilter.NewReviewer(q, out, nil, nil)
 
 	record, err := r.Reject(context.Background(), "t1", "q1", "alice", "phishing")
 	if err != nil {
@@ -186,7 +188,7 @@ func TestRejectDiscardsThePayload(t *testing.T) {
 
 func TestASecondDecisionIsRefused(t *testing.T) {
 	q := newFakeQuarantine(heldRecord())
-	r := emailfilter.NewReviewer(q, &countingReleaser{}, nil)
+	r := emailfilter.NewReviewer(q, &countingReleaser{}, nil, nil)
 
 	if _, err := r.Release(context.Background(), "t1", "q1", "alice", ""); err != nil {
 		t.Fatalf("Release: %v", err)
@@ -199,7 +201,7 @@ func TestASecondDecisionIsRefused(t *testing.T) {
 // A reviewer told a message went out has to be right about that.
 func TestReleasingWithoutAConfiguredReleaserIsAnError(t *testing.T) {
 	q := newFakeQuarantine(heldRecord())
-	r := emailfilter.NewReviewer(q, nil, nil)
+	r := emailfilter.NewReviewer(q, nil, nil, nil)
 
 	if _, err := r.Release(context.Background(), "t1", "q1", "alice", ""); err == nil {
 		t.Fatal("Release claimed success with no way to deliver")
@@ -207,19 +209,36 @@ func TestReleasingWithoutAConfiguredReleaserIsAnError(t *testing.T) {
 }
 
 func TestUnknownIdIsNotFound(t *testing.T) {
-	r := emailfilter.NewReviewer(newFakeQuarantine(), &countingReleaser{}, nil)
+	r := emailfilter.NewReviewer(newFakeQuarantine(), &countingReleaser{}, nil, nil)
 	if _, err := r.Release(context.Background(), "t1", "missing", "alice", ""); !errors.Is(err, emailfilter.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
 
-// countingNotifier records what a hold announced.
+// countingNotifier records what the quarantine announced, keeping each moment
+// in its own slice so a test can assert that a release did not go out as a
+// rejection.
 type countingNotifier struct {
-	events []emailfilter.HeldEvent
+	events   []emailfilter.HeldEvent
+	released []emailfilter.OutcomeEvent
+	rejected []emailfilter.OutcomeEvent
+	expired  []emailfilter.OutcomeEvent
 }
 
 func (c *countingNotifier) NotifyHeld(_ string, e emailfilter.HeldEvent) {
 	c.events = append(c.events, e)
+}
+
+func (c *countingNotifier) NotifyReleased(_ string, e emailfilter.OutcomeEvent) {
+	c.released = append(c.released, e)
+}
+
+func (c *countingNotifier) NotifyRejected(_ string, e emailfilter.OutcomeEvent) {
+	c.rejected = append(c.rejected, e)
+}
+
+func (c *countingNotifier) NotifyExpired(_ string, e emailfilter.OutcomeEvent) {
+	c.expired = append(c.expired, e)
 }
 
 func heldMessage() emailfilter.Message {
@@ -392,5 +411,67 @@ func TestARetentionChangeDoesNotMoveAnExistingDeadline(t *testing.T) {
 
 	if !record.ExpiresAt.Equal(stamped) {
 		t.Errorf("the deadline moved to %v; a date already sent to subscribers must stand", record.ExpiresAt)
+	}
+}
+
+// Each moment has to reach its own wire event. The three outcomes look alike
+// in the domain and mean opposite things to a subscriber: one says the mail is
+// on its way, one says it never will be, and one says nobody decided.
+func TestEachOutcomeAnnouncesItsOwnEvent(t *testing.T) {
+	t.Run("release", func(t *testing.T) {
+		n := &countingNotifier{}
+		r := emailfilter.NewReviewer(newFakeQuarantine(heldRecord()), &countingReleaser{}, nil, n)
+
+		if _, err := r.Release(context.Background(), "t1", "q1", "alice", "looks fine"); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+		if len(n.released) != 1 {
+			t.Fatalf("released events = %d, want 1", len(n.released))
+		}
+		if len(n.rejected) != 0 || len(n.expired) != 0 {
+			t.Errorf("a release also announced %d rejections and %d expiries", len(n.rejected), len(n.expired))
+		}
+
+		got := n.released[0]
+		if got.ID != "q1" || got.RuleName != "big attachments" {
+			t.Errorf("event = %+v, want it to identify the held message", got)
+		}
+		if got.ReviewedBy != "alice" || got.Note != "looks fine" {
+			t.Errorf("reviewer = %q note = %q, want the decision to carry who made it", got.ReviewedBy, got.Note)
+		}
+		if got.DecidedAt.IsZero() {
+			t.Error("decided_at is zero")
+		}
+	})
+
+	t.Run("reject", func(t *testing.T) {
+		n := &countingNotifier{}
+		r := emailfilter.NewReviewer(newFakeQuarantine(heldRecord()), &countingReleaser{}, nil, n)
+
+		if _, err := r.Reject(context.Background(), "t1", "q1", "bob", "confidential"); err != nil {
+			t.Fatalf("Reject: %v", err)
+		}
+		if len(n.rejected) != 1 {
+			t.Fatalf("rejected events = %d, want 1", len(n.rejected))
+		}
+		// The check that matters: a refusal must not go out as a release, or a
+		// subscriber wires "mail is on its way" to a message that never went.
+		if len(n.released) != 0 {
+			t.Errorf("a rejection announced %d releases", len(n.released))
+		}
+		if n.rejected[0].ReviewedBy != "bob" {
+			t.Errorf("reviewer = %q, want bob", n.rejected[0].ReviewedBy)
+		}
+	})
+}
+
+// A deployment with no webhook worker passes a nil notifier, which is the
+// normal configuration rather than an edge case. Taking the notifier's method
+// as a value to pass around would panic here instead.
+func TestReviewingWithoutANotifierIsSilentRatherThanFatal(t *testing.T) {
+	r := emailfilter.NewReviewer(newFakeQuarantine(heldRecord()), &countingReleaser{}, nil, nil)
+
+	if _, err := r.Release(context.Background(), "t1", "q1", "alice", ""); err != nil {
+		t.Fatalf("Release with no notifier: %v", err)
 	}
 }

@@ -23,6 +23,32 @@ enum WebhookTriggerEvent {
   // message that vanishes because a queue went unwatched is worse than one
   // that was refused, because nobody ever decided it.
   WEBHOOK_TRIGGER_EVENT_MAIL_HELD = 8;
+
+  // The three ways a hold ends. Separate events rather than one carrying an
+  // outcome field, because subscriptions here are per event: a tenant that
+  // only wants to hear about messages nobody decided has to be able to ask
+  // for that alone, without also receiving every routine review action.
+
+  // A reviewer released a held message. It is on its way — outbound goes back
+  // to the send queue, inbound is delivered to the subscriber the hold
+  // suppressed.
+  WEBHOOK_TRIGGER_EVENT_MAIL_RELEASED = 9;
+
+  // A reviewer refused a held message. It will not be sent or delivered.
+  //
+  // Deliberately not MAIL_REJECTED, which already exists and means something
+  // else: a provider refusing a send, reported by the delivery pipeline. One
+  // is a person's decision about a quarantined message and the other is a
+  // remote server's answer, and a subscriber acting on "rejected" needs to
+  // know which it received.
+  WEBHOOK_TRIGGER_EVENT_MAIL_QUARANTINE_REJECTED = 10;
+
+  // A held message reached its retention deadline with nobody having decided.
+  //
+  // This is the event MAIL_HELD exists to prevent, so it is the one worth
+  // alerting on: it does not say a message was refused, it says a queue went
+  // unwatched until the decision was made by a clock.
+  WEBHOOK_TRIGGER_EVENT_MAIL_EXPIRED = 11;
 }
 
 message Webhook {

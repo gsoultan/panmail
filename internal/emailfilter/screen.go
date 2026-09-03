@@ -35,7 +35,7 @@ const DefaultQuarantineRetention = 30 * 24 * time.Hour
 type screener struct {
 	rules      RuleRepository
 	quarantine QuarantineRepository
-	notifier   HeldNotifier
+	notifier   QuarantineNotifier
 
 	// retention is read on the send path and written by the retention worker,
 	// so it is guarded. A held message is stamped with whatever the policy was
@@ -49,7 +49,7 @@ type screener struct {
 // The notifier is optional. Without one a hold is silent, which is the
 // behaviour to avoid rather than the one to default to — but a deployment with
 // no webhook worker must still be able to filter.
-func NewScreener(rules RuleRepository, quarantine QuarantineRepository, retention time.Duration, notifier HeldNotifier) Screener {
+func NewScreener(rules RuleRepository, quarantine QuarantineRepository, retention time.Duration, notifier QuarantineNotifier) Screener {
 	if retention <= 0 {
 		retention = DefaultQuarantineRetention
 	}

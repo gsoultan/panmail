@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 )
 
 // OutboundReleaser puts a held outbound message back on the wire. Implemented
@@ -35,14 +36,43 @@ type reviewer struct {
 	quarantine QuarantineRepository
 	outbound   OutboundReleaser
 	inbound    InboundReleaser
+
+	// Optional. A deployment with no webhook worker reviews messages exactly
+	// as before, silently.
+	notifier QuarantineNotifier
+
+	// Injectable so a test can assert the decided_at it puts on the wire.
+	now func() time.Time
 }
 
 // NewReviewer wires the queue to the two pipelines it can return a message to.
 // Either releaser may be nil, which makes releasing in that direction an error
 // rather than a silent no-op — a reviewer who is told a message went out has
 // to be right.
-func NewReviewer(quarantine QuarantineRepository, outbound OutboundReleaser, inbound InboundReleaser) Reviewer {
-	return &reviewer{quarantine: quarantine, outbound: outbound, inbound: inbound}
+// notifier may be nil, which is a deployment with no webhook worker: messages
+// are reviewed exactly as before, silently.
+func NewReviewer(quarantine QuarantineRepository, outbound OutboundReleaser, inbound InboundReleaser, notifier QuarantineNotifier) Reviewer {
+	return &reviewer{quarantine: quarantine, outbound: outbound, inbound: inbound, notifier: notifier, now: time.Now}
+}
+
+// outcome builds the notification body and reports whether there is anyone to
+// send it to.
+//
+// It returns a value rather than taking the notifier method as an argument on
+// purpose. Writing r.notifier.NotifyReleased to pass it along evaluates a
+// method value against a nil interface, which panics where it is written
+// rather than where it is called — a nil notifier is the normal configuration
+// for a deployment with no webhook worker, so that would be a panic on the
+// review path of every such gateway.
+func (r *reviewer) outcome(record *FilteredMessage) (OutcomeEvent, bool) {
+	if r.notifier == nil || record == nil {
+		return OutcomeEvent{}, false
+	}
+	decidedAt := r.now().UTC()
+	if record.ReviewedAt != nil {
+		decidedAt = *record.ReviewedAt
+	}
+	return outcomeEventFor(record, decidedAt), true
 }
 
 // Release sends a held message on its way.
@@ -73,6 +103,14 @@ func (r *reviewer) Release(ctx context.Context, tenantID, id, reviewedBy, note s
 
 	slog.Info("filtered message released",
 		"id", record.ID, "tenant_id", tenantID, "by", reviewedBy, "direction", record.Direction)
+
+	// After deliver, not before. The early return above is the case where the
+	// row says released and the message did not go; announcing a release there
+	// would tell a subscriber the mail is on its way when a human still has to
+	// send it.
+	if event, ok := r.outcome(record); ok {
+		r.notifier.NotifyReleased(tenantID, event)
+	}
 	return record, nil
 }
 
@@ -126,5 +164,11 @@ func (r *reviewer) Reject(ctx context.Context, tenantID, id, reviewedBy, note st
 
 	slog.Info("filtered message rejected",
 		"id", record.ID, "tenant_id", tenantID, "by", reviewedBy, "direction", record.Direction)
+
+	// Sent even when discarding the payload failed above, because the decision
+	// is what a subscriber is being told about and that decision stands.
+	if event, ok := r.outcome(record); ok {
+		r.notifier.NotifyRejected(tenantID, event)
+	}
 	return record, nil
 }
