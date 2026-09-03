@@ -3,6 +3,8 @@ package retention
 import (
 	"context"
 	"time"
+
+	"github.com/gsoultan/panmail/internal/system_settings/entities"
 )
 
 // DefaultInterval is how often retention runs when no interval is given.
@@ -25,6 +27,15 @@ const DefaultPassTimeout = time.Hour
 // would silently never run at all.
 const DefaultStartupDelay = time.Minute
 
+// SettingsSource reads the stored settings the policy is resolved from.
+//
+// Narrow on purpose: retention needs to read one row and must not be able to
+// write it. system_settings/repositories.SettingsRepository satisfies this as
+// written.
+type SettingsSource interface {
+	Get(ctx context.Context) (*entities.Settings, error)
+}
+
 // Deps are the stores retention acts on. Every field is optional: a nil store
 // is one this deployment does not have, and its policy is skipped rather than
 // panicking a background worker.
@@ -40,6 +51,12 @@ type QuarantineExpirer interface {
 }
 
 type Deps struct {
+	// Settings is where the policy is read from, once per pass. Unlike every
+	// other field it is required: a worker that cannot read the policy has no
+	// basis for deleting anything, and guessing at one means deleting on
+	// defaults a deployment never agreed to.
+	Settings SettingsSource
+
 	Events   EventPruner
 	Logs     LogPruner
 	Inbound  InboundPruner

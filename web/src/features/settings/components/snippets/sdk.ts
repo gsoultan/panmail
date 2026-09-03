@@ -2,8 +2,6 @@ import {
   type SnippetValues,
   goString,
   goStringSlice,
-  javaList,
-  javaString,
   jsArray,
   jsString,
   phpArray,
@@ -123,60 +121,6 @@ ${fields.join('\n')}
     // Not queued either, but retrying on a timer makes the wait longer for
     // everything already queued. Slow down, or stop.
     throw new RuntimeException('the queue is too deep; slow down rather than retry');
-}
-`;
-}
-
-/** Java, using the io.github.gsoultan:panmail-sdk artifact. */
-export function javaSdkSnippet(values: SnippetValues, baseUrl: string): string {
-  const v = resolved(values);
-
-  const builder = [
-    `                .providerId("${javaString(v.providerId)}")`,
-    `                .from("${javaString(v.from)}")`,
-    `                .to(${javaList(v.to)})`,
-  ];
-  if (v.cc.length > 0) builder.push(`                .cc(${javaList(v.cc)})`);
-  if (v.bcc.length > 0) builder.push(`                .bcc(${javaList(v.bcc)})`);
-  builder.push(`                .subject("${javaString(v.subject)}")`);
-  if (v.bodyHtml) builder.push(`                .html("${javaString(v.bodyHtml)}")`);
-  if (v.bodyText) builder.push(`                .text("${javaString(v.bodyText)}")`);
-  if (values.templateId) {
-    builder.push(`                .templateId("${javaString(values.templateId)}")`);
-  }
-
-  return `import io.github.gsoultan.panmail.BacklogFullException;
-import io.github.gsoultan.panmail.Message;
-import io.github.gsoultan.panmail.PanmailClient;
-import io.github.gsoultan.panmail.RateLimitedException;
-import io.github.gsoultan.panmail.Result;
-
-// to() always renders a List.of(...), so this import is never unused.
-import java.util.List;
-
-public class SendEmail {
-    public static void main(String[] args) {
-        PanmailClient client = PanmailClient.builder()
-                .baseUrl("${javaString(baseUrl)}")
-                .apiKey(System.getenv("PANMAIL_API_KEY"))
-                .build();
-
-        try {
-            Result result = client.send(Message.builder()
-${builder.join('\n')}
-                    .build());
-
-            // Queued, not delivered: delivery is reported later, keyed by this id.
-            System.out.println("queued " + result.messageId());
-        } catch (RateLimitedException e) {
-            // Not queued, and safe to repeat after the delay.
-            throw new IllegalStateException("over the send rate, retry after " + e.retryAfter());
-        } catch (BacklogFullException e) {
-            // Not queued either, but retrying on a timer makes the wait longer
-            // for everything already queued. Slow down, or stop.
-            throw new IllegalStateException("the queue is too deep; slow down rather than retry");
-        }
-    }
 }
 `;
 }

@@ -1,21 +1,48 @@
 package usecases
 
 import (
-	"path/filepath"
+	"context"
 	"testing"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
-	"github.com/gsoultan/panmail/internal/config"
 	"github.com/gsoultan/panmail/internal/retention"
+	"github.com/gsoultan/panmail/internal/system_settings/entities"
 )
 
-// inTempConfig points config at a file this test owns, so saving settings does
-// not write to the developer's own ~/.panmail.
-func inTempConfig(t *testing.T) {
-	t.Helper()
+// memoryRepo is the settings row, in memory. It stores a copy rather than the
+// caller's pointer, so a test cannot pass by mutating the value it handed in.
+type memoryRepo struct {
+	row *entities.Settings
+}
 
-	config.SetConfigPath(filepath.Join(t.TempDir(), "db_config.yaml"))
-	t.Cleanup(func() { config.SetConfigPath("") })
+func (r *memoryRepo) Get(context.Context) (*entities.Settings, error) {
+	if r.row == nil {
+		return nil, nil
+	}
+	clone := *r.row
+	return &clone, nil
+}
+
+func (r *memoryRepo) Save(_ context.Context, s *entities.Settings) error {
+	clone := *s
+	r.row = &clone
+	return nil
+}
+
+func (r *memoryRepo) Seed(_ context.Context, s *entities.Settings) (bool, error) {
+	if r.row != nil {
+		return false, nil
+	}
+	clone := *s
+	r.row = &clone
+	return true, nil
+}
+
+// newUsecase builds the usecase over an empty in-memory row, which is what a
+// deployment that has never opened the settings page has.
+func newUsecase(trigger RetentionTrigger) (SettingsUsecase, *memoryRepo) {
+	repo := &memoryRepo{}
+	return NewSettingsUsecase(repo, trigger), repo
 }
 
 type spyTrigger struct{ calls int }
@@ -23,9 +50,9 @@ type spyTrigger struct{ calls int }
 func (s *spyTrigger) Trigger() { s.calls++ }
 
 func TestGetSettingsOnAFirstRun(t *testing.T) {
-	inTempConfig(t)
+	usecase, _ := newUsecase(nil)
 
-	got, err := NewSettingsUsecase(nil).GetSettings(t.Context())
+	got, err := usecase.GetSettings(t.Context())
 	if err != nil {
 		t.Fatalf("GetSettings: %v", err)
 	}
@@ -48,10 +75,8 @@ func TestGetSettingsOnAFirstRun(t *testing.T) {
 }
 
 func TestUpdateSettingsRoundTrip(t *testing.T) {
-	inTempConfig(t)
-
 	trigger := &spyTrigger{}
-	usecase := NewSettingsUsecase(trigger)
+	usecase, _ := newUsecase(trigger)
 
 	saved, err := usecase.UpdateSettings(t.Context(), &panmailv1.SystemSettings{
 		BaseUrl:              "https://mail.example.com",
@@ -63,6 +88,10 @@ func TestUpdateSettingsRoundTrip(t *testing.T) {
 		AppLogRetentionDays:  5,
 		InboundRetentionDays: 90,
 		ArchiveRetentionDays: 365,
+		// Included deliberately. Left out of this list, the settings page could
+		// go on dropping it silently — which is exactly what happened while
+		// Policy.Apply forgot the field and every fixture here left it at zero.
+		QuarantineRetentionDays: 14,
 	})
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
@@ -91,6 +120,7 @@ func TestUpdateSettingsRoundTrip(t *testing.T) {
 		{"app logs", saved.AppLogRetentionDays, reloaded.AppLogRetentionDays, 5},
 		{"inbound", saved.InboundRetentionDays, reloaded.InboundRetentionDays, 90},
 		{"archives", saved.ArchiveRetentionDays, reloaded.ArchiveRetentionDays, 365},
+		{"quarantine", saved.QuarantineRetentionDays, reloaded.QuarantineRetentionDays, 14},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.saved != tc.want {
@@ -108,9 +138,7 @@ func TestUpdateSettingsRoundTrip(t *testing.T) {
 }
 
 func TestUpdateSettingsKeepsADeliberateForever(t *testing.T) {
-	inTempConfig(t)
-
-	usecase := NewSettingsUsecase(nil)
+	usecase, _ := newUsecase(nil)
 	if _, err := usecase.UpdateSettings(t.Context(), &panmailv1.SystemSettings{
 		LogRetentionDays:     0,
 		WebhookRetentionDays: 0,
@@ -136,9 +164,9 @@ func TestUpdateSettingsKeepsADeliberateForever(t *testing.T) {
 }
 
 func TestUpdateSettingsClampsAndReportsWhatWasStored(t *testing.T) {
-	inTempConfig(t)
+	usecase, _ := newUsecase(nil)
 
-	got, err := NewSettingsUsecase(nil).UpdateSettings(t.Context(), &panmailv1.SystemSettings{
+	got, err := usecase.UpdateSettings(t.Context(), &panmailv1.SystemSettings{
 		MessageRetentionDays: retention.MaxDays + 500,
 		InboundRetentionDays: -30,
 	})
@@ -158,9 +186,9 @@ func TestUpdateSettingsClampsAndReportsWhatWasStored(t *testing.T) {
 }
 
 func TestUpdateSettingsRejectsNothing(t *testing.T) {
-	inTempConfig(t)
+	usecase, _ := newUsecase(nil)
 
-	if _, err := NewSettingsUsecase(nil).UpdateSettings(t.Context(), nil); err == nil {
+	if _, err := usecase.UpdateSettings(t.Context(), nil); err == nil {
 		t.Error("accepted a request with no settings in it")
 	}
 }

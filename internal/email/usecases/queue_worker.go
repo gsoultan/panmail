@@ -9,7 +9,6 @@ import (
 	"time"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
-	"github.com/gsoultan/panmail/internal/config"
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email/repositories/stores"
 	suppressionusecases "github.com/gsoultan/panmail/internal/suppression/usecases"
@@ -48,6 +47,10 @@ type QueueWorker interface {
 	// SetRetention configures how long a permanently failed message is kept
 	// before the worker prunes it. Zero, the default, disables pruning.
 	SetRetention(d time.Duration)
+
+	// SetRetryPatternSource installs the source of the deployment-wide backoff
+	// schedule. Called during wiring, before the worker starts.
+	SetRetryPatternSource(src RetryPatternSource)
 }
 
 type queueWorker struct {
@@ -69,8 +72,21 @@ type queueWorker struct {
 	interval           time.Duration
 	trigger            chan struct{}
 
-	retryPatterns      *cache.TTLCache[[]string]
-	globalRetryPattern []string
+	retryPatterns *cache.TTLCache[[]string]
+
+	// Where the deployment-wide backoff schedule comes from. Read on use
+	// rather than captured at construction: it lives in the database now, so a
+	// change saved on the settings page reaches this worker — on any instance —
+	// without a restart. Nil means the compiled default.
+	retryPatternSource RetryPatternSource
+}
+
+// RetryPatternSource supplies the deployment-wide backoff schedule.
+//
+// Narrow on purpose so the worker cannot write settings, and so a test can
+// supply a pattern without a database. system_settings.Provider satisfies it.
+type RetryPatternSource interface {
+	RetryPattern() []string
 }
 
 func NewQueueWorker(
@@ -88,11 +104,6 @@ func NewQueueWorker(
 		interval:           interval,
 		trigger:            make(chan struct{}, 1),
 		retryPatterns:      cache.New[[]string](retryPatternTTL),
-		globalRetryPattern: defaultRetryPattern,
-	}
-
-	if cfg, _ := config.Load(); cfg != nil && len(cfg.App.RetryPattern) > 0 {
-		w.globalRetryPattern = cfg.App.RetryPattern
 	}
 
 	return w
@@ -388,12 +399,30 @@ func bookkeep(ctx context.Context, what, id string, write func(context.Context) 
 		"error", err, "id", id, "attempts", bookkeepingAttempts)
 }
 
+// SetRetryPatternSource installs the source of the deployment-wide schedule.
+// Called during wiring, before the worker starts.
+func (w *queueWorker) SetRetryPatternSource(src RetryPatternSource) {
+	w.retryPatternSource = src
+}
+
+// globalPattern is the schedule for a tenant that has not set its own. An
+// unset or empty source means the compiled default rather than no retries at
+// all — a deployment that never opened the settings page still retries.
+func (w *queueWorker) globalPattern() []string {
+	if w.retryPatternSource != nil {
+		if pattern := w.retryPatternSource.RetryPattern(); len(pattern) > 0 {
+			return pattern
+		}
+	}
+	return defaultRetryPattern
+}
+
 func (w *queueWorker) getRetryPattern(ctx context.Context, tenantID string) []string {
 	if pattern, ok := w.retryPatterns.Get(tenantID); ok {
 		return pattern
 	}
 
-	pattern := w.globalRetryPattern
+	pattern := w.globalPattern()
 	if tenant, err := w.tenantUsecase.GetTenantByID(ctx, tenantID); err == nil && tenant != nil && len(tenant.RetryPattern) > 0 {
 		pattern = tenant.RetryPattern
 	}

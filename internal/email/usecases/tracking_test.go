@@ -17,7 +17,7 @@ const (
 
 func newTrackingUsecase() (*sendEmailUsecase, *tracking.Signer) {
 	signer := tracking.NewSigner([]byte("a-test-key-for-tracking-links!!!"))
-	return &sendEmailUsecase{baseURL: "http://localhost", trackingSigner: signer}, signer
+	return &sendEmailUsecase{staticBaseURL: "http://localhost", trackingSigner: signer}, signer
 }
 
 func TestSendEmailUsecase_InjectTracking(t *testing.T) {
@@ -126,7 +126,7 @@ func TestInjectedLinksVerify(t *testing.T) {
 // Without a signer, no tracking is injected at all: emitting unsigned links
 // would produce events the handler must reject anyway.
 func TestNoTrackingWithoutSigner(t *testing.T) {
-	u := &sendEmailUsecase{baseURL: "http://localhost"}
+	u := &sendEmailUsecase{staticBaseURL: "http://localhost"}
 
 	html := `<html><body><a href="https://example.com">Click</a></body></html>`
 	if got := u.injectTracking(trackTenantID, trackMessageID, trackRecipient, html); got != html {

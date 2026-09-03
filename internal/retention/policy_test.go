@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gsoultan/panmail/internal/config"
+	"github.com/gsoultan/panmail/internal/system_settings/entities"
 )
 
 func days(n int) *int { return &n }
@@ -12,7 +12,7 @@ func days(n int) *int { return &n }
 func TestResolveDefaults(t *testing.T) {
 	tests := []struct {
 		name string
-		cfg  *config.Config
+		cfg  *entities.Settings
 		want Policy
 	}{
 		{
@@ -22,7 +22,7 @@ func TestResolveDefaults(t *testing.T) {
 		},
 		{
 			name: "an empty config keeps everything panmail holds the only copy of",
-			cfg:  &config.Config{},
+			cfg:  &entities.Settings{},
 			want: Policy{EventDays: DefaultEventDays, WebhookDays: DefaultWebhookDays},
 		},
 		{
@@ -31,15 +31,15 @@ func TestResolveDefaults(t *testing.T) {
 			// 14 and 7, so an operator who asked to keep everything forever
 			// would keep losing data with the setting showing what they chose.
 			name: "an explicit zero means forever, not the default",
-			cfg: &config.Config{App: config.AppConfig{
+			cfg: &entities.Settings{
 				LogRetentionDays:     days(0),
 				WebhookRetentionDays: days(0),
-			}},
+			},
 			want: Policy{},
 		},
 		{
 			name: "configured values win",
-			cfg: &config.Config{App: config.AppConfig{
+			cfg: &entities.Settings{
 				LogRetentionDays:     days(30),
 				WebhookRetentionDays: days(3),
 				MessageRetentionDays: 7,
@@ -47,7 +47,7 @@ func TestResolveDefaults(t *testing.T) {
 				AppLogRetentionDays:  5,
 				InboundRetentionDays: 90,
 				ArchiveRetentionDays: 365,
-			}},
+			},
 			want: Policy{
 				EventDays:   30,
 				WebhookDays: 3,
@@ -60,10 +60,10 @@ func TestResolveDefaults(t *testing.T) {
 		},
 		{
 			name: "out of range folds back to something that deletes no more than asked",
-			cfg: &config.Config{App: config.AppConfig{
+			cfg: &entities.Settings{
 				LogRetentionDays:     days(MaxDays + 1),
 				MessageRetentionDays: -5,
-			}},
+			},
 			want: Policy{EventDays: MaxDays, WebhookDays: DefaultWebhookDays},
 		},
 	}
@@ -77,17 +77,35 @@ func TestResolveDefaults(t *testing.T) {
 	}
 }
 
-func TestPolicyRoundTripsThroughConfig(t *testing.T) {
+func TestPolicyRoundTripsThroughStoredSettings(t *testing.T) {
 	// A deliberate "keep forever" on both pointer fields is the case that has
 	// to survive: saving it and reading it back must not hand the defaults
 	// back to an administrator who just turned those policies off.
-	want := Policy{EventDays: 0, WebhookDays: 0, MessageDays: 30, InboundDays: 90}
+	forever := Policy{EventDays: 0, WebhookDays: 0, MessageDays: 30, InboundDays: 90}
 
-	cfg := &config.Config{}
-	want.Apply(cfg)
+	// And a distinct non-zero value in every field. The version of this test
+	// that only filled four of them passed for a year while Apply silently
+	// dropped QuarantineDays, because the field it forgot was the one the
+	// fixture left at zero. A round-trip test that does not populate every
+	// field only proves the fields it populated.
+	everything := Policy{
+		EventDays:      3,
+		MessageDays:    4,
+		OutboxDays:     5,
+		WebhookDays:    6,
+		AppLogDays:     7,
+		InboundDays:    8,
+		ArchiveDays:    9,
+		QuarantineDays: 11,
+	}
 
-	if got := Resolve(cfg); got != want {
-		t.Errorf("Resolve(Apply(%+v)) = %+v; want the same policy back", want, got)
+	for _, want := range []Policy{forever, everything} {
+		stored := &entities.Settings{}
+		want.Apply(stored)
+
+		if got := Resolve(stored); got != want {
+			t.Errorf("Resolve(Apply(%+v)) = %+v; want the same policy back", want, got)
+		}
 	}
 }
 

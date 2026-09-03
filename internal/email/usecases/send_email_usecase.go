@@ -53,8 +53,17 @@ type SendEmailDeps struct {
 	EventUsecase    eventusecases.ProcessEventUsecase
 	ProviderFactory providerEntities.ProviderFactory
 	Renderer        TemplateRenderer
-	BaseURL         string
-	TrackingSigner  *tracking.Signer
+	// BaseURL is the static public URL. Tests and any deployment where it
+	// never changes set this and nothing else.
+	BaseURL string
+
+	// BaseURLSource, when set, wins over BaseURL and is read on every use, so
+	// a base URL saved on the settings page reaches this instance without a
+	// restart. It reads a published pointer rather than the database — this is
+	// the send path, and a query behind every tracking link is the regression
+	// the send path was measured to remove. See system_settings.Provider.
+	BaseURLSource  BaseURLSource
+	TrackingSigner *tracking.Signer
 
 	// Both optional. Without them the send path is unlimited, which is what
 	// every deployment had before the ceiling existed.
@@ -77,13 +86,30 @@ type sendEmailUsecase struct {
 	eventUsecase    eventusecases.ProcessEventUsecase
 	providerFactory providerEntities.ProviderFactory
 	renderer        TemplateRenderer
-	baseURL         string
+	staticBaseURL   string
+	baseURLSource   BaseURLSource
 	trackingSigner  *tracking.Signer
 	queueWorker     QueueWorker
 	screener        emailfilter.Screener
 
 	providerCache *cache.TTLCache[[]*providerEntities.EmailProvider]
 	templateCache *cache.TTLCache[*templateEntities.Template]
+}
+
+// BaseURLSource supplies the public URL links are built from.
+type BaseURLSource interface {
+	BaseURL() string
+}
+
+// baseURL is the public URL in force, without a trailing slash. Empty disables
+// tracking and unsubscribe links rather than emitting relative ones.
+func (u *sendEmailUsecase) baseURL() string {
+	if u.baseURLSource != nil {
+		if v := u.baseURLSource.BaseURL(); v != "" {
+			return v
+		}
+	}
+	return u.staticBaseURL
 }
 
 func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
@@ -98,7 +124,8 @@ func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 		eventUsecase:    deps.EventUsecase,
 		providerFactory: deps.ProviderFactory,
 		renderer:        deps.Renderer,
-		baseURL:         strings.TrimSuffix(deps.BaseURL, "/"),
+		staticBaseURL:   strings.TrimSuffix(deps.BaseURL, "/"),
+		baseURLSource:   deps.BaseURLSource,
 		trackingSigner:  deps.TrackingSigner,
 		screener:        deps.Screener,
 		providerCache:   cache.New[[]*providerEntities.EmailProvider](providerCacheTTL),
@@ -542,7 +569,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 
 			// Inject tracking per recipient
 			currentBodyHTML := bodyHTML
-			if currentBodyHTML != "" && u.baseURL != "" {
+			if currentBodyHTML != "" && u.baseURL() != "" {
 				currentBodyHTML = u.injectTracking(tenantID, messageID, recipient, currentBodyHTML)
 			}
 			currentBodyHTML = hardenForOutlook(currentBodyHTML)
@@ -657,7 +684,7 @@ func hardenForOutlook(html string) string {
 }
 
 func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, htmlContent string) string {
-	if u.baseURL == "" || u.trackingSigner == nil {
+	if u.baseURL() == "" || u.trackingSigner == nil {
 		return htmlContent
 	}
 
@@ -674,7 +701,7 @@ func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, htmlCo
 // works by the mailbox provider POSTing to it — a mailto: target alone cannot
 // satisfy the requirement and would make the pair invalid.
 func (u *sendEmailUsecase) setUnsubscribeHeaders(msg *gsmail.Email, tenantID, messageID, recipient string) error {
-	if u.baseURL == "" {
+	if u.baseURL() == "" {
 		return fmt.Errorf("no base URL is configured, so no unsubscribe link can be built")
 	}
 	if u.trackingSigner == nil {
@@ -689,7 +716,7 @@ func (u *sendEmailUsecase) setUnsubscribeHeaders(msg *gsmail.Email, tenantID, me
 	})
 
 	url := fmt.Sprintf("%s/unsubscribe/%s/%s/%s?%s=%s",
-		u.baseURL, tenantID, messageID,
+		u.baseURL(), tenantID, messageID,
 		base64.RawURLEncoding.EncodeToString([]byte(recipient)),
 		tracking.SignatureParam, signature,
 	)
@@ -707,7 +734,7 @@ func (u *sendEmailUsecase) injectPixel(htmlContent, tenantID, messageID, recipie
 
 	pixel := fmt.Sprintf(
 		`<img src="%s/track/open/%s/%s/%s?%s=%s" width="1" height="1" style="display:none">`,
-		u.baseURL, tenantID, messageID, recipientEncoded, tracking.SignatureParam, signature,
+		u.baseURL(), tenantID, messageID, recipientEncoded, tracking.SignatureParam, signature,
 	)
 
 	if idx := strings.LastIndex(htmlContent, "</body>"); idx != -1 {
@@ -741,7 +768,7 @@ func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipi
 		})
 
 		return fmt.Sprintf(`href="%s/track/click/%s/%s/%s?url=%s&amp;%s=%s"`,
-			u.baseURL, tenantID, messageID, recipientEncoded,
+			u.baseURL(), tenantID, messageID, recipientEncoded,
 			url.QueryEscape(originalURL), tracking.SignatureParam, signature)
 	})
 }

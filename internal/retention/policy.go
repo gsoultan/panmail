@@ -10,7 +10,7 @@ package retention
 import (
 	"time"
 
-	"github.com/gsoultan/panmail/internal/config"
+	"github.com/gsoultan/panmail/internal/system_settings/entities"
 )
 
 const (
@@ -48,57 +48,65 @@ type Policy struct {
 	QuarantineDays int
 }
 
-// Resolve reads the effective policy out of cfg, applying the defaults for the
-// two fields that have one and clamping everything into range.
+// Resolve reads the effective policy out of stored settings, applying the
+// defaults for the two fields that have one and clamping everything into range.
 //
-// cfg is nil before setup has written a config file, which is a first run
-// rather than an error: the defaults are the answer.
-func Resolve(cfg *config.Config) Policy {
+// s is nil before anything has been stored, which is a first run rather than an
+// error: the defaults are the answer.
+func Resolve(s *entities.Settings) Policy {
 	p := Policy{
 		EventDays:   DefaultEventDays,
 		WebhookDays: DefaultWebhookDays,
 	}
-	if cfg == nil {
+	if s == nil {
 		return p
 	}
 
 	// Absent means "use the default"; an explicit zero means forever. The
-	// pointer is what distinguishes them — see config.AppConfig.
-	if cfg.App.LogRetentionDays != nil {
-		p.EventDays = clampDays(*cfg.App.LogRetentionDays)
+	// pointer is what distinguishes them — see entities.Settings.
+	if s.LogRetentionDays != nil {
+		p.EventDays = clampDays(*s.LogRetentionDays)
 	}
-	if cfg.App.WebhookRetentionDays != nil {
-		p.WebhookDays = clampDays(*cfg.App.WebhookRetentionDays)
+	if s.WebhookRetentionDays != nil {
+		p.WebhookDays = clampDays(*s.WebhookRetentionDays)
 	}
 
-	p.MessageDays = clampDays(cfg.App.MessageRetentionDays)
-	p.OutboxDays = clampDays(cfg.App.OutboxRetentionDays)
-	p.AppLogDays = clampDays(cfg.App.AppLogRetentionDays)
-	p.InboundDays = clampDays(cfg.App.InboundRetentionDays)
-	p.ArchiveDays = clampDays(cfg.App.ArchiveRetentionDays)
-	p.QuarantineDays = clampDays(cfg.App.QuarantineRetentionDays)
+	p.MessageDays = clampDays(s.MessageRetentionDays)
+	p.OutboxDays = clampDays(s.OutboxRetentionDays)
+	p.AppLogDays = clampDays(s.AppLogRetentionDays)
+	p.InboundDays = clampDays(s.InboundRetentionDays)
+	p.ArchiveDays = clampDays(s.ArchiveRetentionDays)
+	p.QuarantineDays = clampDays(s.QuarantineRetentionDays)
 	return p
 }
 
-// Apply writes the policy into cfg in the encoding config.AppConfig documents:
-// the two fields with a non-zero default are stored as pointers so an
-// administrator who deliberately chose "keep forever" survives a round trip
-// through the file and does not silently get the default back.
-func (p Policy) Apply(cfg *config.Config) {
-	if cfg == nil {
+// Apply writes the policy into stored settings in the encoding
+// entities.Settings documents: the two fields with a non-zero default are
+// stored as pointers so an administrator who deliberately chose "keep forever"
+// survives a round trip and does not silently get the default back.
+//
+// Every field, and a test that populates every field. The version of this that
+// wrote to the config file omitted QuarantineDays, so the quarantine retention
+// an administrator set on the settings page was read, clamped and then dropped
+// on the floor — the page showed zero again on the next load. The round-trip
+// test missed it by leaving that field at zero in its fixture, which is the
+// one value the bug could not distort.
+func (p Policy) Apply(s *entities.Settings) {
+	if s == nil {
 		return
 	}
 
 	eventDays := clampDays(p.EventDays)
 	webhookDays := clampDays(p.WebhookDays)
-	cfg.App.LogRetentionDays = &eventDays
-	cfg.App.WebhookRetentionDays = &webhookDays
+	s.LogRetentionDays = &eventDays
+	s.WebhookRetentionDays = &webhookDays
 
-	cfg.App.MessageRetentionDays = clampDays(p.MessageDays)
-	cfg.App.OutboxRetentionDays = clampDays(p.OutboxDays)
-	cfg.App.AppLogRetentionDays = clampDays(p.AppLogDays)
-	cfg.App.InboundRetentionDays = clampDays(p.InboundDays)
-	cfg.App.ArchiveRetentionDays = clampDays(p.ArchiveDays)
+	s.MessageRetentionDays = clampDays(p.MessageDays)
+	s.OutboxRetentionDays = clampDays(p.OutboxDays)
+	s.AppLogRetentionDays = clampDays(p.AppLogDays)
+	s.InboundRetentionDays = clampDays(p.InboundDays)
+	s.ArchiveRetentionDays = clampDays(p.ArchiveDays)
+	s.QuarantineRetentionDays = clampDays(p.QuarantineDays)
 }
 
 // Duration converts a retention in days to the duration the outbox and webhook
