@@ -202,6 +202,21 @@ func main() {
 	eventDirFlag := flag.String("event-dir", "events.db", "Directory for events database")
 	inboundDirFlag := flag.String("inbound-dir", "inbound.db", "Directory for inbound database")
 	versionFlag := flag.Bool("version", false, "Show version and exit")
+
+	// Every instance polls and holds an IDLE connection per inbound provider,
+	// so N replicas mean N connections against each mailbox — and mail accounts
+	// commonly cap those well below the number of gateways someone might run.
+	//
+	// Defaults to on, because the alternative is a deployment that silently
+	// stops receiving mail when the flag is forgotten. Turn it off on the
+	// replicas that only need to send.
+	//
+	// Running it on more than one instance is correct rather than merely
+	// tolerable: inbound identifies a message by its own Message-ID, so
+	// whichever connection sees it first wins and the rest are no-ops. This is
+	// about the connection count, not about correctness.
+	inboundFlag := flag.Bool("inbound", true,
+		"Receive mail on this instance (IMAP poll and IDLE). Set -inbound=false on send-only replicas")
 	// Loopback by default. Queue depths and send volumes are operational
 	// detail, and this gateway is internet-facing — serving them from the same
 	// listener as the API would publish them to anyone who asked. A scraper
@@ -505,17 +520,29 @@ func main() {
 	unsubscribeHandler := eventhttp.NewUnsubscribeHandler(
 		manageSuppressionsUsecase, processEventUsecase, trackingSigner)
 
-	poller := inboundworker.NewPoller(tenantRepo, providerRepo, inboundUsecase, providerFactory, 30*time.Second)
-	runWorker(&workers, workerCtx, "inbound-poller", func() { poller.Start(workerCtx) })
+	// Declared out here only so the IDLE gauge below can see it. Nil when
+	// inbound is off, and the gauge is then not registered at all.
+	var idleSupervisor *inboundworker.IdleSupervisor
+	if *inboundFlag {
+		poller := inboundworker.NewPoller(tenantRepo, providerRepo, inboundUsecase, providerFactory, 30*time.Second)
+		runWorker(&workers, workerCtx, "inbound-poller", func() { poller.Start(workerCtx) })
 
-	// IDLE alongside the poll, not instead of it. A hung IDLE is silent — the
-	// connection looks open, the server has nothing to say, and inbound stops
-	// with nothing in the logs — so the poll stays as the floor under it.
-	// Delivering the same message twice is harmless: inbound processing
-	// identifies a message by its own Message-ID, so whichever path sees it
-	// first wins and the other is a no-op.
-	idleSupervisor := inboundworker.NewIdleSupervisor(poller)
-	runWorker(&workers, workerCtx, "inbound-idle", func() { idleSupervisor.Start(workerCtx) })
+		// IDLE alongside the poll, not instead of it. A hung IDLE is silent — the
+		// connection looks open, the server has nothing to say, and inbound stops
+		// with nothing in the logs — so the poll stays as the floor under it.
+		// Delivering the same message twice is harmless: inbound processing
+		// identifies a message by its own Message-ID, so whichever path sees it
+		// first wins and the other is a no-op.
+		idleSupervisor = inboundworker.NewIdleSupervisor(poller)
+		runWorker(&workers, workerCtx, "inbound-idle", func() { idleSupervisor.Start(workerCtx) })
+	} else {
+		// Said out loud, because "no mail is arriving" is otherwise a silent
+		// symptom with no line in the log to explain it — and the operator
+		// reading that log is usually not the one who set the flag.
+		slog.Info("inbound receiving is disabled on this instance",
+			"flag", "-inbound=false",
+			"note", "the /inbound/ webhook endpoint still accepts deliveries")
+	}
 
 	// What an operator needs to see. Every failure this system has is a quiet
 	// one — a stalled outbox still answers 200, a webhook queue that stops
@@ -563,9 +590,17 @@ func main() {
 	}
 	// Zero open sessions while IMAP providers are configured is the signal that
 	// inbound has silently stopped.
-	if err := metrics.ObserveGauge("imap_idle_sessions", "Open IMAP IDLE connections",
-		func() int64 { return int64(idleSupervisor.Sessions()) }); err != nil {
-		slog.Error("failed to register idle metrics", "error", err)
+	//
+	// Which is exactly why a send-only replica must not publish this at all.
+	// Publishing zero there would look identical to the failure the gauge
+	// exists to catch, and an alert on "no sessions while providers are
+	// configured" would fire on every instance that was told not to receive.
+	// Absent is the honest answer; see the note on gauges in docs/scaling.md.
+	if idleSupervisor != nil {
+		if err := metrics.ObserveGauge("imap_idle_sessions", "Open IMAP IDLE connections",
+			func() int64 { return int64(idleSupervisor.Sessions()) }); err != nil {
+			slog.Error("failed to register idle metrics", "error", err)
+		}
 	}
 
 	// Retention is a background pass nobody watches, so the failure that costs
