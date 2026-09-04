@@ -291,6 +291,44 @@ If that matters, run inbound on one instance. There is no flag for it yet; the
 practical approach is to configure IMAP providers in a tenant served by a single
 instance.
 
+## Storage is what decides whether a deployment survives its volume
+
+Measured over a four-hour run of 287,700 messages: **~4.7 KB per message**
+across the event and application-log stores — roughly **4.7 GB per million
+messages**, or 330 MB/hour at 1,200 messages a minute.
+
+Retention was off for that run, so this is the unbounded rate rather than a
+steady state. It is also the *normal* configuration: six of the eight retention
+classes default to keeping data forever. That default is deliberate — panmail
+holds the only copy of a received message or an archive, and a version bump must
+never start deleting what nobody agreed to lose — but it means growth is the
+expected case and not a fault.
+
+The gateway says so once at startup, naming the classes:
+
+```
+INFO some data is kept forever by policy classes=message_retention_days,
+     outbox_retention_days,app_log_retention_days,inbound_retention_days,
+     archive_retention_days,quarantine_retention_days
+```
+
+and publishes a gauge per store:
+
+```
+panmail_store_bytes_events
+panmail_store_bytes_logs
+panmail_store_bytes_inbound
+```
+
+**Alert on the slope, not the size.** A store that is large because retention is
+deliberately off looks identical to one filling up; only the rate of change
+tells them apart. Something like a projected days-to-full is the useful alert,
+and the absolute number is not.
+
+`app_log_retention_days` is the one worth setting first. It is the larger half
+of that 4.7 KB, it defaults to forever, and application logs are the class
+nobody is keeping for its own sake.
+
 ## Verifying a deployment
 
 The check that matters is that each message is delivered once. Fill the queue

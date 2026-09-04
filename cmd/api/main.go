@@ -490,6 +490,19 @@ func main() {
 	})
 	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })
 
+	// Say which classes are set to keep data forever.
+	//
+	// Every one of those defaults is deliberate: panmail holds the only copy of
+	// a received message or an archive, so a version bump must never start
+	// deleting them. The cost is that a deployment can run for months before
+	// anyone discovers that "forever" was a default rather than a decision, and
+	// by then the volume is the thing telling them.
+	//
+	// At startup, once, naming the fields. Not a warning — nothing is wrong —
+	// and not repeated, because a line that appears every pass is a line people
+	// filter out.
+	warnAboutUnboundedRetention(settingsRepo)
+
 	settingsUsecase := settingsusecases.NewSettingsUsecase(settingsRepo, retentionWorker)
 	settingsService := settingsservices.NewSettingsService(
 		settingsUsecase,
@@ -566,6 +579,38 @@ func main() {
 	if err := metrics.ObserveGauge("imap_idle_sessions", "Open IMAP IDLE connections",
 		func() int64 { return int64(idleSupervisor.Sessions()) }); err != nil {
 		slog.Error("failed to register idle metrics", "error", err)
+	}
+
+	// How much disk each store is holding.
+	//
+	// This is the number that decides whether a deployment survives its own
+	// volume. Most retention classes default to keeping data forever, and that
+	// default is right — a version bump must not start deleting what nobody
+	// agreed to lose — but it means growth is the normal case rather than a
+	// fault. A measured 4.7 KB per message across events and app logs is
+	// roughly 4.7 GB per million, so the only honest protection is a number an
+	// operator can alert on before the volume runs out.
+	//
+	// Alert on the rate, not the size: a store that is large because retention
+	// is deliberately off looks identical to one filling up, and only the slope
+	// tells them apart.
+	// Asserted rather than declared on the repository interfaces, so reporting
+	// a size stays an optional capability: a store backed by something other
+	// than Pebble simply does not publish one, and no test double has to grow a
+	// method it has no use for.
+	for name, repo := range map[string]any{
+		"events":  eventRepo,
+		"logs":    logStore,
+		"inbound": inboundRepo,
+	} {
+		sized, ok := repo.(interface{ DiskUsage() int64 })
+		if !ok {
+			continue
+		}
+		if err := metrics.ObserveGauge("store_bytes_"+name,
+			"Disk held by the "+name+" store", sized.DiskUsage); err != nil {
+			slog.Error("failed to register store size metric", "error", err, "store", name)
+		}
 	}
 
 	// Retention is a background pass nobody watches, so the failure that costs
@@ -1682,4 +1727,49 @@ func seedSettingsFromConfig(repo settingsrepos.SettingsRepository, cfg *config.C
 		slog.Info("system settings moved from the config file into the database",
 			"note", "the file is no longer read for these values; edit them on the settings page")
 	}
+}
+
+// warnAboutUnboundedRetention names the classes currently set to keep forever.
+//
+// Read straight from the repository rather than through the provider: this runs
+// during wiring, before the refresh loop has published anything, and reporting
+// "everything is unbounded" because a snapshot was empty would be worse than
+// saying nothing.
+func warnAboutUnboundedRetention(repo settingsrepos.SettingsRepository) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	stored, err := repo.Get(ctx)
+	if err != nil {
+		// Not worth failing a boot over, and the settings page shows the same
+		// thing to anyone who looks.
+		return
+	}
+
+	p := retention.Resolve(stored)
+	forever := make([]string, 0, 8)
+	for _, c := range []struct {
+		field string
+		days  int
+	}{
+		{"log_retention_days", p.EventDays},
+		{"message_retention_days", p.MessageDays},
+		{"outbox_retention_days", p.OutboxDays},
+		{"webhook_retention_days", p.WebhookDays},
+		{"app_log_retention_days", p.AppLogDays},
+		{"inbound_retention_days", p.InboundDays},
+		{"archive_retention_days", p.ArchiveDays},
+		{"quarantine_retention_days", p.QuarantineDays},
+	} {
+		if c.days == 0 {
+			forever = append(forever, c.field)
+		}
+	}
+	if len(forever) == 0 {
+		return
+	}
+
+	slog.Info("some data is kept forever by policy",
+		"classes", strings.Join(forever, ","),
+		"note", "zero means keep forever; watch panmail_store_bytes_* and set a retention on the settings page if this was not deliberate")
 }
