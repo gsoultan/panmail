@@ -1,17 +1,18 @@
-//go:build sdkcontract
-
-// This file is behind a build tag because the module it tests,
-// github.com/gsoultan/panmail-sdk, is not a dependency of this one — and must
-// not become one, since a private gateway importing its own public client is
-// the wrong direction. Until the SDK is published, run it with a workspace:
+// This ran behind a `sdkcontract` build tag until 2026-09-04, because
+// github.com/gsoultan/panmail-sdk had never been tagged and so could only be
+// reached through a go.work pointing at a local checkout. The condition its own
+// comment set — "once panmail-sdk is pushed and tagged, drop the tag" — was met
+// when the SDK was tagged v0.1.0-rc.1.
 //
-//	go work init . ../path/to/panmail-sdk
-//	go test -tags sdkcontract ./internal/sdkcontract/
-//	rm go.work
+// It is a plain test now, which is the whole point: behind the tag it ran when
+// somebody remembered to run it, which is a guard against proto drift that does
+// not guard anything. The SDK speaks Connect JSON by hand against copies of
+// these protos, so nothing except this test compares the two.
 //
-// Once panmail-sdk is pushed and tagged, drop the tag and this comment, and
-// add the module to go.mod as an ordinary test dependency. A private module
-// may depend on a public one.
+// The direction of the dependency is still worth understanding. A private
+// gateway must not be imported by its public client; the reverse is fine, and
+// is what this is — a test dependency on a published module, in go.mod like any
+// other. If the SDK ever needs to import panmail, that is the thing to refuse.
 
 package sdkcontract_test
 
