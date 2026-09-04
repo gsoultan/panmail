@@ -61,33 +61,47 @@ message SmtpSubmission {
 // means "keep forever" — a retention nobody has configured must never delete
 // anything. The UI says so on each field; do not add a field whose zero value
 // means something else.
+// **Every scalar here is `optional`, and that is load bearing.** An update
+// applies only the fields it carries; one that omits a field leaves it alone.
+//
+// It used to be full-replace, which meant a caller changing base_url reset all
+// seven retention policies to zero — and zero means keep forever, so retention
+// silently stopped without an error, a log line, or anything to notice before a
+// disk filled. Presence is what tells "keep forever" from "I did not mention
+// it", and those are opposite instructions that a plain proto3 scalar renders
+// identically.
+//
+// retry_pattern is the exception, because a repeated field has no presence: an
+// empty list means "leave it alone" rather than "clear it". Send the values to
+// change it. Nothing is lost — an empty stored pattern already reads back as
+// the built-in default, so the default is expressible by sending it.
 message SystemSettings {
-  string base_url = 1;
-  int32 log_retention_days = 2;
+  optional string base_url = 1;
+  optional int32 log_retention_days = 2;
   repeated string retry_pattern = 3;
 
   // Message bodies and attachments, deleted outright rather than archived:
   // an archive of the content is the content, so archiving it would defeat
   // the retention it is meant to enforce.
-  int32 message_retention_days = 4;
+  optional int32 message_retention_days = 4;
 
   // Permanently failed outbox rows. Only FAILED qualifies — pending,
   // deferred and claimed rows are live work.
-  int32 outbox_retention_days = 5;
+  optional int32 outbox_retention_days = 5;
 
   // Delivered and permanently failed webhook notifications.
-  int32 webhook_retention_days = 6;
+  optional int32 webhook_retention_days = 6;
 
   // Application logs from the Pebble log store.
-  int32 app_log_retention_days = 7;
+  optional int32 app_log_retention_days = 7;
 
   // Received mail. Deleting inbound mail destroys the only copy panmail
   // holds, so this defaults to keeping it forever.
-  int32 inbound_retention_days = 8;
+  optional int32 inbound_retention_days = 8;
 
   // The JSONL archives written when delivery events expire. This is the
   // escape hatch for log_retention_days, so it also defaults to forever.
-  int32 archive_retention_days = 9;
+  optional int32 archive_retention_days = 9;
 
   // How long a message a filter rule held waits for a reviewer.
   //
@@ -95,7 +109,7 @@ message SystemSettings {
   // deadline was stamped when they were held and sent to webhook subscribers
   // in the mail.held event; moving it afterwards would break a date this
   // gateway already promised.
-  int32 quarantine_retention_days = 10;
+  optional int32 quarantine_retention_days = 10;
 
   // How much of a stored message body the delivery-details view is allowed to
   // show. Transactional mail carries the things it carries — a password reset

@@ -98,21 +98,24 @@ func retentionChanges(before, after *panmailv1.SystemSettings) []string {
 		return nil
 	}
 
+	// Accessors, not fields: these are presence-tracked now, and both sides come
+	// from GetSettings, which always sets every one. Reading them directly would
+	// compile and then panic on a message built any other way.
 	fields := []struct {
 		name        string
 		from, to    int32
 		destructive bool
 	}{
-		{"events", before.LogRetentionDays, after.LogRetentionDays, false},
-		{"message_content", before.MessageRetentionDays, after.MessageRetentionDays, true},
-		{"archives", before.ArchiveRetentionDays, after.ArchiveRetentionDays, true},
-		{"inbound_mail", before.InboundRetentionDays, after.InboundRetentionDays, true},
-		{"outbox", before.OutboxRetentionDays, after.OutboxRetentionDays, false},
-		{"webhooks", before.WebhookRetentionDays, after.WebhookRetentionDays, false},
-		{"app_logs", before.AppLogRetentionDays, after.AppLogRetentionDays, false},
+		{"events", before.GetLogRetentionDays(), after.GetLogRetentionDays(), false},
+		{"message_content", before.GetMessageRetentionDays(), after.GetMessageRetentionDays(), true},
+		{"archives", before.GetArchiveRetentionDays(), after.GetArchiveRetentionDays(), true},
+		{"inbound_mail", before.GetInboundRetentionDays(), after.GetInboundRetentionDays(), true},
+		{"outbox", before.GetOutboxRetentionDays(), after.GetOutboxRetentionDays(), false},
+		{"webhooks", before.GetWebhookRetentionDays(), after.GetWebhookRetentionDays(), false},
+		{"app_logs", before.GetAppLogRetentionDays(), after.GetAppLogRetentionDays(), false},
 		// Destructive: a held message that expires was never decided by
 		// anyone, and shortening this is how one disappears.
-		{"quarantine", before.QuarantineRetentionDays, after.QuarantineRetentionDays, true},
+		{"quarantine", before.GetQuarantineRetentionDays(), after.GetQuarantineRetentionDays(), true},
 	}
 
 	var changes []string
