@@ -36,15 +36,24 @@ const (
 	// shows a password in the dashboard.
 	ContentRedaction_CONTENT_REDACTION_OFF ContentRedaction = 1
 	// The default. Masks the value after a password-like label — password, pwd,
-	// passcode, passphrase — and nothing else. Narrow so that a message which
-	// merely discusses passwords survives intact.
+	// passcode, passphrase — and, with no label needed, credentials whose shape
+	// identifies them: PEM private key blocks, JWTs, and issued keys that carry
+	// their own prefix (AWS, GitHub, Stripe, Slack, Google, SendGrid).
+	//
+	// The shapes are on at the default level because they are issued rather than
+	// chosen, so there is no false positive to weigh against leaking one. The
+	// label patterns stay narrow, so a message that merely discusses passwords
+	// survives intact.
 	ContentRedaction_CONTENT_REDACTION_PASSWORDS ContentRedaction = 2
 	// Adds one-time codes: OTP, PIN, verification and security codes. Worth as
 	// much as a password for as long as they are valid, which is usually longer
 	// than the message takes to reach the dashboard.
 	ContentRedaction_CONTENT_REDACTION_CODES ContentRedaction = 3
-	// Adds bearer tokens and API keys. The widest setting and the most likely to
-	// mask something that was not a secret.
+	// Adds bearer-token and API-key labels, and payment card numbers validated
+	// with the Luhn checksum. The widest setting and the most likely to mask
+	// something that was not a secret — a card number is a plausible run of
+	// digits rather than an issued shape, which is why it waits for this level
+	// instead of firing at the default.
 	ContentRedaction_CONTENT_REDACTION_SECRETS ContentRedaction = 4
 )
 

@@ -102,6 +102,41 @@ func buildHTMLPattern(labels string) *regexp.Regexp {
 		`(?i)\b(` + labels + `)(\s*(?::|=|is|:=)\s*)((?:</?[^>]{0,60}>\s*){0,4})([^\r\n<]+)`)
 }
 
+// buildCellPattern matches a label alone in one cell and a value in the next.
+//
+// `<td>Password</td><td>hunter2</td>` is the other half of how HTML mail writes
+// a credential, and the delimiter-anchored pattern cannot see it because there
+// is no delimiter — the table *is* the delimiter.
+//
+// The label cell must contain only the label, optionally with a colon and
+// whitespace. That restriction is the whole safety argument: it fires on a
+// layout table and not on a sentence, so "You can change your password here"
+// in a cell does not take the cell beside it.
+func buildCellPattern(labels string) *regexp.Regexp {
+	return regexp.MustCompile(
+		`(?i)(<(?:td|th)[^>]*>\s*(?:` + labels + `)\s*:?\s*</(?:td|th)>\s*)(<(?:td|th)[^>]*>\s*)([^<]+)`)
+}
+
+var (
+	passwordCellRe = buildCellPattern(passwordLabels)
+	codeCellRe     = buildCellPattern(codeLabels)
+	secretCellRe   = buildCellPattern(secretLabels)
+)
+
+// cellPatternsFor mirrors patternsFor for the two-cell layout.
+func cellPatternsFor(l Level) []*regexp.Regexp {
+	switch l {
+	case Off:
+		return nil
+	case Passwords:
+		return []*regexp.Regexp{passwordCellRe}
+	case Codes:
+		return []*regexp.Regexp{passwordCellRe, codeCellRe}
+	default:
+		return []*regexp.Regexp{passwordCellRe, codeCellRe, secretCellRe}
+	}
+}
+
 // htmlPatternsFor mirrors patternsFor, including its fail-safe default.
 func htmlPatternsFor(l Level) []*regexp.Regexp {
 	switch l {
@@ -146,7 +181,28 @@ func Text(body string, l Level) string {
 	for _, re := range patternsFor(l) {
 		body = re.ReplaceAllString(body, "${1}${2}"+Mask)
 	}
-	return body
+	return maskUnlabelled(body, l)
+}
+
+// maskUnlabelled runs the matchers that need no label.
+//
+// Shapes fire from Passwords up rather than only at Secrets: an AWS key or a
+// PEM block is issued rather than chosen, so there is no false positive to
+// weigh against leaking one. Cards wait for Secrets because Luhn makes them
+// plausible, not certain, and a run of digits is something people legitimately
+// put in mail.
+func maskUnlabelled(s string, l Level) string {
+	switch l {
+	case Off:
+		return s
+	case Passwords, Codes:
+		return maskShapes(s)
+	default:
+		// Secrets, and any level this build does not recognise — the same
+		// fail-safe as patternsFor. Widest rather than narrowest, because a
+		// row written by a newer build must not read as "show everything".
+		return maskCards(maskShapes(s))
+	}
 }
 
 // HTML masks secrets in an HTML body.
@@ -169,7 +225,13 @@ func HTML(body string, l Level) string {
 	for _, re := range htmlPatternsFor(l) {
 		body = re.ReplaceAllString(body, "${1}${2}${3}"+Mask)
 	}
-	return body
+	// The two-cell layout with no colon: `<td>Password</td><td>hunter2</td>`.
+	// The label cell has to hold the label and nothing else, which is what
+	// keeps "Change your password" in a heading from taking the cell beside it.
+	for _, re := range cellPatternsFor(l) {
+		body = re.ReplaceAllString(body, "${1}${2}"+Mask)
+	}
+	return maskUnlabelled(body, l)
 }
 
 // Subject masks secrets in a subject line.
@@ -184,7 +246,7 @@ func Subject(subject string, l Level) string {
 	for _, re := range patternsFor(l) {
 		subject = re.ReplaceAllString(subject, "${1}${2}"+Mask)
 	}
-	return subject
+	return maskUnlabelled(subject, l)
 }
 
 // LevelFromString maps the stored form to a Level, defaulting to Passwords for
