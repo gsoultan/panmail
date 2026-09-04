@@ -208,11 +208,11 @@ export const SettingsPage: React.FC = () => {
                   allowDeselect={false}
                   data={[
                     { value: '1', label: 'Off — show the body as sent' },
-                    { value: '2', label: 'Passwords (default)' },
-                    { value: '3', label: 'Passwords and one-time codes' },
-                    { value: '4', label: 'Passwords, codes, tokens and API keys' },
+                    { value: '2', label: 'Passwords and known key formats (default)' },
+                    { value: '3', label: 'Also one-time codes' },
+                    { value: '4', label: 'Also tokens, API keys and card numbers' },
                   ]}
-                  description="Only the value after a label is masked, so a message that merely mentions a password is left intact."
+                  description="The value after a label is masked, plus credentials recognisable on sight — private key blocks, JWTs and issued keys such as AWS or Stripe — which need no label at all. A message that merely mentions a password is left intact."
                   value={String(form.values.contentRedaction ?? 2)}
                   onChange={(v) => form.setFieldValue('contentRedaction', Number(v ?? 2))}
                   disabled={isLoading || mutation.isPending}
