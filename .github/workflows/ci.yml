@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.27'
           cache: true
 
       - name: Build
@@ -135,7 +135,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.27'
           cache: true
 
       - uses: oven-sh/setup-bun@v2
@@ -160,12 +160,15 @@ jobs:
     # step, its own way to break. An image nobody builds is an image that is
     # broken the day someone needs it.
     name: container image
-    # Pinned to Linux, but not for the reason you would guess: Apple's
-    # `container` builds images perfectly well. The arm64 variant of
-    # golang:1.26-alpine currently ships go1.26.5 while go.mod requires
-    # 1.26.6, so a native build on an arm mac fails on `go mod download`
-    # while amd64 (go1.26.7) is fine. Building --arch amd64 works but runs
-    # emulated and slowly. Left on Linux until the arm64 tag catches up.
+    # Pinned to Linux because the steps below call `docker` directly, and the
+    # self-hosted mac has Apple's `container` instead — deliberately, and it is
+    # not a drop-in for the docker CLI.
+    #
+    # The reason recorded here before was different and is now obsolete: the
+    # arm64 golang:1.26-alpine tag shipped go1.26.5 while go.mod required
+    # 1.26.6, so a native build failed on `go mod download`. That gap is closed
+    # — golang:1.27-alpine ships go1.27.1 on arm64, ahead of the 1.27.0 in
+    # go.mod. Moving this job would now only need the docker calls replaced.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -204,7 +207,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.27'
           cache: true
 
       - uses: bufbuild/buf-setup-action@v1
