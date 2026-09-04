@@ -238,7 +238,7 @@ None of the SDKs depends on this repo — they speak the wire protocol directly,
 
 **No SDK retries a send whose outcome it does not know.** Sending is not idempotent and there is no de-duplication key, so retrying after a timeout is retrying a message that may already be on its way. The one safe case is a refusal, where the gateway says plainly that it did not accept the message — `WithRateLimitRetries(n)` and its equivalents turn that on.
 
-> The in-repo `pkg/panmail` is the SDK's predecessor and is **deprecated**. It still works, but it is not where fixes land.
+> The in-repo `pkg/panmail` was the SDK's predecessor. It was deprecated when the clients moved out and is **removed** as of v1.4.0 — use `github.com/gsoultan/panmail-sdk`, which resolves today.
 
 #### cURL
 
