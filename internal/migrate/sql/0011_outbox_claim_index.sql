@@ -27,3 +27,17 @@
 -- builds, which is the same trade every other index in this schema made.
 CREATE INDEX IF NOT EXISTS idx_outbox_claimable ON outbox (created_at)
     WHERE status IN ('PENDING', 'DEFERRED', 'SENDING');
+
+-- The webhook queue claims the same way and had the same gap.
+--
+-- claim_due_deliveries filters on next_attempt_at and status and orders by
+-- created_at; idx_webhook_deliveries_due is (next_attempt_at, status), so the
+-- sort was uncovered exactly as the outbox's was.
+--
+-- The outbox case is the one measured above. This is the same query shape with
+-- the same missing column, fixed the same way — stated plainly rather than
+-- implied, because a webhook backlog is less likely to reach a million than an
+-- outbox one and the number here is inferred rather than observed.
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_claimable
+    ON webhook_deliveries (created_at)
+    WHERE status IN ('PENDING', 'DEFERRED', 'SENDING');
