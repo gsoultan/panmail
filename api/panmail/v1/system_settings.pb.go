@@ -369,35 +369,49 @@ func (x *SmtpSubmission) GetInsecureAuthAllowed() bool {
 // means "keep forever" — a retention nobody has configured must never delete
 // anything. The UI says so on each field; do not add a field whose zero value
 // means something else.
+// **Every scalar here is `optional`, and that is load bearing.** An update
+// applies only the fields it carries; one that omits a field leaves it alone.
+//
+// It used to be full-replace, which meant a caller changing base_url reset all
+// seven retention policies to zero — and zero means keep forever, so retention
+// silently stopped without an error, a log line, or anything to notice before a
+// disk filled. Presence is what tells "keep forever" from "I did not mention
+// it", and those are opposite instructions that a plain proto3 scalar renders
+// identically.
+//
+// retry_pattern is the exception, because a repeated field has no presence: an
+// empty list means "leave it alone" rather than "clear it". Send the values to
+// change it. Nothing is lost — an empty stored pattern already reads back as
+// the built-in default, so the default is expressible by sending it.
 type SystemSettings struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	BaseUrl          string                 `protobuf:"bytes,1,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
-	LogRetentionDays int32                  `protobuf:"varint,2,opt,name=log_retention_days,json=logRetentionDays,proto3" json:"log_retention_days,omitempty"`
+	BaseUrl          *string                `protobuf:"bytes,1,opt,name=base_url,json=baseUrl,proto3,oneof" json:"base_url,omitempty"`
+	LogRetentionDays *int32                 `protobuf:"varint,2,opt,name=log_retention_days,json=logRetentionDays,proto3,oneof" json:"log_retention_days,omitempty"`
 	RetryPattern     []string               `protobuf:"bytes,3,rep,name=retry_pattern,json=retryPattern,proto3" json:"retry_pattern,omitempty"`
 	// Message bodies and attachments, deleted outright rather than archived:
 	// an archive of the content is the content, so archiving it would defeat
 	// the retention it is meant to enforce.
-	MessageRetentionDays int32 `protobuf:"varint,4,opt,name=message_retention_days,json=messageRetentionDays,proto3" json:"message_retention_days,omitempty"`
+	MessageRetentionDays *int32 `protobuf:"varint,4,opt,name=message_retention_days,json=messageRetentionDays,proto3,oneof" json:"message_retention_days,omitempty"`
 	// Permanently failed outbox rows. Only FAILED qualifies — pending,
 	// deferred and claimed rows are live work.
-	OutboxRetentionDays int32 `protobuf:"varint,5,opt,name=outbox_retention_days,json=outboxRetentionDays,proto3" json:"outbox_retention_days,omitempty"`
+	OutboxRetentionDays *int32 `protobuf:"varint,5,opt,name=outbox_retention_days,json=outboxRetentionDays,proto3,oneof" json:"outbox_retention_days,omitempty"`
 	// Delivered and permanently failed webhook notifications.
-	WebhookRetentionDays int32 `protobuf:"varint,6,opt,name=webhook_retention_days,json=webhookRetentionDays,proto3" json:"webhook_retention_days,omitempty"`
+	WebhookRetentionDays *int32 `protobuf:"varint,6,opt,name=webhook_retention_days,json=webhookRetentionDays,proto3,oneof" json:"webhook_retention_days,omitempty"`
 	// Application logs from the Pebble log store.
-	AppLogRetentionDays int32 `protobuf:"varint,7,opt,name=app_log_retention_days,json=appLogRetentionDays,proto3" json:"app_log_retention_days,omitempty"`
+	AppLogRetentionDays *int32 `protobuf:"varint,7,opt,name=app_log_retention_days,json=appLogRetentionDays,proto3,oneof" json:"app_log_retention_days,omitempty"`
 	// Received mail. Deleting inbound mail destroys the only copy panmail
 	// holds, so this defaults to keeping it forever.
-	InboundRetentionDays int32 `protobuf:"varint,8,opt,name=inbound_retention_days,json=inboundRetentionDays,proto3" json:"inbound_retention_days,omitempty"`
+	InboundRetentionDays *int32 `protobuf:"varint,8,opt,name=inbound_retention_days,json=inboundRetentionDays,proto3,oneof" json:"inbound_retention_days,omitempty"`
 	// The JSONL archives written when delivery events expire. This is the
 	// escape hatch for log_retention_days, so it also defaults to forever.
-	ArchiveRetentionDays int32 `protobuf:"varint,9,opt,name=archive_retention_days,json=archiveRetentionDays,proto3" json:"archive_retention_days,omitempty"`
+	ArchiveRetentionDays *int32 `protobuf:"varint,9,opt,name=archive_retention_days,json=archiveRetentionDays,proto3,oneof" json:"archive_retention_days,omitempty"`
 	// How long a message a filter rule held waits for a reviewer.
 	//
 	// Applies to messages held from now on, not to ones already waiting. Their
 	// deadline was stamped when they were held and sent to webhook subscribers
 	// in the mail.held event; moving it afterwards would break a date this
 	// gateway already promised.
-	QuarantineRetentionDays int32 `protobuf:"varint,10,opt,name=quarantine_retention_days,json=quarantineRetentionDays,proto3" json:"quarantine_retention_days,omitempty"`
+	QuarantineRetentionDays *int32 `protobuf:"varint,10,opt,name=quarantine_retention_days,json=quarantineRetentionDays,proto3,oneof" json:"quarantine_retention_days,omitempty"`
 	// How much of a stored message body the delivery-details view is allowed to
 	// show. Transactional mail carries the things it carries — a password reset
 	// sends a password — and anyone who can open the dashboard can read it back
@@ -443,15 +457,15 @@ func (*SystemSettings) Descriptor() ([]byte, []int) {
 }
 
 func (x *SystemSettings) GetBaseUrl() string {
-	if x != nil {
-		return x.BaseUrl
+	if x != nil && x.BaseUrl != nil {
+		return *x.BaseUrl
 	}
 	return ""
 }
 
 func (x *SystemSettings) GetLogRetentionDays() int32 {
-	if x != nil {
-		return x.LogRetentionDays
+	if x != nil && x.LogRetentionDays != nil {
+		return *x.LogRetentionDays
 	}
 	return 0
 }
@@ -464,50 +478,50 @@ func (x *SystemSettings) GetRetryPattern() []string {
 }
 
 func (x *SystemSettings) GetMessageRetentionDays() int32 {
-	if x != nil {
-		return x.MessageRetentionDays
+	if x != nil && x.MessageRetentionDays != nil {
+		return *x.MessageRetentionDays
 	}
 	return 0
 }
 
 func (x *SystemSettings) GetOutboxRetentionDays() int32 {
-	if x != nil {
-		return x.OutboxRetentionDays
+	if x != nil && x.OutboxRetentionDays != nil {
+		return *x.OutboxRetentionDays
 	}
 	return 0
 }
 
 func (x *SystemSettings) GetWebhookRetentionDays() int32 {
-	if x != nil {
-		return x.WebhookRetentionDays
+	if x != nil && x.WebhookRetentionDays != nil {
+		return *x.WebhookRetentionDays
 	}
 	return 0
 }
 
 func (x *SystemSettings) GetAppLogRetentionDays() int32 {
-	if x != nil {
-		return x.AppLogRetentionDays
+	if x != nil && x.AppLogRetentionDays != nil {
+		return *x.AppLogRetentionDays
 	}
 	return 0
 }
 
 func (x *SystemSettings) GetInboundRetentionDays() int32 {
-	if x != nil {
-		return x.InboundRetentionDays
+	if x != nil && x.InboundRetentionDays != nil {
+		return *x.InboundRetentionDays
 	}
 	return 0
 }
 
 func (x *SystemSettings) GetArchiveRetentionDays() int32 {
-	if x != nil {
-		return x.ArchiveRetentionDays
+	if x != nil && x.ArchiveRetentionDays != nil {
+		return *x.ArchiveRetentionDays
 	}
 	return 0
 }
 
 func (x *SystemSettings) GetQuarantineRetentionDays() int32 {
-	if x != nil {
-		return x.QuarantineRetentionDays
+	if x != nil && x.QuarantineRetentionDays != nil {
+		return *x.QuarantineRetentionDays
 	}
 	return 0
 }
@@ -538,20 +552,29 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1a\n" +
 	"\bstarttls\x18\x04 \x01(\bR\bstarttls\x122\n" +
-	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\"\xc6\x04\n" +
-	"\x0eSystemSettings\x12\x19\n" +
-	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12,\n" +
-	"\x12log_retention_days\x18\x02 \x01(\x05R\x10logRetentionDays\x12#\n" +
-	"\rretry_pattern\x18\x03 \x03(\tR\fretryPattern\x124\n" +
-	"\x16message_retention_days\x18\x04 \x01(\x05R\x14messageRetentionDays\x122\n" +
-	"\x15outbox_retention_days\x18\x05 \x01(\x05R\x13outboxRetentionDays\x124\n" +
-	"\x16webhook_retention_days\x18\x06 \x01(\x05R\x14webhookRetentionDays\x123\n" +
-	"\x16app_log_retention_days\x18\a \x01(\x05R\x13appLogRetentionDays\x124\n" +
-	"\x16inbound_retention_days\x18\b \x01(\x05R\x14inboundRetentionDays\x124\n" +
-	"\x16archive_retention_days\x18\t \x01(\x05R\x14archiveRetentionDays\x12:\n" +
+	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\"\xd6\x06\n" +
+	"\x0eSystemSettings\x12\x1e\n" +
+	"\bbase_url\x18\x01 \x01(\tH\x00R\abaseUrl\x88\x01\x01\x121\n" +
+	"\x12log_retention_days\x18\x02 \x01(\x05H\x01R\x10logRetentionDays\x88\x01\x01\x12#\n" +
+	"\rretry_pattern\x18\x03 \x03(\tR\fretryPattern\x129\n" +
+	"\x16message_retention_days\x18\x04 \x01(\x05H\x02R\x14messageRetentionDays\x88\x01\x01\x127\n" +
+	"\x15outbox_retention_days\x18\x05 \x01(\x05H\x03R\x13outboxRetentionDays\x88\x01\x01\x129\n" +
+	"\x16webhook_retention_days\x18\x06 \x01(\x05H\x04R\x14webhookRetentionDays\x88\x01\x01\x128\n" +
+	"\x16app_log_retention_days\x18\a \x01(\x05H\x05R\x13appLogRetentionDays\x88\x01\x01\x129\n" +
+	"\x16inbound_retention_days\x18\b \x01(\x05H\x06R\x14inboundRetentionDays\x88\x01\x01\x129\n" +
+	"\x16archive_retention_days\x18\t \x01(\x05H\aR\x14archiveRetentionDays\x88\x01\x01\x12?\n" +
 	"\x19quarantine_retention_days\x18\n" +
-	" \x01(\x05R\x17quarantineRetentionDays\x12I\n" +
-	"\x11content_redaction\x18\v \x01(\x0e2\x1c.panmail.v1.ContentRedactionR\x10contentRedaction*\xad\x01\n" +
+	" \x01(\x05H\bR\x17quarantineRetentionDays\x88\x01\x01\x12I\n" +
+	"\x11content_redaction\x18\v \x01(\x0e2\x1c.panmail.v1.ContentRedactionR\x10contentRedactionB\v\n" +
+	"\t_base_urlB\x15\n" +
+	"\x13_log_retention_daysB\x19\n" +
+	"\x17_message_retention_daysB\x18\n" +
+	"\x16_outbox_retention_daysB\x19\n" +
+	"\x17_webhook_retention_daysB\x19\n" +
+	"\x17_app_log_retention_daysB\x19\n" +
+	"\x17_inbound_retention_daysB\x19\n" +
+	"\x17_archive_retention_daysB\x1c\n" +
+	"\x1a_quarantine_retention_days*\xad\x01\n" +
 	"\x10ContentRedaction\x12!\n" +
 	"\x1dCONTENT_REDACTION_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15CONTENT_REDACTION_OFF\x10\x01\x12\x1f\n" +
@@ -610,6 +633,7 @@ func file_panmail_v1_system_settings_proto_init() {
 	if File_panmail_v1_system_settings_proto != nil {
 		return
 	}
+	file_panmail_v1_system_settings_proto_msgTypes[5].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

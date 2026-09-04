@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/system_settings.proto.
  */
 export const file_panmail_v1_system_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QieAoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MSMwoPc210cF9zdWJtaXNzaW9uGAIgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiJFChVVcGRhdGVTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIkYKFlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIm4KDlNtdHBTdWJtaXNzaW9uEg8KB2VuYWJsZWQYASABKAgSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgFEhAKCHN0YXJ0dGxzGAQgASgIEh0KFWluc2VjdXJlX2F1dGhfYWxsb3dlZBgFIAEoCCLwAgoOU3lzdGVtU2V0dGluZ3MSEAoIYmFzZV91cmwYASABKAkSGgoSbG9nX3JldGVudGlvbl9kYXlzGAIgASgFEhUKDXJldHJ5X3BhdHRlcm4YAyADKAkSHgoWbWVzc2FnZV9yZXRlbnRpb25fZGF5cxgEIAEoBRIdChVvdXRib3hfcmV0ZW50aW9uX2RheXMYBSABKAUSHgoWd2ViaG9va19yZXRlbnRpb25fZGF5cxgGIAEoBRIeChZhcHBfbG9nX3JldGVudGlvbl9kYXlzGAcgASgFEh4KFmluYm91bmRfcmV0ZW50aW9uX2RheXMYCCABKAUSHgoWYXJjaGl2ZV9yZXRlbnRpb25fZGF5cxgJIAEoBRIhChlxdWFyYW50aW5lX3JldGVudGlvbl9kYXlzGAogASgFEjcKEWNvbnRlbnRfcmVkYWN0aW9uGAsgASgOMhwucGFubWFpbC52MS5Db250ZW50UmVkYWN0aW9uKq0BChBDb250ZW50UmVkYWN0aW9uEiEKHUNPTlRFTlRfUkVEQUNUSU9OX1VOU1BFQ0lGSUVEEAASGQoVQ09OVEVOVF9SRURBQ1RJT05fT0ZGEAESHwobQ09OVEVOVF9SRURBQ1RJT05fUEFTU1dPUkRTEAISGwoXQ09OVEVOVF9SRURBQ1RJT05fQ09ERVMQAxIdChlDT05URU5UX1JFREFDVElPTl9TRUNSRVRTEAQywAEKFVN5c3RlbVNldHRpbmdzU2VydmljZRJOCgtHZXRTZXR0aW5ncxIeLnBhbm1haWwudjEuR2V0U2V0dGluZ3NSZXF1ZXN0Gh8ucGFubWFpbC52MS5HZXRTZXR0aW5nc1Jlc3BvbnNlElcKDlVwZGF0ZVNldHRpbmdzEiEucGFubWFpbC52MS5VcGRhdGVTZXR0aW5nc1JlcXVlc3QaIi5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVzcG9uc2VCpAEKDmNvbS5wYW5tYWlsLnYxQhNTeXN0ZW1TZXR0aW5nc1Byb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z");
+  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QieAoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MSMwoPc210cF9zdWJtaXNzaW9uGAIgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiJFChVVcGRhdGVTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIkYKFlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIm4KDlNtdHBTdWJtaXNzaW9uEg8KB2VuYWJsZWQYASABKAgSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgFEhAKCHN0YXJ0dGxzGAQgASgIEh0KFWluc2VjdXJlX2F1dGhfYWxsb3dlZBgFIAEoCCKABQoOU3lzdGVtU2V0dGluZ3MSFQoIYmFzZV91cmwYASABKAlIAIgBARIfChJsb2dfcmV0ZW50aW9uX2RheXMYAiABKAVIAYgBARIVCg1yZXRyeV9wYXR0ZXJuGAMgAygJEiMKFm1lc3NhZ2VfcmV0ZW50aW9uX2RheXMYBCABKAVIAogBARIiChVvdXRib3hfcmV0ZW50aW9uX2RheXMYBSABKAVIA4gBARIjChZ3ZWJob29rX3JldGVudGlvbl9kYXlzGAYgASgFSASIAQESIwoWYXBwX2xvZ19yZXRlbnRpb25fZGF5cxgHIAEoBUgFiAEBEiMKFmluYm91bmRfcmV0ZW50aW9uX2RheXMYCCABKAVIBogBARIjChZhcmNoaXZlX3JldGVudGlvbl9kYXlzGAkgASgFSAeIAQESJgoZcXVhcmFudGluZV9yZXRlbnRpb25fZGF5cxgKIAEoBUgIiAEBEjcKEWNvbnRlbnRfcmVkYWN0aW9uGAsgASgOMhwucGFubWFpbC52MS5Db250ZW50UmVkYWN0aW9uQgsKCV9iYXNlX3VybEIVChNfbG9nX3JldGVudGlvbl9kYXlzQhkKF19tZXNzYWdlX3JldGVudGlvbl9kYXlzQhgKFl9vdXRib3hfcmV0ZW50aW9uX2RheXNCGQoXX3dlYmhvb2tfcmV0ZW50aW9uX2RheXNCGQoXX2FwcF9sb2dfcmV0ZW50aW9uX2RheXNCGQoXX2luYm91bmRfcmV0ZW50aW9uX2RheXNCGQoXX2FyY2hpdmVfcmV0ZW50aW9uX2RheXNCHAoaX3F1YXJhbnRpbmVfcmV0ZW50aW9uX2RheXMqrQEKEENvbnRlbnRSZWRhY3Rpb24SIQodQ09OVEVOVF9SRURBQ1RJT05fVU5TUEVDSUZJRUQQABIZChVDT05URU5UX1JFREFDVElPTl9PRkYQARIfChtDT05URU5UX1JFREFDVElPTl9QQVNTV09SRFMQAhIbChdDT05URU5UX1JFREFDVElPTl9DT0RFUxADEh0KGUNPTlRFTlRfUkVEQUNUSU9OX1NFQ1JFVFMQBDLAAQoVU3lzdGVtU2V0dGluZ3NTZXJ2aWNlEk4KC0dldFNldHRpbmdzEh4ucGFubWFpbC52MS5HZXRTZXR0aW5nc1JlcXVlc3QaHy5wYW5tYWlsLnYxLkdldFNldHRpbmdzUmVzcG9uc2USVwoOVXBkYXRlU2V0dGluZ3MSIS5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVxdWVzdBoiLnBhbm1haWwudjEuVXBkYXRlU2V0dGluZ3NSZXNwb25zZUKkAQoOY29tLnBhbm1haWwudjFCE1N5c3RlbVNldHRpbmdzUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM");
 
 /**
  * @generated from message panmail.v1.GetSettingsRequest
@@ -149,19 +149,33 @@ export const SmtpSubmissionSchema: GenMessage<SmtpSubmission> = /*@__PURE__*/
  * means "keep forever" — a retention nobody has configured must never delete
  * anything. The UI says so on each field; do not add a field whose zero value
  * means something else.
+ * **Every scalar here is `optional`, and that is load bearing.** An update
+ * applies only the fields it carries; one that omits a field leaves it alone.
+ *
+ * It used to be full-replace, which meant a caller changing base_url reset all
+ * seven retention policies to zero — and zero means keep forever, so retention
+ * silently stopped without an error, a log line, or anything to notice before a
+ * disk filled. Presence is what tells "keep forever" from "I did not mention
+ * it", and those are opposite instructions that a plain proto3 scalar renders
+ * identically.
+ *
+ * retry_pattern is the exception, because a repeated field has no presence: an
+ * empty list means "leave it alone" rather than "clear it". Send the values to
+ * change it. Nothing is lost — an empty stored pattern already reads back as
+ * the built-in default, so the default is expressible by sending it.
  *
  * @generated from message panmail.v1.SystemSettings
  */
 export type SystemSettings = Message<"panmail.v1.SystemSettings"> & {
   /**
-   * @generated from field: string base_url = 1;
+   * @generated from field: optional string base_url = 1;
    */
-  baseUrl: string;
+  baseUrl?: string | undefined;
 
   /**
-   * @generated from field: int32 log_retention_days = 2;
+   * @generated from field: optional int32 log_retention_days = 2;
    */
-  logRetentionDays: number;
+  logRetentionDays?: number | undefined;
 
   /**
    * @generated from field: repeated string retry_pattern = 3;
@@ -173,47 +187,47 @@ export type SystemSettings = Message<"panmail.v1.SystemSettings"> & {
    * an archive of the content is the content, so archiving it would defeat
    * the retention it is meant to enforce.
    *
-   * @generated from field: int32 message_retention_days = 4;
+   * @generated from field: optional int32 message_retention_days = 4;
    */
-  messageRetentionDays: number;
+  messageRetentionDays?: number | undefined;
 
   /**
    * Permanently failed outbox rows. Only FAILED qualifies — pending,
    * deferred and claimed rows are live work.
    *
-   * @generated from field: int32 outbox_retention_days = 5;
+   * @generated from field: optional int32 outbox_retention_days = 5;
    */
-  outboxRetentionDays: number;
+  outboxRetentionDays?: number | undefined;
 
   /**
    * Delivered and permanently failed webhook notifications.
    *
-   * @generated from field: int32 webhook_retention_days = 6;
+   * @generated from field: optional int32 webhook_retention_days = 6;
    */
-  webhookRetentionDays: number;
+  webhookRetentionDays?: number | undefined;
 
   /**
    * Application logs from the Pebble log store.
    *
-   * @generated from field: int32 app_log_retention_days = 7;
+   * @generated from field: optional int32 app_log_retention_days = 7;
    */
-  appLogRetentionDays: number;
+  appLogRetentionDays?: number | undefined;
 
   /**
    * Received mail. Deleting inbound mail destroys the only copy panmail
    * holds, so this defaults to keeping it forever.
    *
-   * @generated from field: int32 inbound_retention_days = 8;
+   * @generated from field: optional int32 inbound_retention_days = 8;
    */
-  inboundRetentionDays: number;
+  inboundRetentionDays?: number | undefined;
 
   /**
    * The JSONL archives written when delivery events expire. This is the
    * escape hatch for log_retention_days, so it also defaults to forever.
    *
-   * @generated from field: int32 archive_retention_days = 9;
+   * @generated from field: optional int32 archive_retention_days = 9;
    */
-  archiveRetentionDays: number;
+  archiveRetentionDays?: number | undefined;
 
   /**
    * How long a message a filter rule held waits for a reviewer.
@@ -223,9 +237,9 @@ export type SystemSettings = Message<"panmail.v1.SystemSettings"> & {
    * in the mail.held event; moving it afterwards would break a date this
    * gateway already promised.
    *
-   * @generated from field: int32 quarantine_retention_days = 10;
+   * @generated from field: optional int32 quarantine_retention_days = 10;
    */
-  quarantineRetentionDays: number;
+  quarantineRetentionDays?: number | undefined;
 
   /**
    * How much of a stored message body the delivery-details view is allowed to

@@ -9,6 +9,7 @@ import (
 	"github.com/gsoultan/panmail/internal/retention"
 	"github.com/gsoultan/panmail/internal/system_settings/entities"
 	"github.com/gsoultan/panmail/internal/system_settings/repositories"
+	"google.golang.org/protobuf/proto"
 )
 
 var defaultRetryPattern = []string{"5m", "15m", "30m", "1h", "3h", "6h", "12h", "24h"}
@@ -44,9 +45,13 @@ func (u *settingsUsecase) GetSettings(ctx context.Context) (*panmailv1.SystemSet
 		return nil, err
 	}
 
+	// A read always sets every field. Presence means "the caller mentioned it"
+	// on the way in; on the way out the page needs the whole picture, so nothing
+	// is left absent here.
 	settings := &panmailv1.SystemSettings{RetryPattern: defaultRetryPattern}
+	settings.BaseUrl = proto.String("")
 	if stored != nil {
-		settings.BaseUrl = stored.BaseURL
+		settings.BaseUrl = proto.String(stored.BaseURL)
 		if len(stored.RetryPattern) > 0 {
 			settings.RetryPattern = stored.RetryPattern
 		}
@@ -79,14 +84,27 @@ func (u *settingsUsecase) UpdateSettings(ctx context.Context, s *panmailv1.Syste
 		stored = &entities.Settings{}
 	}
 
-	stored.BaseURL = s.BaseUrl
-	stored.RetryPattern = s.RetryPattern
-	policyOf(s).Apply(stored)
+	// Apply only what the request carries. A field the caller did not mention
+	// keeps the value it had.
+	//
+	// This is the whole point of the presence tracking on these fields. When
+	// they were plain scalars, an update of base_url also wrote zero to all
+	// seven retention policies — and zero means keep forever, so retention
+	// stopped with no error and no log line. "Keep forever" and "I did not
+	// mention it" are opposite instructions and a bare int32 renders them
+	// identically.
+	if s.BaseUrl != nil {
+		stored.BaseURL = s.GetBaseUrl()
+	}
+	// Repeated fields have no presence, so empty means "leave it alone". Losing
+	// the ability to clear it costs nothing: an empty stored pattern reads back
+	// as the built-in default, so the default is expressible by sending it.
+	if len(s.RetryPattern) > 0 {
+		stored.RetryPattern = s.RetryPattern
+	}
 
-	// UNSPECIFIED from a client means "leave it alone", not "reset to default".
-	// Every other field here is full-replace, and this one deliberately is not:
-	// a caller updating base_url must not be able to turn redaction off by
-	// omission. See the note on partial updates in the retention memory.
+	applyPresentRetention(s, stored)
+
 	if s.ContentRedaction != panmailv1.ContentRedaction_CONTENT_REDACTION_UNSPECIFIED {
 		stored.ContentRedaction = redactionFromProto(s.ContentRedaction).String()
 	}
@@ -105,30 +123,48 @@ func (u *settingsUsecase) UpdateSettings(ctx context.Context, s *panmailv1.Syste
 	return u.GetSettings(ctx)
 }
 
-// policyOf reads a retention policy out of a settings message.
-func policyOf(s *panmailv1.SystemSettings) retention.Policy {
-	return retention.Policy{
-		EventDays:      int(s.LogRetentionDays),
-		MessageDays:    int(s.MessageRetentionDays),
-		OutboxDays:     int(s.OutboxRetentionDays),
-		WebhookDays:    int(s.WebhookRetentionDays),
-		AppLogDays:     int(s.AppLogRetentionDays),
-		InboundDays:    int(s.InboundRetentionDays),
-		ArchiveDays:    int(s.ArchiveRetentionDays),
-		QuarantineDays: int(s.QuarantineRetentionDays),
+// applyPresentRetention writes only the retention fields the request carries.
+//
+// It starts from what is stored, so an omitted field survives, and clamps
+// through retention.Policy so a value out of range folds the same way it always
+// did. Every field is listed: the version of Policy.Apply that forgot
+// QuarantineDays shipped a setting that silently never saved, and the lesson
+// was that a mapping like this is only as complete as its longest list.
+func applyPresentRetention(s *panmailv1.SystemSettings, stored *entities.Settings) {
+	p := retention.Resolve(stored)
+
+	for _, f := range []struct {
+		value *int32
+		field *int
+	}{
+		{s.LogRetentionDays, &p.EventDays},
+		{s.MessageRetentionDays, &p.MessageDays},
+		{s.OutboxRetentionDays, &p.OutboxDays},
+		{s.WebhookRetentionDays, &p.WebhookDays},
+		{s.AppLogRetentionDays, &p.AppLogDays},
+		{s.InboundRetentionDays, &p.InboundDays},
+		{s.ArchiveRetentionDays, &p.ArchiveDays},
+		{s.QuarantineRetentionDays, &p.QuarantineDays},
+	} {
+		if f.value != nil {
+			*f.field = int(*f.value)
+		}
 	}
+
+	p.Apply(stored)
 }
 
-// applyPolicy writes a resolved policy into a settings message.
+// applyPolicy writes a resolved policy into a settings message. Every field is
+// set, because a read reports what is in force rather than what was asked for.
 func applyPolicy(s *panmailv1.SystemSettings, p retention.Policy) {
-	s.LogRetentionDays = int32(p.EventDays)
-	s.MessageRetentionDays = int32(p.MessageDays)
-	s.OutboxRetentionDays = int32(p.OutboxDays)
-	s.WebhookRetentionDays = int32(p.WebhookDays)
-	s.AppLogRetentionDays = int32(p.AppLogDays)
-	s.InboundRetentionDays = int32(p.InboundDays)
-	s.ArchiveRetentionDays = int32(p.ArchiveDays)
-	s.QuarantineRetentionDays = int32(p.QuarantineDays)
+	s.LogRetentionDays = proto.Int32(int32(p.EventDays))
+	s.MessageRetentionDays = proto.Int32(int32(p.MessageDays))
+	s.OutboxRetentionDays = proto.Int32(int32(p.OutboxDays))
+	s.WebhookRetentionDays = proto.Int32(int32(p.WebhookDays))
+	s.AppLogRetentionDays = proto.Int32(int32(p.AppLogDays))
+	s.InboundRetentionDays = proto.Int32(int32(p.InboundDays))
+	s.ArchiveRetentionDays = proto.Int32(int32(p.ArchiveDays))
+	s.QuarantineRetentionDays = proto.Int32(int32(p.QuarantineDays))
 }
 
 // storedRedaction reads the raw column, tolerating a nil row on a first run.

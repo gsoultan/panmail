@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // The settings page has to show what is being enforced. A deployment that has
@@ -61,7 +62,7 @@ func TestAnOmittedLevelIsLeftAloneRatherThanReset(t *testing.T) {
 
 	// A later caller changing something unrelated, with no redaction field.
 	if _, err := usecase.UpdateSettings(t.Context(), &panmailv1.SystemSettings{
-		BaseUrl: "https://mail.example.com",
+		BaseUrl: proto.String("https://mail.example.com"),
 	}); err != nil {
 		t.Fatalf("second update: %v", err)
 	}
@@ -74,8 +75,8 @@ func TestAnOmittedLevelIsLeftAloneRatherThanReset(t *testing.T) {
 		t.Errorf("content redaction = %v after an unrelated update, want SECRETS to survive",
 			got.ContentRedaction)
 	}
-	if got.BaseUrl != "https://mail.example.com" {
-		t.Errorf("base url = %q, want the update to have applied", got.BaseUrl)
+	if got.GetBaseUrl() != "https://mail.example.com" {
+		t.Errorf("base url = %q, want the update to have applied", got.GetBaseUrl())
 	}
 }
 
