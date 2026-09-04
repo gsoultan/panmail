@@ -1,0 +1,29 @@
+-- The index the claim query actually needs.
+--
+-- claim_pending_outbox filters on status and next_retry_at and then orders by
+-- created_at. idx_outbox_status_next_retry covers the filter and not the sort,
+-- so PostgreSQL had to collect every claimable row and sort it to take 500.
+--
+-- Invisible on a queue of hundreds. Measured on one million pending rows:
+--
+--   before   Seq Scan 990,000 rows -> external merge sort, 38 MB to disk, 304 ms
+--   after    Index Scan, stops after 500 rows, 0.198 ms
+--
+-- The claim runs every five seconds, and again immediately whenever a batch
+-- comes back full — so on a deep queue the old plan was a sequential scan and a
+-- disk-spilling sort several times a minute, which is also why the pool looked
+-- busy while the queue drained slowly.
+--
+-- Leading on created_at rather than on the filter columns is deliberate: the
+-- ORDER BY is what forced the sort, and an index that answers it lets the scan
+-- stop at the limit instead of reading everything that matches.
+--
+-- Partial, so it indexes only rows that can still be claimed. Delivered rows
+-- are deleted outright and FAILED and HELD rows are never claimed, so keeping
+-- them out holds the index to the size of the live queue rather than the table.
+--
+-- Not CONCURRENTLY: migrations run inside a transaction and SQLite has no such
+-- option. On an existing large outbox this takes a brief write lock while it
+-- builds, which is the same trade every other index in this schema made.
+CREATE INDEX IF NOT EXISTS idx_outbox_claimable ON outbox (created_at)
+    WHERE status IN ('PENDING', 'DEFERRED', 'SENDING');
