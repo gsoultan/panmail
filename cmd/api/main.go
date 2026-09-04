@@ -406,6 +406,10 @@ func main() {
 	runWorker(&workers, workerCtx, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
 
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
+	// Stored message bodies are masked on the way out of the API, at whatever
+	// level the settings page currently says. Read through the provider so a
+	// change reaches every instance on its next refresh rather than at restart.
+	processEventUsecase.SetRedactionSource(settingsProvider)
 	eventService := eventservices.NewEventService(processEventUsecase)
 	webhookHandler := eventhttp.NewWebhookHandler(processEventUsecase, providerRepo)
 

@@ -197,6 +197,8 @@ func (m *mockEventUsecase) GetPerformanceMetrics(ctx context.Context) (eventusec
 func (m *mockEventUsecase) ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]evententities.ArchiveInfo, string, error) {
 	return nil, "", nil
 }
+func (m *mockEventUsecase) SetRedactionSource(eventusecases.RedactionSource) {}
+
 func (m *mockEventUsecase) GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error) {
 	return nil, "", nil
 }

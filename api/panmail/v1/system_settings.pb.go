@@ -21,6 +21,78 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ContentRedaction is how hard the gateway looks for secrets in a message body
+// before showing it back.
+//
+// UNSPECIFIED is distinct from OFF on purpose, and it is the same distinction
+// the two nullable retention columns exist for: "nobody has chosen" has to be
+// tellable from "somebody chose none", or an operator who deliberately turned
+// redaction off gets it switched back on by the next default change.
+type ContentRedaction int32
+
+const (
+	ContentRedaction_CONTENT_REDACTION_UNSPECIFIED ContentRedaction = 0
+	// Show the body as stored. A deliberate choice, and the only value that
+	// shows a password in the dashboard.
+	ContentRedaction_CONTENT_REDACTION_OFF ContentRedaction = 1
+	// The default. Masks the value after a password-like label — password, pwd,
+	// passcode, passphrase — and nothing else. Narrow so that a message which
+	// merely discusses passwords survives intact.
+	ContentRedaction_CONTENT_REDACTION_PASSWORDS ContentRedaction = 2
+	// Adds one-time codes: OTP, PIN, verification and security codes. Worth as
+	// much as a password for as long as they are valid, which is usually longer
+	// than the message takes to reach the dashboard.
+	ContentRedaction_CONTENT_REDACTION_CODES ContentRedaction = 3
+	// Adds bearer tokens and API keys. The widest setting and the most likely to
+	// mask something that was not a secret.
+	ContentRedaction_CONTENT_REDACTION_SECRETS ContentRedaction = 4
+)
+
+// Enum value maps for ContentRedaction.
+var (
+	ContentRedaction_name = map[int32]string{
+		0: "CONTENT_REDACTION_UNSPECIFIED",
+		1: "CONTENT_REDACTION_OFF",
+		2: "CONTENT_REDACTION_PASSWORDS",
+		3: "CONTENT_REDACTION_CODES",
+		4: "CONTENT_REDACTION_SECRETS",
+	}
+	ContentRedaction_value = map[string]int32{
+		"CONTENT_REDACTION_UNSPECIFIED": 0,
+		"CONTENT_REDACTION_OFF":         1,
+		"CONTENT_REDACTION_PASSWORDS":   2,
+		"CONTENT_REDACTION_CODES":       3,
+		"CONTENT_REDACTION_SECRETS":     4,
+	}
+)
+
+func (x ContentRedaction) Enum() *ContentRedaction {
+	p := new(ContentRedaction)
+	*p = x
+	return p
+}
+
+func (x ContentRedaction) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ContentRedaction) Descriptor() protoreflect.EnumDescriptor {
+	return file_panmail_v1_system_settings_proto_enumTypes[0].Descriptor()
+}
+
+func (ContentRedaction) Type() protoreflect.EnumType {
+	return &file_panmail_v1_system_settings_proto_enumTypes[0]
+}
+
+func (x ContentRedaction) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ContentRedaction.Descriptor instead.
+func (ContentRedaction) EnumDescriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{0}
+}
+
 type GetSettingsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -326,8 +398,18 @@ type SystemSettings struct {
 	// in the mail.held event; moving it afterwards would break a date this
 	// gateway already promised.
 	QuarantineRetentionDays int32 `protobuf:"varint,10,opt,name=quarantine_retention_days,json=quarantineRetentionDays,proto3" json:"quarantine_retention_days,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// How much of a stored message body the delivery-details view is allowed to
+	// show. Transactional mail carries the things it carries — a password reset
+	// sends a password — and anyone who can open the dashboard can read it back
+	// months later.
+	//
+	// Redaction happens in the gateway, not the browser: the body is served over
+	// the API, so masking it in the UI would leave the secret in the response for
+	// anyone who opens the network tab. Stored mail is never rewritten; only what
+	// leaves through the API is masked.
+	ContentRedaction ContentRedaction `protobuf:"varint,11,opt,name=content_redaction,json=contentRedaction,proto3,enum=panmail.v1.ContentRedaction" json:"content_redaction,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SystemSettings) Reset() {
@@ -430,6 +512,13 @@ func (x *SystemSettings) GetQuarantineRetentionDays() int32 {
 	return 0
 }
 
+func (x *SystemSettings) GetContentRedaction() ContentRedaction {
+	if x != nil {
+		return x.ContentRedaction
+	}
+	return ContentRedaction_CONTENT_REDACTION_UNSPECIFIED
+}
+
 var File_panmail_v1_system_settings_proto protoreflect.FileDescriptor
 
 const file_panmail_v1_system_settings_proto_rawDesc = "" +
@@ -449,7 +538,7 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1a\n" +
 	"\bstarttls\x18\x04 \x01(\bR\bstarttls\x122\n" +
-	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\"\xfb\x03\n" +
+	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\"\xc6\x04\n" +
 	"\x0eSystemSettings\x12\x19\n" +
 	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12,\n" +
 	"\x12log_retention_days\x18\x02 \x01(\x05R\x10logRetentionDays\x12#\n" +
@@ -461,7 +550,14 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x16inbound_retention_days\x18\b \x01(\x05R\x14inboundRetentionDays\x124\n" +
 	"\x16archive_retention_days\x18\t \x01(\x05R\x14archiveRetentionDays\x12:\n" +
 	"\x19quarantine_retention_days\x18\n" +
-	" \x01(\x05R\x17quarantineRetentionDays2\xc0\x01\n" +
+	" \x01(\x05R\x17quarantineRetentionDays\x12I\n" +
+	"\x11content_redaction\x18\v \x01(\x0e2\x1c.panmail.v1.ContentRedactionR\x10contentRedaction*\xad\x01\n" +
+	"\x10ContentRedaction\x12!\n" +
+	"\x1dCONTENT_REDACTION_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15CONTENT_REDACTION_OFF\x10\x01\x12\x1f\n" +
+	"\x1bCONTENT_REDACTION_PASSWORDS\x10\x02\x12\x1b\n" +
+	"\x17CONTENT_REDACTION_CODES\x10\x03\x12\x1d\n" +
+	"\x19CONTENT_REDACTION_SECRETS\x10\x042\xc0\x01\n" +
 	"\x15SystemSettingsService\x12N\n" +
 	"\vGetSettings\x12\x1e.panmail.v1.GetSettingsRequest\x1a\x1f.panmail.v1.GetSettingsResponse\x12W\n" +
 	"\x0eUpdateSettings\x12!.panmail.v1.UpdateSettingsRequest\x1a\".panmail.v1.UpdateSettingsResponseB\xa4\x01\n" +
@@ -481,29 +577,32 @@ func file_panmail_v1_system_settings_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_system_settings_proto_rawDescData
 }
 
+var file_panmail_v1_system_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_panmail_v1_system_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_panmail_v1_system_settings_proto_goTypes = []any{
-	(*GetSettingsRequest)(nil),     // 0: panmail.v1.GetSettingsRequest
-	(*GetSettingsResponse)(nil),    // 1: panmail.v1.GetSettingsResponse
-	(*UpdateSettingsRequest)(nil),  // 2: panmail.v1.UpdateSettingsRequest
-	(*UpdateSettingsResponse)(nil), // 3: panmail.v1.UpdateSettingsResponse
-	(*SmtpSubmission)(nil),         // 4: panmail.v1.SmtpSubmission
-	(*SystemSettings)(nil),         // 5: panmail.v1.SystemSettings
+	(ContentRedaction)(0),          // 0: panmail.v1.ContentRedaction
+	(*GetSettingsRequest)(nil),     // 1: panmail.v1.GetSettingsRequest
+	(*GetSettingsResponse)(nil),    // 2: panmail.v1.GetSettingsResponse
+	(*UpdateSettingsRequest)(nil),  // 3: panmail.v1.UpdateSettingsRequest
+	(*UpdateSettingsResponse)(nil), // 4: panmail.v1.UpdateSettingsResponse
+	(*SmtpSubmission)(nil),         // 5: panmail.v1.SmtpSubmission
+	(*SystemSettings)(nil),         // 6: panmail.v1.SystemSettings
 }
 var file_panmail_v1_system_settings_proto_depIdxs = []int32{
-	5, // 0: panmail.v1.GetSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
-	4, // 1: panmail.v1.GetSettingsResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
-	5, // 2: panmail.v1.UpdateSettingsRequest.settings:type_name -> panmail.v1.SystemSettings
-	5, // 3: panmail.v1.UpdateSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
-	0, // 4: panmail.v1.SystemSettingsService.GetSettings:input_type -> panmail.v1.GetSettingsRequest
-	2, // 5: panmail.v1.SystemSettingsService.UpdateSettings:input_type -> panmail.v1.UpdateSettingsRequest
-	1, // 6: panmail.v1.SystemSettingsService.GetSettings:output_type -> panmail.v1.GetSettingsResponse
-	3, // 7: panmail.v1.SystemSettingsService.UpdateSettings:output_type -> panmail.v1.UpdateSettingsResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	6, // 0: panmail.v1.GetSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
+	5, // 1: panmail.v1.GetSettingsResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
+	6, // 2: panmail.v1.UpdateSettingsRequest.settings:type_name -> panmail.v1.SystemSettings
+	6, // 3: panmail.v1.UpdateSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
+	0, // 4: panmail.v1.SystemSettings.content_redaction:type_name -> panmail.v1.ContentRedaction
+	1, // 5: panmail.v1.SystemSettingsService.GetSettings:input_type -> panmail.v1.GetSettingsRequest
+	3, // 6: panmail.v1.SystemSettingsService.UpdateSettings:input_type -> panmail.v1.UpdateSettingsRequest
+	2, // 7: panmail.v1.SystemSettingsService.GetSettings:output_type -> panmail.v1.GetSettingsResponse
+	4, // 8: panmail.v1.SystemSettingsService.UpdateSettings:output_type -> panmail.v1.UpdateSettingsResponse
+	7, // [7:9] is the sub-list for method output_type
+	5, // [5:7] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_system_settings_proto_init() }
@@ -516,13 +615,14 @@ func file_panmail_v1_system_settings_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_system_settings_proto_rawDesc), len(file_panmail_v1_system_settings_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_panmail_v1_system_settings_proto_goTypes,
 		DependencyIndexes: file_panmail_v1_system_settings_proto_depIdxs,
+		EnumInfos:         file_panmail_v1_system_settings_proto_enumTypes,
 		MessageInfos:      file_panmail_v1_system_settings_proto_msgTypes,
 	}.Build()
 	File_panmail_v1_system_settings_proto = out.File

@@ -48,6 +48,7 @@ func (s *store) Get(ctx context.Context) (*entities.Settings, error) {
 		retryPatternJSON sql.NullString
 		logDays          sql.NullInt64
 		webhookDays      sql.NullInt64
+		redaction        sql.NullString
 	)
 	err = dbConn.QueryRowContext(ctx, getSettingsQuery).Scan(
 		&out.BaseURL,
@@ -60,6 +61,7 @@ func (s *store) Get(ctx context.Context) (*entities.Settings, error) {
 		&out.InboundRetentionDays,
 		&out.ArchiveRetentionDays,
 		&out.QuarantineRetentionDays,
+		&redaction,
 		&out.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -82,6 +84,11 @@ func (s *store) Get(ctx context.Context) (*entities.Settings, error) {
 	if webhookDays.Valid {
 		v := int(webhookDays.Int64)
 		out.WebhookRetentionDays = &v
+	}
+	// NULL stays "" rather than becoming a level, so the caller can tell an
+	// unset column from a chosen one.
+	if redaction.Valid {
+		out.ContentRedaction = redaction.String
 	}
 	return &out, nil
 }
@@ -159,8 +166,19 @@ func writeArgs(in *entities.Settings) ([]any, error) {
 		in.InboundRetentionDays,
 		in.ArchiveRetentionDays,
 		in.QuarantineRetentionDays,
+		// Empty writes SQL NULL rather than an empty string, keeping "never
+		// chosen" a single representation instead of two.
+		nullableText(in.ContentRedaction),
 		updatedAt,
 	}, nil
+}
+
+// nullableText is nullableDays for a string column.
+func nullableText(v string) any {
+	if v == "" {
+		return nil
+	}
+	return v
 }
 
 // nullableDays keeps "never set" and "set to forever" apart on the way in, the

@@ -2,15 +2,15 @@
 // @generated from file panmail/v1/system_settings.proto (package panmail.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file panmail/v1/system_settings.proto.
  */
 export const file_panmail_v1_system_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QieAoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MSMwoPc210cF9zdWJtaXNzaW9uGAIgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiJFChVVcGRhdGVTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIkYKFlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIm4KDlNtdHBTdWJtaXNzaW9uEg8KB2VuYWJsZWQYASABKAgSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgFEhAKCHN0YXJ0dGxzGAQgASgIEh0KFWluc2VjdXJlX2F1dGhfYWxsb3dlZBgFIAEoCCK3AgoOU3lzdGVtU2V0dGluZ3MSEAoIYmFzZV91cmwYASABKAkSGgoSbG9nX3JldGVudGlvbl9kYXlzGAIgASgFEhUKDXJldHJ5X3BhdHRlcm4YAyADKAkSHgoWbWVzc2FnZV9yZXRlbnRpb25fZGF5cxgEIAEoBRIdChVvdXRib3hfcmV0ZW50aW9uX2RheXMYBSABKAUSHgoWd2ViaG9va19yZXRlbnRpb25fZGF5cxgGIAEoBRIeChZhcHBfbG9nX3JldGVudGlvbl9kYXlzGAcgASgFEh4KFmluYm91bmRfcmV0ZW50aW9uX2RheXMYCCABKAUSHgoWYXJjaGl2ZV9yZXRlbnRpb25fZGF5cxgJIAEoBRIhChlxdWFyYW50aW5lX3JldGVudGlvbl9kYXlzGAogASgFMsABChVTeXN0ZW1TZXR0aW5nc1NlcnZpY2USTgoLR2V0U2V0dGluZ3MSHi5wYW5tYWlsLnYxLkdldFNldHRpbmdzUmVxdWVzdBofLnBhbm1haWwudjEuR2V0U2V0dGluZ3NSZXNwb25zZRJXCg5VcGRhdGVTZXR0aW5ncxIhLnBhbm1haWwudjEuVXBkYXRlU2V0dGluZ3NSZXF1ZXN0GiIucGFubWFpbC52MS5VcGRhdGVTZXR0aW5nc1Jlc3BvbnNlQqQBCg5jb20ucGFubWFpbC52MUITU3lzdGVtU2V0dGluZ3NQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw");
+  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QieAoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MSMwoPc210cF9zdWJtaXNzaW9uGAIgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiJFChVVcGRhdGVTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIkYKFlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIm4KDlNtdHBTdWJtaXNzaW9uEg8KB2VuYWJsZWQYASABKAgSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgFEhAKCHN0YXJ0dGxzGAQgASgIEh0KFWluc2VjdXJlX2F1dGhfYWxsb3dlZBgFIAEoCCLwAgoOU3lzdGVtU2V0dGluZ3MSEAoIYmFzZV91cmwYASABKAkSGgoSbG9nX3JldGVudGlvbl9kYXlzGAIgASgFEhUKDXJldHJ5X3BhdHRlcm4YAyADKAkSHgoWbWVzc2FnZV9yZXRlbnRpb25fZGF5cxgEIAEoBRIdChVvdXRib3hfcmV0ZW50aW9uX2RheXMYBSABKAUSHgoWd2ViaG9va19yZXRlbnRpb25fZGF5cxgGIAEoBRIeChZhcHBfbG9nX3JldGVudGlvbl9kYXlzGAcgASgFEh4KFmluYm91bmRfcmV0ZW50aW9uX2RheXMYCCABKAUSHgoWYXJjaGl2ZV9yZXRlbnRpb25fZGF5cxgJIAEoBRIhChlxdWFyYW50aW5lX3JldGVudGlvbl9kYXlzGAogASgFEjcKEWNvbnRlbnRfcmVkYWN0aW9uGAsgASgOMhwucGFubWFpbC52MS5Db250ZW50UmVkYWN0aW9uKq0BChBDb250ZW50UmVkYWN0aW9uEiEKHUNPTlRFTlRfUkVEQUNUSU9OX1VOU1BFQ0lGSUVEEAASGQoVQ09OVEVOVF9SRURBQ1RJT05fT0ZGEAESHwobQ09OVEVOVF9SRURBQ1RJT05fUEFTU1dPUkRTEAISGwoXQ09OVEVOVF9SRURBQ1RJT05fQ09ERVMQAxIdChlDT05URU5UX1JFREFDVElPTl9TRUNSRVRTEAQywAEKFVN5c3RlbVNldHRpbmdzU2VydmljZRJOCgtHZXRTZXR0aW5ncxIeLnBhbm1haWwudjEuR2V0U2V0dGluZ3NSZXF1ZXN0Gh8ucGFubWFpbC52MS5HZXRTZXR0aW5nc1Jlc3BvbnNlElcKDlVwZGF0ZVNldHRpbmdzEiEucGFubWFpbC52MS5VcGRhdGVTZXR0aW5nc1JlcXVlc3QaIi5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVzcG9uc2VCpAEKDmNvbS5wYW5tYWlsLnYxQhNTeXN0ZW1TZXR0aW5nc1Byb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z");
 
 /**
  * @generated from message panmail.v1.GetSettingsRequest
@@ -226,6 +226,21 @@ export type SystemSettings = Message<"panmail.v1.SystemSettings"> & {
    * @generated from field: int32 quarantine_retention_days = 10;
    */
   quarantineRetentionDays: number;
+
+  /**
+   * How much of a stored message body the delivery-details view is allowed to
+   * show. Transactional mail carries the things it carries — a password reset
+   * sends a password — and anyone who can open the dashboard can read it back
+   * months later.
+   *
+   * Redaction happens in the gateway, not the browser: the body is served over
+   * the API, so masking it in the UI would leave the secret in the response for
+   * anyone who opens the network tab. Stored mail is never rewritten; only what
+   * leaves through the API is masked.
+   *
+   * @generated from field: panmail.v1.ContentRedaction content_redaction = 11;
+   */
+  contentRedaction: ContentRedaction;
 };
 
 /**
@@ -234,6 +249,64 @@ export type SystemSettings = Message<"panmail.v1.SystemSettings"> & {
  */
 export const SystemSettingsSchema: GenMessage<SystemSettings> = /*@__PURE__*/
   messageDesc(file_panmail_v1_system_settings, 5);
+
+/**
+ * ContentRedaction is how hard the gateway looks for secrets in a message body
+ * before showing it back.
+ *
+ * UNSPECIFIED is distinct from OFF on purpose, and it is the same distinction
+ * the two nullable retention columns exist for: "nobody has chosen" has to be
+ * tellable from "somebody chose none", or an operator who deliberately turned
+ * redaction off gets it switched back on by the next default change.
+ *
+ * @generated from enum panmail.v1.ContentRedaction
+ */
+export enum ContentRedaction {
+  /**
+   * @generated from enum value: CONTENT_REDACTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Show the body as stored. A deliberate choice, and the only value that
+   * shows a password in the dashboard.
+   *
+   * @generated from enum value: CONTENT_REDACTION_OFF = 1;
+   */
+  OFF = 1,
+
+  /**
+   * The default. Masks the value after a password-like label — password, pwd,
+   * passcode, passphrase — and nothing else. Narrow so that a message which
+   * merely discusses passwords survives intact.
+   *
+   * @generated from enum value: CONTENT_REDACTION_PASSWORDS = 2;
+   */
+  PASSWORDS = 2,
+
+  /**
+   * Adds one-time codes: OTP, PIN, verification and security codes. Worth as
+   * much as a password for as long as they are valid, which is usually longer
+   * than the message takes to reach the dashboard.
+   *
+   * @generated from enum value: CONTENT_REDACTION_CODES = 3;
+   */
+  CODES = 3,
+
+  /**
+   * Adds bearer tokens and API keys. The widest setting and the most likely to
+   * mask something that was not a secret.
+   *
+   * @generated from enum value: CONTENT_REDACTION_SECRETS = 4;
+   */
+  SECRETS = 4,
+}
+
+/**
+ * Describes the enum panmail.v1.ContentRedaction.
+ */
+export const ContentRedactionSchema: GenEnum<ContentRedaction> = /*@__PURE__*/
+  enumDesc(file_panmail_v1_system_settings, 0);
 
 /**
  * @generated from service panmail.v1.SystemSettingsService

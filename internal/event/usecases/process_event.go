@@ -56,6 +56,11 @@ type ProcessEventUsecase interface {
 
 	ListArchives(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]entities.ArchiveInfo, string, error)
 	GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error)
+
+	// SetRedactionSource installs where the body-redaction level is read from.
+	// Called during wiring; without it the usecase masks at the default level
+	// rather than showing everything.
+	SetRedactionSource(src RedactionSource)
 }
 
 type WebhookTrigger interface {

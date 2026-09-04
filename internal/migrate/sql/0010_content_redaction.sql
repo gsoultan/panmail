@@ -1,0 +1,12 @@
+-- How much of a stored message body the delivery-details view may show.
+--
+-- Nullable, and for the same reason log_retention_days and
+-- webhook_retention_days are: "nobody has chosen" has to be distinguishable
+-- from "somebody chose none". Collapsing them to NOT NULL DEFAULT 0 would mean
+-- an operator who deliberately turned redaction off gets it switched back on
+-- by the next change of default, silently.
+--
+-- Stored as the text form ('off', 'passwords', 'codes', 'secrets') rather than
+-- an integer, so a row read by a build that predates a new level degrades to
+-- the safe default instead of matching some other level by number.
+ALTER TABLE system_settings ADD COLUMN content_redaction TEXT;

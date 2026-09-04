@@ -8,6 +8,7 @@ SELECT base_url,
        inbound_retention_days,
        archive_retention_days,
        quarantine_retention_days,
+       content_redaction,
        updated_at
 FROM system_settings
 WHERE id = 1
