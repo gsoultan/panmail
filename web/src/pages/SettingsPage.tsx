@@ -10,6 +10,7 @@ import {
   LoadingOverlay,
   Modal,
   Paper,
+  Select,
   Stack,
   TagsInput,
   Text,
@@ -22,6 +23,7 @@ import {
   IconAlertTriangle,
   IconDatabase,
   IconDeviceFloppy,
+  IconEyeOff,
   IconInfoCircle,
   IconRefresh,
   IconSettings,
@@ -65,6 +67,10 @@ export const SettingsPage: React.FC = () => {
     initialValues: {
       baseUrl: '',
       retryPattern: [] as string[],
+      // 2 is CONTENT_REDACTION_PASSWORDS. The form never holds UNSPECIFIED:
+      // the API answers with the level actually in force, and posting 0 back
+      // would mean "leave it alone", which a visible control should not do.
+      contentRedaction: 2,
       ...retentionValues(undefined),
     },
   });
@@ -74,6 +80,7 @@ export const SettingsPage: React.FC = () => {
       form.setValues({
         baseUrl: settings.baseUrl || '',
         retryPattern: settings.retryPattern || [],
+        contentRedaction: settings.contentRedaction || 2,
         ...retentionValues(settings),
       });
     }
@@ -178,6 +185,37 @@ export const SettingsPage: React.FC = () => {
                   placeholder="e.g. 5m, 15m, 1h, 6h"
                   description="Sequence of delays for retrying soft bounces. Supported units: m (minutes), h (hours), d (days). Each entry represents the delay for the N-th retry."
                   {...form.getInputProps('retryPattern')}
+                />
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Group gap="xs" mb="xs">
+                  <IconEyeOff size={18} color="var(--mantine-color-brand-6)" />
+                  <Text fw={700} size="sm" tt="uppercase">
+                    Message Content
+                  </Text>
+                </Group>
+                <Text size="sm" c="dimmed" mb="md">
+                  Delivery details show the body of a sent message, and transactional mail
+                  carries what it carries. Masking happens in the gateway, so a redacted value
+                  never reaches the browser at all. <strong>Stored mail is never changed</strong>
+                  {' '}&mdash; only what the API returns.
+                </Text>
+                <Select
+                  label="Redact secrets in message content"
+                  allowDeselect={false}
+                  data={[
+                    { value: '1', label: 'Off — show the body as sent' },
+                    { value: '2', label: 'Passwords (default)' },
+                    { value: '3', label: 'Passwords and one-time codes' },
+                    { value: '4', label: 'Passwords, codes, tokens and API keys' },
+                  ]}
+                  description="Only the value after a label is masked, so a message that merely mentions a password is left intact."
+                  value={String(form.values.contentRedaction ?? 2)}
+                  onChange={(v) => form.setFieldValue('contentRedaction', Number(v ?? 2))}
+                  disabled={isLoading || mutation.isPending}
                 />
               </Box>
 

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gsoultan/panmail/internal/redact"
 	"github.com/gsoultan/panmail/internal/system_settings/entities"
 	"github.com/gsoultan/panmail/internal/system_settings/repositories"
 )
@@ -112,6 +113,20 @@ func (p *Provider) RetryPattern() []string {
 		return nil
 	}
 	return s.RetryPattern
+}
+
+// ContentRedaction is the redaction level in force.
+//
+// It resolves through redact.LevelFromString, so an unset column and an
+// unrecognised one both give the safe default rather than Off. That matters on
+// a rolled-back deploy: a row written by a newer build naming a level this one
+// does not know must not read as "show everything".
+func (p *Provider) ContentRedaction() redact.Level {
+	s := p.current.Load()
+	if s == nil {
+		return redact.Passwords
+	}
+	return redact.LevelFromString(s.ContentRedaction)
 }
 
 // trimTrailingSlashes loops rather than using a regexp anchored at one end.

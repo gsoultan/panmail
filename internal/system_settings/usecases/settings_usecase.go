@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	"github.com/gsoultan/panmail/internal/redact"
 	"github.com/gsoultan/panmail/internal/retention"
 	"github.com/gsoultan/panmail/internal/system_settings/entities"
 	"github.com/gsoultan/panmail/internal/system_settings/repositories"
@@ -50,6 +51,10 @@ func (u *settingsUsecase) GetSettings(ctx context.Context) (*panmailv1.SystemSet
 			settings.RetryPattern = stored.RetryPattern
 		}
 	}
+	// The resolved level, never the raw column, for the same reason retention
+	// is resolved: the page has to show what the gateway is enforcing. An unset
+	// column shows as PASSWORDS because that is what is actually happening.
+	settings.ContentRedaction = redactionToProto(redact.LevelFromString(storedRedaction(stored)))
 
 	// Always the resolved policy, never the raw row. The page has to show what
 	// panmail is actually enforcing, and it is also what the form posts back —
@@ -77,6 +82,14 @@ func (u *settingsUsecase) UpdateSettings(ctx context.Context, s *panmailv1.Syste
 	stored.BaseURL = s.BaseUrl
 	stored.RetryPattern = s.RetryPattern
 	policyOf(s).Apply(stored)
+
+	// UNSPECIFIED from a client means "leave it alone", not "reset to default".
+	// Every other field here is full-replace, and this one deliberately is not:
+	// a caller updating base_url must not be able to turn redaction off by
+	// omission. See the note on partial updates in the retention memory.
+	if s.ContentRedaction != panmailv1.ContentRedaction_CONTENT_REDACTION_UNSPECIFIED {
+		stored.ContentRedaction = redactionFromProto(s.ContentRedaction).String()
+	}
 
 	if err := u.repo.Save(ctx, stored); err != nil {
 		return nil, err
@@ -116,4 +129,41 @@ func applyPolicy(s *panmailv1.SystemSettings, p retention.Policy) {
 	s.InboundRetentionDays = int32(p.InboundDays)
 	s.ArchiveRetentionDays = int32(p.ArchiveDays)
 	s.QuarantineRetentionDays = int32(p.QuarantineDays)
+}
+
+// storedRedaction reads the raw column, tolerating a nil row on a first run.
+func storedRedaction(s *entities.Settings) string {
+	if s == nil {
+		return ""
+	}
+	return s.ContentRedaction
+}
+
+// redactionFromProto maps the wire enum onto the engine's level.
+func redactionFromProto(v panmailv1.ContentRedaction) redact.Level {
+	switch v {
+	case panmailv1.ContentRedaction_CONTENT_REDACTION_OFF:
+		return redact.Off
+	case panmailv1.ContentRedaction_CONTENT_REDACTION_CODES:
+		return redact.Codes
+	case panmailv1.ContentRedaction_CONTENT_REDACTION_SECRETS:
+		return redact.Secrets
+	default:
+		return redact.Passwords
+	}
+}
+
+// redactionToProto is the inverse. UNSPECIFIED is never returned: the settings
+// page shows what is in force, and "unspecified" is not a behaviour.
+func redactionToProto(l redact.Level) panmailv1.ContentRedaction {
+	switch l {
+	case redact.Off:
+		return panmailv1.ContentRedaction_CONTENT_REDACTION_OFF
+	case redact.Codes:
+		return panmailv1.ContentRedaction_CONTENT_REDACTION_CODES
+	case redact.Secrets:
+		return panmailv1.ContentRedaction_CONTENT_REDACTION_SECRETS
+	default:
+		return panmailv1.ContentRedaction_CONTENT_REDACTION_PASSWORDS
+	}
 }

@@ -96,4 +96,44 @@ message SystemSettings {
   // in the mail.held event; moving it afterwards would break a date this
   // gateway already promised.
   int32 quarantine_retention_days = 10;
+
+  // How much of a stored message body the delivery-details view is allowed to
+  // show. Transactional mail carries the things it carries — a password reset
+  // sends a password — and anyone who can open the dashboard can read it back
+  // months later.
+  //
+  // Redaction happens in the gateway, not the browser: the body is served over
+  // the API, so masking it in the UI would leave the secret in the response for
+  // anyone who opens the network tab. Stored mail is never rewritten; only what
+  // leaves through the API is masked.
+  ContentRedaction content_redaction = 11;
+}
+
+// ContentRedaction is how hard the gateway looks for secrets in a message body
+// before showing it back.
+//
+// UNSPECIFIED is distinct from OFF on purpose, and it is the same distinction
+// the two nullable retention columns exist for: "nobody has chosen" has to be
+// tellable from "somebody chose none", or an operator who deliberately turned
+// redaction off gets it switched back on by the next default change.
+enum ContentRedaction {
+  CONTENT_REDACTION_UNSPECIFIED = 0;
+
+  // Show the body as stored. A deliberate choice, and the only value that
+  // shows a password in the dashboard.
+  CONTENT_REDACTION_OFF = 1;
+
+  // The default. Masks the value after a password-like label — password, pwd,
+  // passcode, passphrase — and nothing else. Narrow so that a message which
+  // merely discusses passwords survives intact.
+  CONTENT_REDACTION_PASSWORDS = 2;
+
+  // Adds one-time codes: OTP, PIN, verification and security codes. Worth as
+  // much as a password for as long as they are valid, which is usually longer
+  // than the message takes to reach the dashboard.
+  CONTENT_REDACTION_CODES = 3;
+
+  // Adds bearer tokens and API keys. The widest setting and the most likely to
+  // mask something that was not a secret.
+  CONTENT_REDACTION_SECRETS = 4;
 }

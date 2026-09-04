@@ -18,6 +18,7 @@ import (
 	evententities "github.com/gsoultan/panmail/internal/event/repositories/entities"
 	eventstores "github.com/gsoultan/panmail/internal/event/repositories/stores"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores"
+	"github.com/gsoultan/panmail/internal/redact"
 	"github.com/gsoultan/panmail/pkg/emailutil"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/load"
@@ -32,6 +33,7 @@ type processEventUsecase struct {
 	outboxRepo     emailstores.OutboxRepository
 	providerRepo   providerstores.Repository
 	webhookTrigger WebhookTrigger
+	redaction      RedactionSource
 
 	sentCounter atomic.Uint64
 	sentPerSec  atomic.Pointer[float64]
@@ -43,6 +45,15 @@ type processEventUsecase struct {
 	load15      atomic.Pointer[float64]
 
 	providerNames sync.Map // cache: tenantID+providerID -> providerName
+}
+
+// RedactionSource supplies the level to mask a stored body at on the way out.
+//
+// Narrow, and read per call rather than captured, so a change on the settings
+// page reaches this without a restart — system_settings.Provider satisfies it
+// and refreshes on its own timer.
+type RedactionSource interface {
+	ContentRedaction() redact.Level
 }
 
 func NewProcessEventUsecase(
@@ -452,6 +463,13 @@ func (u *processEventUsecase) GetEvent(ctx context.Context, tenantID string, id 
 		return event, nil, nil
 	}
 
+	// The one place a stored body becomes a wire message, and therefore the one
+	// place redaction has to happen. Masking in the dashboard instead would
+	// leave the secret in this response for anyone who opens the network tab.
+	//
+	// The stored message is untouched: m is the repository's value and only the
+	// copy built here is masked.
+	level := u.redactionLevel()
 	message := &panmailv1.EmailMessage{
 		Id:          m.ID,
 		TenantId:    m.TenantID,
@@ -460,9 +478,9 @@ func (u *processEventUsecase) GetEvent(ctx context.Context, tenantID string, id 
 		To:          m.To,
 		Cc:          m.Cc,
 		Bcc:         m.Bcc,
-		Subject:     m.Subject,
-		BodyHtml:    m.BodyHTML,
-		BodyText:    m.BodyText,
+		Subject:     redact.Subject(m.Subject, level),
+		BodyHtml:    redact.HTML(m.BodyHTML, level),
+		BodyText:    redact.Text(m.BodyText, level),
 		Attachments: m.Attachments,
 		CreatedAt:   timestamppb.New(m.CreatedAt),
 	}
@@ -494,4 +512,20 @@ func (u *processEventUsecase) ListArchives(ctx context.Context, tenantID string,
 
 func (u *processEventUsecase) GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error) {
 	return u.repo.GetArchive(ctx, tenantID, id)
+}
+
+// SetRedactionSource installs the source of the redaction level. Called during
+// wiring, before the gateway serves anything.
+func (u *processEventUsecase) SetRedactionSource(src RedactionSource) {
+	u.redaction = src
+}
+
+// redactionLevel is the level in force. A missing source means redaction rather
+// than exposure, so a wiring mistake fails closed — the same reason
+// redact.Level's zero value is Passwords and not Off.
+func (u *processEventUsecase) redactionLevel() redact.Level {
+	if u.redaction == nil {
+		return redact.Passwords
+	}
+	return u.redaction.ContentRedaction()
 }
