@@ -314,6 +314,45 @@ is keyed by provider and UID, or by Message-ID within a tenant, so whichever
 connection sees it first wins and the rest are no-ops. This is a flag about
 connection count, not about correctness.
 
+## The outbox is the highest-churn table in the schema
+
+Every delivered message is inserted and then deleted. Nothing else here does
+that at volume, so `outbox` accumulates dead tuples faster than any other table
+and is the one worth tuning autovacuum for.
+
+Measured after draining a million-message backlog: **78 MB of table with zero
+live rows**, waiting on autovacuum to reclaim it. That is normal PostgreSQL
+behaviour and not a fault — but at a million messages a day it is 78 MB of bloat
+per million, and stock autovacuum settings are scaled for tables that mostly
+grow rather than tables that churn.
+
+The stock trigger is `autovacuum_vacuum_scale_factor = 0.2` — vacuum when 20% of
+the table is dead. On a queue that is usually near-empty, 20% of "near-empty" is
+a handful of rows, so it fires constantly and does little; during a backlog
+drain, 20% of a million is 200,000 dead rows before it starts. Neither is what
+you want. Pin it to a row count instead:
+
+```sql
+ALTER TABLE outbox SET (
+  autovacuum_vacuum_scale_factor = 0.0,
+  autovacuum_vacuum_threshold = 10000,
+  autovacuum_vacuum_cost_delay = 2
+);
+```
+
+That vacuums every 10,000 dead rows regardless of table size, which tracks churn
+rather than volume. The cost delay keeps it from competing with the send path
+for I/O.
+
+Two things follow from the same measurement:
+
+- **`pg_total_relation_size('outbox')` is not the queue depth.** Alert on
+  `panmail_outbox_pending`, which counts rows. A large table with an empty queue
+  is bloat awaiting vacuum, and the two need different responses.
+- **The claim index shares the churn.** `idx_outbox_claimable` is partial and
+  covers only claimable rows, so it stays small — but it is still rewritten as
+  rows move through, and it is vacuumed with the table.
+
 ## Storage is what decides whether a deployment survives its volume
 
 Measured over a four-hour run of 287,700 messages: **~4.7 KB per message**
