@@ -287,9 +287,32 @@ provider and UID, or by Message-ID within a tenant — so this is correct, but i
 costs one IMAP connection per instance per provider, and some servers cap
 concurrent connections per account.
 
-If that matters, run inbound on one instance. There is no flag for it yet; the
-practical approach is to configure IMAP providers in a tenant served by a single
-instance.
+If that matters, run inbound on a subset:
+
+```sh
+panmail -inbound=false    # on the replicas that only send
+```
+
+It defaults to **on**, because the alternative is a deployment that silently
+stops receiving mail the first time somebody forgets the flag. Turn it off
+deliberately, on the instances that do not need it.
+
+An instance with inbound off **does not publish `panmail_imap_idle_sessions`**
+at all, rather than publishing zero. Zero is the signal that inbound has
+silently stopped, so a send-only replica reporting it would look exactly like
+the failure the gauge exists to catch — and an alert on "no sessions while IMAP
+providers are configured" would fire on every instance that was told not to
+receive. Alert on the absence of a *receiving* instance, not on the metric being
+absent here.
+
+The `/inbound/` webhook endpoint is unaffected: it is an HTTP handler on the
+public mux and still accepts deliveries on every instance. This flag governs
+only the IMAP poll and IDLE connections that the gateway opens outward.
+
+Running inbound on more than one instance stays correct either way — a message
+is keyed by provider and UID, or by Message-ID within a tenant, so whichever
+connection sees it first wins and the rest are no-ops. This is a flag about
+connection count, not about correctness.
 
 ## Verifying a deployment
 
