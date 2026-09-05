@@ -904,3 +904,21 @@ func (s *store) Close() error {
 func (s *store) Checkpoint(dir string) error {
 	return s.db.Checkpoint(dir)
 }
+
+// DiskUsage reports how much disk this store is holding, in bytes.
+//
+// Published as a gauge because retention is the thing operators forget and
+// disk is where forgetting it lands. Most classes default to keeping data
+// forever — deliberately, since a version bump must not start deleting what
+// nobody agreed to lose — so growth here is expected rather than a fault, and
+// the only honest protection is making it visible before the volume runs out.
+//
+// Pebble's own figure rather than a directory walk: it counts the WAL and
+// files mid-compaction, which a walk either misses or double-counts, and it is
+// a field read rather than a stat of every SSTable.
+func (s *store) DiskUsage() int64 {
+	if s.db == nil {
+		return 0
+	}
+	return int64(s.db.Metrics().DiskSpaceUsage())
+}

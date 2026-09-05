@@ -223,3 +223,12 @@ func (s *store) Close() error {
 func (s *store) Checkpoint(dir string) error {
 	return s.db.Checkpoint(dir)
 }
+
+// DiskUsage reports how much disk this store is holding, in bytes.
+// See the note on the event store's DiskUsage for why this is published.
+func (s *store) DiskUsage() int64 {
+	if s.db == nil {
+		return 0
+	}
+	return int64(s.db.Metrics().DiskSpaceUsage())
+}
