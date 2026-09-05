@@ -123,16 +123,45 @@ func realSupervisor(t *testing.T, host string, port int, user string) (*IdleSupe
 // Delivering one message and waiting for it turns the guess into an
 // observation. When the probe arrives, IDLE is demonstrably listening, and
 // whatever the test delivers next cannot land in the gap.
+// Two things about it are load bearing and were both learned by getting them
+// wrong:
+//
+// It waits for a count *increase*, not a fixed total, so it works on a rebuilt
+// session as well as a fresh one. The absolute form returned instantly when the
+// usecase had already received something, proving nothing about the new
+// session — the same shape as a fixture that leaves the field it checks at zero.
+//
+// It probes repeatedly rather than once. A single probe plus a wait is still a
+// guess about how long the gap is, just a differently-shaped one: on a rebuilt
+// session the probe lands before IDLE is re-issued, becomes backlog, and is
+// never announced. Retrying removes the guess — whichever probe lands after
+// IDLE is issued gets announced, and the earlier ones are harmless.
+//
+// Each probe needs its own subject because deliver derives the Message-ID from
+// it, and inbound deduplicates on Message-ID within a tenant. Reusing one
+// subject means every retry after the first is silently discarded and the count
+// never moves, which looks exactly like IDLE not listening.
 func awaitIdleListening(t *testing.T, s *IdleSupervisor, usecase *recordingUsecase, smtpAddr, user string) int {
 	t.Helper()
 
+	before := usecase.count()
 	eventually(t, "the IDLE session goroutine", func() bool { return s.Sessions() == 1 })
-	deliver(t, smtpAddr, user, "idle-probe", "body")
-	eventuallyWithin(t, 20*time.Second,
-		"IDLE to announce the probe, which is what proves it is listening",
-		func() bool { return usecase.count() >= 1 })
 
-	return 1
+	deadline := time.Now().Add(30 * time.Second)
+	for attempt := 0; time.Now().Before(deadline); attempt++ {
+		deliver(t, smtpAddr, user, fmt.Sprintf("idle-probe-%d-%d", before, attempt), "body")
+
+		probeBy := time.Now().Add(3 * time.Second)
+		for time.Now().Before(probeBy) {
+			if usecase.count() > before {
+				return usecase.count()
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+
+	t.Fatal("IDLE never announced a probe, so the session is not listening")
+	return 0
 }
 
 func TestIdleDeliversAMessageFromARealServer(t *testing.T) {
@@ -184,15 +213,14 @@ func TestIdleRecoversWhenTheServerGoesAway(t *testing.T) {
 	}
 	s.mu.Unlock()
 
-	eventually(t, "the session to be rebuilt", func() bool { return s.Sessions() == 1 })
+	// The rebuilt session has to be proven listening the same way the first one
+	// was. This slept 1500ms instead, which is the guess awaitIdleListening
+	// exists to replace — it held on a laptop and failed on a loaded CI runner,
+	// which is what it did here on 2026-09-05. Sessions() counts a goroutine,
+	// not an issued IDLE, and IDLE announces arrivals rather than backlog, so a
+	// message delivered inside that gap lands unannounced and is never seen.
+	before := awaitIdleListening(t, s, usecase, smtpAddr, user)
 
-	// Sessions() counts a goroutine that exists, not one that has finished
-	// connecting, authenticating, selecting the mailbox and issued IDLE. A
-	// message delivered inside that window is already present when IDLE
-	// starts, and IDLE announces arrivals rather than backlog.
-	time.Sleep(1500 * time.Millisecond)
-
-	before := usecase.count()
 	deliver(t, smtpAddr, user, "after-the-drop", "body")
 	eventually(t, "a message after the reconnect", func() bool { return usecase.count() > before })
 }
