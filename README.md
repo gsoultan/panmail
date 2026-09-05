@@ -59,7 +59,7 @@ Panmail is designed with a "Security First" mindset:
 Panmail follows a clean, layered architecture:
 `Transports` → `Middlewares` → `Endpoints` → `Services` → `Usecases` → `Repositories`.
 
-- **Backend**: Go 1.26+
+- **Backend**: Go 1.27+
 - **Frontend**: React 19, TypeScript, Mantine v9, Vite, TanStack Query/Router
 - **API**: ConnectRPC / gRPC
 - **Database**: PostgreSQL or SQLite
@@ -69,7 +69,7 @@ Panmail follows a clean, layered architecture:
 
 ### Prerequisites
 
-- Go 1.26.3
+- Go 1.27.0 (the version `go.mod` pins)
 - Bun (for frontend builds)
 - Buf (for gRPC generation)
 - PostgreSQL or SQLite
