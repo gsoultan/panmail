@@ -227,6 +227,16 @@ func main() {
 	shadowEventsFlag := flag.Bool("shadow-events", false,
 		"Also write delivery events to the shared database (see docs/design/0002-shared-event-store.md)")
 
+	// Step three: read them from there too. Implies -shadow-events, because a
+	// store that is read but not written is empty.
+	//
+	// Separate from the shadow flag rather than replacing it, so the sequencing
+	// in the design doc survives contact with a real deployment: run with the
+	// shadow on, compare, and only then turn this on. Turning it off again is a
+	// restart, and Pebble still has everything because it is still written.
+	sharedEventsFlag := flag.Bool("shared-events", false,
+		"Read delivery events and stored messages from the shared database (implies -shadow-events)")
+
 	inboundFlag := flag.Bool("inbound", true,
 		"Receive mail on this instance (IMAP poll and IDLE). Set -inbound=false on send-only replicas")
 	// Loopback by default. Queue depths and send volumes are operational
@@ -386,15 +396,38 @@ func main() {
 		slog.Error("failed to open event store", "error", err)
 		os.Exit(1)
 	}
-	defer eventRepo.Close()
+	// Closed through a closure rather than `defer eventRepo.Close()`, because a
+	// deferred method call evaluates its receiver immediately: it would capture
+	// the Pebble store and keep closing that after the wrapping below replaces
+	// eventRepo. The composite's Close is what stops the writer and flushes what
+	// it is still holding, so binding the old value would silently drop the last
+	// batch of events on every shutdown.
+	defer func() { _ = eventRepo.Close() }()
 
-	// Wrapped here, immediately after the store is opened and before anything
-	// takes a reference to it, so every writer goes through the shadow rather
-	// than only the ones wired below.
+	// Wired here, immediately after the local store is opened and before
+	// anything takes a reference to it, so every reader and writer below gets
+	// the same repository.
 	var shadowEvents *eventpostgres.Writer
-	if *shadowEventsFlag {
+	switch {
+	case *sharedEventsFlag:
+		// Step three. Events and stored messages come from the shared database;
+		// archives and resource metrics stay local, because a file on this
+		// disk and a measurement of this process mean nothing pooled.
 		shadowEvents = eventpostgres.NewWriter(conn)
-		eventRepo = eventrepos.WithShadow(eventRepo, shadowEvents)
+		eventRepo = eventpostgres.NewStore(conn, eventRepo, shadowEvents)
+		slog.Info("delivery events and stored messages are read from the shared database",
+			"note", "archives and resource metrics remain local to this instance")
+
+	case *shadowEventsFlag:
+		// Step two. Written to both, read from Pebble.
+		//
+		// The shadow is the whole Store, not just the event writer: it has to
+		// cover stored bodies as well, or the shared store ends up with every
+		// timeline and no message content, and step three produces a working
+		// dashboard with a blank Content tab.
+		shadowEvents = eventpostgres.NewWriter(conn)
+		eventRepo = eventrepos.WithShadow(eventRepo,
+			eventpostgres.NewStore(conn, eventRepo, shadowEvents))
 		slog.Info("delivery events are being written to the shared database as well",
 			"note", "nothing reads them yet; compare panmail_event_shadow_written_total with the dashboard's own counts")
 	}
