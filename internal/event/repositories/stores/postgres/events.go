@@ -184,6 +184,21 @@ func (s *Store) GetMetrics(ctx context.Context, tenantID string, startTime, endT
 		return nil, err
 	}
 
+	// All-time reads the counters, not the events.
+	//
+	// Two reasons, both measured. count(*) over ten million events is a
+	// parallel sequential scan and 965 ms on every dashboard load, where a
+	// counter read is a primary-key lookup. And count(*) counts *retained*
+	// rows, so the headline figure would drop the first time retention pruned
+	// — while the Pebble store this replaced kept lifetime totals its
+	// retention pass never touched. Matching that is the point.
+	if startTime.IsZero() && endTime.IsZero() {
+		return s.lifetimeMetrics(ctx, conn, tenantID)
+	}
+
+	// A window is answered from the events, through the (tenant_id, timestamp)
+	// index, and costs what the window holds rather than what the table does:
+	// 101 ms for a day of a ten-million-row table.
 	where := []string{"tenant_id = $1"}
 	args := []any{tenantID}
 	if !startTime.IsZero() {
@@ -212,6 +227,27 @@ func (s *Store) GetMetrics(ctx context.Context, tenantID string, startTime, endT
 		}
 		// The keys the dashboard uses are the enum name without its prefix,
 		// which is what the Pebble store wrote.
+		out[strings.TrimPrefix(name, "EMAIL_EVENT_TYPE_")] = count
+	}
+	return out, rows.Err()
+}
+
+// lifetimeMetrics reads the counters maintained by the writer.
+func (s *Store) lifetimeMetrics(ctx context.Context, conn *sql.DB, tenantID string) (map[string]int64, error) {
+	rows, err := conn.QueryContext(ctx,
+		`SELECT type, count FROM email_event_counters WHERE tenant_id = $1`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[string]int64)
+	for rows.Next() {
+		var name string
+		var count int64
+		if err := rows.Scan(&name, &count); err != nil {
+			return nil, err
+		}
 		out[strings.TrimPrefix(name, "EMAIL_EVENT_TYPE_")] = count
 	}
 	return out, rows.Err()

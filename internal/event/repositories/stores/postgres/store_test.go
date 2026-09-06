@@ -281,3 +281,78 @@ func TestCloseClosesTheLocalStore(t *testing.T) {
 		t.Error("the local store was not closed")
 	}
 }
+
+// The all-time figures come from the counters, and the counters are lifetime
+// totals. Retention prunes events and must leave them alone — the Pebble store
+// this replaces never touched its metrics keys during a prune, so "Emails Sent"
+// means how many were ever sent, not how many rows survive.
+//
+// count(*) would have dropped here, and the headline figure falling after a
+// retention pass is both wrong and alarming.
+func TestLifetimeCountersSurviveRetention(t *testing.T) {
+	s, w := newStore(t)
+	old := time.Now().UTC().AddDate(0, 0, -30)
+	writeEvents(t, s, w,
+		ev("stale", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, old),
+		ev("fresh", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, time.Now().UTC()))
+
+	before, err := s.GetMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("GetMetrics: %v", err)
+	}
+	if before["SENT"] != 2 {
+		t.Fatalf("SENT = %d before retention; want 2", before["SENT"])
+	}
+
+	if _, err := s.TruncateBefore(t.Context(), time.Now().UTC().AddDate(0, 0, -1)); err != nil {
+		t.Fatalf("TruncateBefore: %v", err)
+	}
+
+	after, err := s.GetMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("GetMetrics: %v", err)
+	}
+	if after["SENT"] != 2 {
+		t.Errorf("SENT = %d after retention pruned one event; want the lifetime total to hold at 2",
+			after["SENT"])
+	}
+}
+
+// A window still counts rows, because a window is a question about what
+// happened in it — and after retention, what happened in a pruned window is
+// nothing. That is the difference from the lifetime figure, and it is
+// deliberate rather than an inconsistency.
+func TestAWindowCountsRowsRatherThanTheCounter(t *testing.T) {
+	s, w := newStore(t)
+	now := time.Now().UTC()
+	writeEvents(t, s, w,
+		ev("old", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, now.AddDate(0, 0, -10)),
+		ev("new", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, now))
+
+	got, err := s.GetMetrics(t.Context(), storetest.TenantA, now.AddDate(0, 0, -1), now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("GetMetrics: %v", err)
+	}
+	if got["SENT"] != 1 {
+		t.Errorf("SENT in the last day = %d; want 1, not the lifetime 2", got["SENT"])
+	}
+}
+
+// Counters are per tenant. One tenant's traffic must never appear in another's
+// headline figures, and a counter table makes that a primary key rather than a
+// filter somebody could forget.
+func TestCountersAreScopedToTheTenant(t *testing.T) {
+	s, w := newStore(t)
+	mine := ev("mine", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, time.Now().UTC())
+	theirs := ev("theirs", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, time.Now().UTC())
+	theirs.TenantID = storetest.TenantB
+	writeEvents(t, s, w, mine, theirs)
+
+	got, err := s.GetMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("GetMetrics: %v", err)
+	}
+	if got["SENT"] != 1 {
+		t.Errorf("SENT = %d; want only this tenant's event", got["SENT"])
+	}
+}

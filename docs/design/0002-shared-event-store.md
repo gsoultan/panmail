@@ -185,12 +185,48 @@ silently, as an empty chart rather than an error. The bucket is a `substr` of
 the ISO-ordered prefix instead. This is the same trap `parseStoredTime` exists
 for on the outbox, met a second time in a different place.
 
+## 9. What ten million rows found
+
+Measured after step three, on a real PostgreSQL 16 loaded with **10,000,000
+events**:
+
+| query | plan | time |
+| :--- | :--- | :--- |
+| `List`, first page | `Index Scan` | **0.59 ms** |
+| `GetMetrics`, 24-hour window | `Index Scan`, 86k rows | **101 ms** |
+| `GetMetrics`, all time | **Parallel Seq Scan, 10M rows** | **965 ms** |
+
+The last row is a regression this design introduced and did not anticipate. The
+Pebble store kept incrementing counters under `metrics:{tenant}:{type}` and
+answered the all-time figures in O(1); replacing them with `count(*)` made every
+dashboard load a full scan.
+
+**And it counted the wrong thing.** Pebble's retention prunes event keys and
+never touches the metrics keys, so those counters are *lifetime* totals —
+"Emails Sent" means how many were ever sent. `count(*)` counts rows that
+survive, so the headline figure would have dropped the first time retention ran.
+Alarming, and wrong for a lifetime total.
+
+Both are one fix: `email_event_counters`, migration `0014`, incremented once per
+(tenant, type) per flush rather than per event, and deliberately never
+decremented. **965 ms → 0.022 ms.**
+
+A window still counts rows, because a window is a question about what happened
+inside it, and after a prune the honest answer about a pruned window is
+"nothing". The two figures differ on purpose.
+
+Worth noting how this was missed: the dual-write comparison in step two could
+not have caught it. Both stores agreed exactly — because no retention ran during
+the comparison, and the table was small enough that the scan was instant. It
+took loading ten million rows and thinking about what happens after a prune.
+
 ## 7. Open questions
 
 - **Archives.** Expired events are written to per-tenant JSONL archives before
   deletion. That path reads from Pebble and would move with it.
-- **`GetPerformanceMetrics`** aggregates from the event store. Whether it stays
-  a query or becomes a materialised rollup depends on how it behaves at tens of
-  millions of rows, which is not measured here.
+- ~~`GetPerformanceMetrics` aggregates from the event store~~ — **wrong, and
+  answered.** It reads `GetResourceHistory` and the Go runtime, never the event
+  table, so the row count does not reach it. The function that did have the
+  problem was `GetMetrics`, and it is measured and fixed below.
 - **Do the resource metrics move too?** `WriteResourceMetric` shares the store
   but is genuinely per-instance data. It should probably stay.
