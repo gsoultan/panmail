@@ -49,7 +49,9 @@ import (
 	"github.com/gsoultan/panmail/internal/emailfilter"
 	emailfilterservices "github.com/gsoultan/panmail/internal/emailfilter/services"
 	emailfilterpostgres "github.com/gsoultan/panmail/internal/emailfilter/stores/postgres"
+	eventrepos "github.com/gsoultan/panmail/internal/event/repositories/stores"
 	eventstores "github.com/gsoultan/panmail/internal/event/repositories/stores/pebble"
+	eventpostgres "github.com/gsoultan/panmail/internal/event/repositories/stores/postgres"
 	eventservices "github.com/gsoultan/panmail/internal/event/services"
 	eventhttp "github.com/gsoultan/panmail/internal/event/transports/http"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
@@ -215,6 +217,16 @@ func main() {
 	// tolerable: inbound identifies a message by its own Message-ID, so
 	// whichever connection sees it first wins and the rest are no-ops. This is
 	// about the connection count, not about correctness.
+	// Step two of docs/design/0002-shared-event-store.md: write delivery events
+	// to the shared database as well as to this instance's Pebble store, so the
+	// two can be compared under real traffic. Nothing reads the shared copy.
+	//
+	// Off by default, because a flag that changes what a deployment writes
+	// should be chosen rather than inherited. Turning it on cannot affect
+	// sending: the writer never blocks and never returns an error.
+	shadowEventsFlag := flag.Bool("shadow-events", false,
+		"Also write delivery events to the shared database (see docs/design/0002-shared-event-store.md)")
+
 	inboundFlag := flag.Bool("inbound", true,
 		"Receive mail on this instance (IMAP poll and IDLE). Set -inbound=false on send-only replicas")
 	// Loopback by default. Queue depths and send volumes are operational
@@ -376,6 +388,17 @@ func main() {
 	}
 	defer eventRepo.Close()
 
+	// Wrapped here, immediately after the store is opened and before anything
+	// takes a reference to it, so every writer goes through the shadow rather
+	// than only the ones wired below.
+	var shadowEvents *eventpostgres.Writer
+	if *shadowEventsFlag {
+		shadowEvents = eventpostgres.NewWriter(conn)
+		eventRepo = eventrepos.WithShadow(eventRepo, shadowEvents)
+		slog.Info("delivery events are being written to the shared database as well",
+			"note", "nothing reads them yet; compare panmail_event_shadow_written_total with the dashboard's own counts")
+	}
+
 	inboundRepo, err := inboundstores.NewStore(*inboundDirFlag)
 	if err != nil {
 		slog.Error("failed to open inbound store", "error", err)
@@ -482,6 +505,14 @@ func main() {
 	// gateway would go on serving the values it happened to hold at boot, and
 	// no health check can see that.
 	runWorker(&workers, workerCtx, "settings-refresh", func() { settingsProvider.Start(workerCtx) })
+
+	// The shadow writer's own loop. Supervised like the rest: if it stopped,
+	// the shared table would quietly stop filling while Pebble kept working,
+	// and the comparison this step exists for would silently be measuring
+	// nothing.
+	if shadowEvents != nil {
+		runWorker(&workers, workerCtx, "event-shadow", func() { shadowEvents.Start(workerCtx) })
+	}
 
 	// One worker owns every retention. It reads the configuration on each pass
 	// and hands the outbox and webhook queues their own cutoffs, so all seven
@@ -613,6 +644,27 @@ func main() {
 		if err := metrics.ObserveGauge("imap_idle_sessions", "Open IMAP IDLE connections",
 			func() int64 { return int64(idleSupervisor.Sessions()) }); err != nil {
 			slog.Error("failed to register idle metrics", "error", err)
+		}
+	}
+
+	// What the shadow writer has done, which is what makes step two a
+	// comparison rather than a hope.
+	//
+	// written is the number to hold against the dashboard's own counts.
+	// dropped and failed are the two ways they can legitimately differ:
+	// dropped means the buffer filled and the send path declined to wait,
+	// failed means the database refused a batch. Both are expected to be zero,
+	// and a non-zero value is the explanation for a gap rather than a bug in
+	// the comparison.
+	if shadowEvents != nil {
+		for name, read := range map[string]func() int64{
+			"event_shadow_written_total": func() int64 { w, _, _ := shadowEvents.Stats(); return w },
+			"event_shadow_dropped_total": func() int64 { _, d, _ := shadowEvents.Stats(); return d },
+			"event_shadow_failed_total":  func() int64 { _, _, f := shadowEvents.Stats(); return f },
+		} {
+			if err := metrics.ObserveGauge(name, "Delivery events written to the shared store", read); err != nil {
+				slog.Error("failed to register event shadow metric", "error", err, "metric", name)
+			}
 		}
 	}
 
