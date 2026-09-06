@@ -167,6 +167,36 @@ the instance serving the request has seen. Point Prometheus at every instance's
 `/metrics` and aggregate there rather than expecting one instance to hold the
 whole picture.
 
+### Delivery events can move to the shared database
+
+That per-instance dashboard is a correctness problem at more than one instance,
+and there are two flags for moving past it. Both default to off, and both are
+reversible with a restart, because Pebble is still written either way.
+
+| flag | effect |
+| :--- | :--- |
+| `-shadow-events` | writes events **and stored messages** to the database as well; reads stay on Pebble |
+| `-shared-events` | reads them from the database; implies the above |
+
+**Run the first for a while before the second.** That is the whole point of
+having two: with the shadow on, `panmail_event_shadow_written_total` can be held
+against what the dashboard reports, and `..._dropped_total` and
+`..._failed_total` are the two ways they can legitimately differ. Both should be
+zero. Switching reads before the counts have had time to disagree is skipping
+the only step that can tell you whether they do.
+
+`-event-dir` is still required with both flags on. The Pebble store keeps two
+things that are genuinely per-instance and would be meaningless pooled: the
+JSONL archives, which are files on this instance's disk, and the resource
+metrics, which describe this process. A CPU figure averaged across three
+gateways describes none of them.
+
+Sizing note: measured at **~341 bytes per event** with both indexes, so roughly
+1 KB per message on the database volume rather than the local disk. That moves
+the growth conversation from `panmail_store_bytes_events` to the database, where
+it is easier to alert on. `docs/design/0002-shared-event-store.md` has the
+throughput measurements behind the change.
+
 ### The settings file used to be in both lists
 
 `config.yaml` holds shared values — `auth.symmetric_key`, the database block —

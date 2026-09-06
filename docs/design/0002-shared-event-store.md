@@ -1,6 +1,6 @@
 # 0002 — Moving the event store off each instance
 
-**Status:** Scoped and measured. No implementation yet.
+**Status:** Steps one to three implemented behind flags. Step four deliberately not taken — see §8.
 **Scope:** Whether delivery events should move from per-instance Pebble to the
 shared SQL database, and what it would cost.
 
@@ -128,6 +128,62 @@ Sequencing, so a bad step is reversible:
 
 Step 2 is what makes this safe, and it is the step to resist skipping: it is the
 only point at which the two stores can be compared against the same traffic.
+
+## 8. What was actually built, and how step four changed
+
+Steps one to three are done and behind two flags:
+
+| flag | what it does |
+| :--- | :--- |
+| `-shadow-events` | writes events **and stored messages** to both stores; reads stay on Pebble |
+| `-shared-events` | reads events and messages from the shared store; implies the above |
+
+Both default to off, and turning either off is a restart — Pebble is still
+written in both modes, so nothing is one-way.
+
+**Step four is not "stop writing Pebble", and this document was wrong to say
+so.** `events.db` holds three things, not one:
+
+| | where it ended up | why |
+| :--- | :--- | :--- |
+| delivery events | shared database | every instance must agree |
+| stored message bodies | shared database | the Content tab is per-instance without it |
+| JSONL archives | **stays local** | files on this instance's disk |
+| resource metrics | **stays local** | measurements of *this* process |
+
+So `-event-dir` cannot be dropped from the per-instance list. It is still a
+Pebble store; it just holds less. Pooling an archive across instances would
+mean pooling a filesystem, and a CPU reading averaged across three gateways
+describes none of them.
+
+Stopping the Pebble event writes entirely is a fifth step nobody should take
+until the shared store has run as the read path for long enough to trust,
+because it is the one step that cannot be reversed by a restart.
+
+### The gap end-to-end testing found
+
+Shadowing was written for events alone. That produced a shared store with every
+timeline and no bodies — and switching reads to it gave a working dashboard
+with a **blank Content tab** for everything written before the switch. Caught by
+running the two phases against one gateway and opening a message, not by any
+test.
+
+`ShadowWriter` covers both halves now. The lesson is the general one: a shadow
+that covers part of what a reader needs is not a shadow, and the only way to
+find that is to read from it.
+
+### Two engine differences worth recording
+
+**`ILIKE` is PostgreSQL's**, and a syntax error on SQLite, whose `LIKE` is
+already case-insensitive for ASCII. Same divergence that made provider search a
+reason to run `--db postgres`.
+
+**`strftime` returns NULL on every row here.** SQLite stores what the driver
+gives it, and that is Go's `String()` form —
+`2026-09-06 08:08:21.841566 +0000 UTC` — which it cannot parse. It fails
+silently, as an empty chart rather than an error. The bucket is a `substr` of
+the ISO-ordered prefix instead. This is the same trap `parseStoredTime` exists
+for on the outbox, met a second time in a different place.
 
 ## 7. Open questions
 
