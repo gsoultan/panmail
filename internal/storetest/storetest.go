@@ -82,10 +82,12 @@ func newPostgresDB(t *testing.T, dsn string) *sql.DB {
 	}
 	schema = fmt.Sprintf("%s_%d", schema, time.Now().UnixNano()%1_000_000)
 
+	// One connection each: these run a statement and close.
 	admin, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatalf("open postgres: %v", err)
 	}
+	admin.SetMaxOpenConns(1)
 	defer admin.Close()
 
 	if _, err := admin.Exec("CREATE SCHEMA " + schema); err != nil {
@@ -96,6 +98,7 @@ func newPostgresDB(t *testing.T, dsn string) *sql.DB {
 		if err != nil {
 			return
 		}
+		cleanup.SetMaxOpenConns(1)
 		defer cleanup.Close()
 		_, _ = cleanup.Exec("DROP SCHEMA " + schema + " CASCADE")
 	})
@@ -112,6 +115,26 @@ func newPostgresDB(t *testing.T, dsn string) *sql.DB {
 	if err != nil {
 		t.Fatalf("open postgres schema: %v", err)
 	}
+	// Bounded because a test has no use for an unlimited pool, not because it
+	// is known to fix anything.
+	//
+	// The suite fails intermittently under `go test ./...` against PostgreSQL:
+	// an unrelated package times out at around forty seconds and passes in
+	// isolation. It happened three times in three different packages, each
+	// looking like a bug in whatever had just changed.
+	//
+	// The obvious theory was connection exhaustion — `go test` runs one binary
+	// per package in parallel up to GOMAXPROCS, fifteen here, each opening its
+	// own pools against a server allowing 100. **That theory is wrong.**
+	// Sampling pg_stat_activity during a full run showed six connections, and
+	// the failure reproduced once with these bounds already in place.
+	//
+	// So this is hygiene, and the cause is still unknown. Do not read the
+	// bounds as a fix, and do not assume the flake is gone because a few runs
+	// were green — four consecutive runs passed after the failure that
+	// disproved the theory.
+	sqlDB.SetMaxOpenConns(4)
+	sqlDB.SetMaxIdleConns(2)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	if err := migrator.Run(sqlDB, migrator.DialectPostgres); err != nil {
