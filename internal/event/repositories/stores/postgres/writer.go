@@ -179,6 +179,7 @@ func (w *Writer) flush(ctx context.Context, batch []*entities.EmailEvent) {
 		return
 	}
 	w.written.Add(int64(len(batch)))
+	w.bumpCounters(ctx, batch)
 }
 
 // renderInsert builds the multi-row VALUES list and its arguments.
@@ -243,4 +244,34 @@ func encodeMetadata(m map[string]any) any {
 		return nil
 	}
 	return string(encoded)
+}
+
+// bumpCounters keeps the lifetime totals the dashboard's headline figures read.
+//
+// Grouped first, so a batch of 500 events costs one upsert per (tenant, type)
+// rather than 500 — typically three, since a message produces PENDING, SENT and
+// DELIVERED.
+//
+// A failure here is logged and nothing else. The events themselves are already
+// committed, and a counter that is briefly behind is a worse outcome than
+// failing the flush that would also lose them.
+func (w *Writer) bumpCounters(ctx context.Context, batch []*entities.EmailEvent) {
+	type key struct{ tenant, eventType string }
+	counts := make(map[key]int64, 4)
+	for _, e := range batch {
+		counts[key{e.TenantID, e.Type.String()}]++
+	}
+
+	for k, n := range counts {
+		if _, err := w.conn.GetDB().ExecContext(ctx,
+			`INSERT INTO email_event_counters (tenant_id, type, count)
+			 VALUES ($1, $2, $3)
+			 ON CONFLICT (tenant_id, type)
+			 DO UPDATE SET count = email_event_counters.count + EXCLUDED.count`,
+			k.tenant, k.eventType, n); err != nil {
+			slog.Warn("could not update the event counters",
+				"error", err, "tenant_id", k.tenant, "type", k.eventType)
+			return
+		}
+	}
 }
