@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -503,5 +504,140 @@ func TestWithoutLocalWritesStopsMirroring(t *testing.T) {
 	}
 	if len(local.written) != 0 {
 		t.Errorf("the local store received %d events after the writes were stopped", len(local.written))
+	}
+}
+
+// The third instance of one mistake. The chart reads counters, not rows,
+// because retention prunes rows and never touches counters — so a chart of the
+// last ninety days keeps showing ninety days rather than emptying from the
+// oldest bucket forward as log_retention_days catches up with it.
+func TestTimeSeriesSurvivesRetention(t *testing.T) {
+	s, w := newStore(t)
+	old := time.Now().UTC().AddDate(0, 0, -30)
+	writeEvents(t, s, w,
+		ev("stale", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, old),
+		ev("fresh", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, time.Now().UTC()))
+
+	before, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, "day")
+	if err != nil {
+		t.Fatalf("GetTimeSeriesMetrics: %v", err)
+	}
+	if len(before) != 2 {
+		t.Fatalf("%d buckets before retention; want 2 distinct days", len(before))
+	}
+
+	if _, err := s.TruncateBefore(t.Context(), time.Now().UTC().AddDate(0, 0, -1)); err != nil {
+		t.Fatalf("TruncateBefore: %v", err)
+	}
+
+	after, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, "day")
+	if err != nil {
+		t.Fatalf("GetTimeSeriesMetrics: %v", err)
+	}
+	if len(after) != 2 {
+		t.Errorf("%d buckets after retention pruned the older day; want the chart's history to hold at 2",
+			len(after))
+	}
+}
+
+// Pebble supports minute, and the granularity comes straight off the request.
+// The first version of this store handled only hour and fell through to day,
+// so a client asking for minute silently received day buckets — wrong data
+// with no error to say so.
+func TestEachGranularityGetsItsOwnBuckets(t *testing.T) {
+	s, w := newStore(t)
+	base := time.Date(2026, 9, 7, 10, 30, 0, 0, time.UTC)
+	writeEvents(t, s, w,
+		ev("a", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, base),
+		// Same day, same hour, a different minute.
+		ev("b", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, base.Add(5*time.Minute)))
+
+	for _, tc := range []struct {
+		granularity string
+		wantBuckets int
+	}{
+		{"day", 1},    // one day
+		{"hour", 1},   // one hour
+		{"minute", 2}, // two distinct minutes
+	} {
+		got, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, tc.granularity)
+		if err != nil {
+			t.Fatalf("GetTimeSeriesMetrics(%s): %v", tc.granularity, err)
+		}
+		if len(got) != tc.wantBuckets {
+			t.Errorf("%s: %d buckets, want %d — %v", tc.granularity, len(got), tc.wantBuckets, got)
+		}
+	}
+}
+
+// LatestOnly is per (message, recipient), not per message.
+//
+// The Pebble index it replaces is keyed by both, and the delivery list is a
+// per-recipient view: three people either received a message or did not, and
+// collapsing them into one row is the view failing to answer its own question.
+func TestLatestOnlyKeepsOneRowPerRecipient(t *testing.T) {
+	s, w := newStore(t)
+	base := time.Now().UTC()
+
+	// One message, two recipients, two events each.
+	msg := storetest.ID("msg-shared")
+	var events []*entities.EmailEvent
+	for i, r := range []string{"a@example.com", "b@example.com"} {
+		sent := ev("sent-"+r, r, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT,
+			base.Add(-time.Duration(i+2)*time.Minute))
+		sent.MessageID = msg
+		delivered := ev("delivered-"+r, r, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED,
+			base.Add(-time.Duration(i)*time.Second))
+		delivered.MessageID = msg
+		events = append(events, sent, delivered)
+	}
+	writeEvents(t, s, w, events...)
+
+	got, _, err := s.List(t.Context(), storetest.TenantA,
+		stores.ListFilter{PageSize: 10, LatestOnly: true})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("%d rows; want one per recipient, not one per message", len(got))
+	}
+	for _, e := range got {
+		if e.Type != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+			t.Errorf("%s shows %v; want the newest event for that recipient", e.Recipient, e.Type)
+		}
+	}
+}
+
+// Filtering after the LIMIT returns short pages and computes the next token
+// from a row that was then dropped. Doing it in SQL is what makes a full page
+// full.
+func TestLatestOnlyPagesAreNotShort(t *testing.T) {
+	s, w := newStore(t)
+	base := time.Now().UTC()
+
+	// Twelve messages, two events each: a page of five must contain five.
+	var events []*entities.EmailEvent
+	for i := range 12 {
+		id := storetest.ID("m" + strconv.Itoa(i))
+		sent := ev("s"+strconv.Itoa(i), "r@example.com",
+			panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, base.Add(-time.Duration(i)*time.Hour))
+		sent.MessageID = id
+		delivered := ev("d"+strconv.Itoa(i), "r@example.com",
+			panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, base.Add(-time.Duration(i)*time.Hour+time.Minute))
+		delivered.MessageID = id
+		events = append(events, sent, delivered)
+	}
+	writeEvents(t, s, w, events...)
+
+	page, next, err := s.List(t.Context(), storetest.TenantA,
+		stores.ListFilter{PageSize: 5, LatestOnly: true})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(page) != 5 {
+		t.Errorf("first page has %d rows; want a full page of 5", len(page))
+	}
+	if next == "" {
+		t.Error("no next token, but twelve messages do not fit in a page of five")
 	}
 }

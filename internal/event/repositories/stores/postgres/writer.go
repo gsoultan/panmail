@@ -180,6 +180,7 @@ func (w *Writer) flush(ctx context.Context, batch []*entities.EmailEvent) {
 	}
 	w.written.Add(int64(len(batch)))
 	w.bumpCounters(ctx, batch)
+	w.bumpTimeseries(ctx, batch)
 }
 
 // renderInsert builds the multi-row VALUES list and its arguments.
@@ -271,6 +272,49 @@ func (w *Writer) bumpCounters(ctx context.Context, batch []*entities.EmailEvent)
 			k.tenant, k.eventType, n); err != nil {
 			slog.Warn("could not update the event counters",
 				"error", err, "tenant_id", k.tenant, "type", k.eventType)
+			return
+		}
+	}
+}
+
+// timeseriesLayouts are the three families Pebble keeps, and the formats that
+// produce a bucket for each. ISO-ordered so a bucket sorts as text.
+var timeseriesLayouts = map[string]string{
+	"day":    "2006-01-02",
+	"hour":   "2006-01-02 15",
+	"minute": "2006-01-02 15:04",
+}
+
+// bumpTimeseries keeps the per-bucket counters the analytics charts read.
+//
+// Three families per event, matching Pebble, because a chart asks for one
+// granularity and deriving hours from days is not possible in the direction
+// that matters. Grouped first, so a batch of 500 events costs one upsert per
+// distinct (granularity, bucket, type) rather than 1,500.
+//
+// A failure is logged and nothing else, for the same reason as bumpCounters:
+// the events are already committed, and a counter briefly behind beats failing
+// a flush that would also lose them.
+func (w *Writer) bumpTimeseries(ctx context.Context, batch []*entities.EmailEvent) {
+	type key struct{ tenant, granularity, bucket, eventType string }
+	counts := make(map[key]int64, len(batch))
+
+	for _, e := range batch {
+		at := e.Timestamp.UTC()
+		for granularity, layout := range timeseriesLayouts {
+			counts[key{e.TenantID, granularity, at.Format(layout), e.Type.String()}]++
+		}
+	}
+
+	for k, n := range counts {
+		if _, err := w.conn.GetDB().ExecContext(ctx,
+			`INSERT INTO email_event_timeseries (tenant_id, granularity, bucket, type, count)
+			 VALUES ($1, $2, $3, $4, $5)
+			 ON CONFLICT (tenant_id, granularity, bucket, type)
+			 DO UPDATE SET count = email_event_timeseries.count + EXCLUDED.count`,
+			k.tenant, k.granularity, k.bucket, k.eventType, n); err != nil {
+			slog.Warn("could not update the event timeseries counters",
+				"error", err, "tenant_id", k.tenant, "granularity", k.granularity)
 			return
 		}
 	}
