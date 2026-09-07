@@ -157,6 +157,14 @@ func recordVersion(db *sql.DB, version int) error {
 // migrationLockKey identifies this lock among any other advisory locks in the
 // database. Arbitrary but fixed: every instance has to name the same number or
 // they do not exclude each other.
+//
+// It is database-wide rather than schema-wide, because that is what a
+// PostgreSQL advisory lock is. Two panmail deployments sharing one database
+// under different schemas therefore serialise their migrations against each
+// other. That is correct if slightly pessimistic -- they still both migrate,
+// one after the other -- and it is why lockForMigrationKey exists for tests,
+// which share a database and would otherwise contend with every other package
+// running migrations at the same time.
 const migrationLockKey = 0x70616e6d // "panm"
 
 // lockForMigration blocks until this process is the one allowed to migrate.
@@ -171,6 +179,15 @@ const migrationLockKey = 0x70616e6d // "panm"
 // and start serving against a schema halfway through changing, which is the
 // thing this exists to prevent.
 func lockForMigration(db *sql.DB, dialect string) (func(), error) {
+	return lockForMigrationKey(db, dialect, migrationLockKey)
+}
+
+// lockForMigrationKey is lockForMigration with the key named explicitly, so a
+// test can assert the locking behaviour on a key nothing else is using.
+//
+// Production has exactly one key and must: instances that named different
+// numbers would not exclude each other, which is the whole point.
+func lockForMigrationKey(db *sql.DB, dialect string, key int) (func(), error) {
 	// SQLite has no advisory locks and does not need them: it is a single file
 	// with one writer, and two instances cannot share one anyway — Pebble takes
 	// an exclusive lock on the store directories long before this matters.
@@ -184,13 +201,13 @@ func lockForMigration(db *sql.DB, dialect string) (func(), error) {
 		return nil, fmt.Errorf("failed to take a connection for the migration lock: %w", err)
 	}
 
-	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey); err != nil {
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", key); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("failed to acquire the migration lock: %w", err)
 	}
 
 	return func() {
-		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey); err != nil {
+		if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", key); err != nil {
 			// Not fatal, and not silent: closing the connection ends the
 			// session and drops the lock regardless, so the next instance is
 			// not stuck — but an operator should know it happened.

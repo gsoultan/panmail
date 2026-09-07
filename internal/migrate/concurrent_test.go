@@ -164,10 +164,26 @@ func TestASecondRunAfterAConcurrentOneHasNothingToDo(t *testing.T) {
 
 // The lock has to be released, or the next deploy waits forever on a lock held
 // by a process that has moved on.
+//
+// On a key of its own, which is the difference between testing the release and
+// testing how busy the database is. A PostgreSQL advisory lock is database-wide
+// and the production key is a single constant, so every package whose tests run
+// migrations -- which is every store package -- contends for the same one
+// against the same test database. Under "go test ./..." that is around fifteen
+// binaries taking and dropping this exact lock.
+//
+// This test used to use the production key, and could therefore fail while the
+// lock was working perfectly: released here, taken immediately by another
+// binary, still held ten seconds later. It then reported "the migration lock
+// was never released", which was not true and named the wrong subsystem. What
+// is being asserted is a property of unlock(), and nothing about that property
+// requires sharing a key with the rest of the suite.
 func TestTheMigrationLockIsReleased(t *testing.T) {
 	db := postgresForMigration(t, "migrate_lock_release")
 
-	unlock, err := lockForMigration(db, DialectPostgres)
+	const key = migrationLockKey + 1
+
+	unlock, err := lockForMigrationKey(db, DialectPostgres, key)
 	if err != nil {
 		t.Fatalf("lock: %v", err)
 	}
@@ -176,7 +192,7 @@ func TestTheMigrationLockIsReleased(t *testing.T) {
 	// If it were still held, this would block until the test timed out.
 	done := make(chan error, 1)
 	go func() {
-		second, err := lockForMigration(db, DialectPostgres)
+		second, err := lockForMigrationKey(db, DialectPostgres, key)
 		if err == nil {
 			second()
 		}
@@ -189,7 +205,9 @@ func TestTheMigrationLockIsReleased(t *testing.T) {
 			t.Errorf("re-acquiring the lock failed: %v", err)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("the migration lock was never released; the next deploy would hang")
+		// Nothing else uses this key, so there is no innocent explanation
+		// left: unlock() returned without dropping the lock.
+		t.Fatal("unlock() returned but the lock was still held; the next deploy would hang")
 	}
 }
 
