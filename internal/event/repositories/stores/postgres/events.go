@@ -79,9 +79,32 @@ func (s *Store) List(ctx context.Context, tenantID string, filter stores.ListFil
 	}
 
 	args = append(args, size+1)
+	limit := `$` + strconv.Itoa(len(args))
+
 	statement := `SELECT ` + eventColumns + ` FROM email_events WHERE ` +
 		strings.Join(where, " AND ") +
-		` ORDER BY timestamp DESC, id DESC LIMIT $` + strconv.Itoa(len(args))
+		` ORDER BY timestamp DESC, id DESC LIMIT ` + limit
+
+	if filter.LatestOnly {
+		// One row per (message, recipient), newest first — which is what the
+		// Pebble store's latest_events index holds, keyed by both.
+		//
+		// Both halves of that key matter. Deduplicating by message alone
+		// collapses a message sent to three recipients into one row, and the
+		// delivery list is per recipient: three people either received it or
+		// did not, and the view exists to say which.
+		//
+		// Done in SQL rather than over the page, because filtering after the
+		// LIMIT returns short pages and computes the next token from a row that
+		// was then dropped. A window function is the portable way to say it —
+		// DISTINCT ON is PostgreSQL's alone, and SQLite has had window
+		// functions since 3.25.
+		statement = `SELECT ` + eventColumns + ` FROM (
+			SELECT ` + eventColumns + `, ROW_NUMBER() OVER (
+				PARTITION BY message_id, recipient ORDER BY timestamp DESC, id DESC
+			) AS rank FROM email_events WHERE ` + strings.Join(where, " AND ") + `
+		) ranked WHERE rank = 1 ORDER BY timestamp DESC, id DESC LIMIT ` + limit
+	}
 
 	rows, err := conn.QueryContext(ctx, statement, args...)
 	if err != nil {
@@ -108,21 +131,6 @@ func (s *Store) List(ctx context.Context, tenantID string, filter stores.ListFil
 		last := events[size-1]
 		next = encodePageToken(last.Timestamp, last.ID)
 		events = events[:size]
-	}
-
-	// LatestOnly keeps one event per message: the newest. The rows already
-	// arrive newest first, so the first sighting of a message id wins.
-	if filter.LatestOnly {
-		seen := make(map[string]struct{}, len(events))
-		latest := events[:0]
-		for _, e := range events {
-			if _, dup := seen[e.MessageID]; dup {
-				continue
-			}
-			seen[e.MessageID] = struct{}{}
-			latest = append(latest, e)
-		}
-		events = latest
 	}
 
 	return events, next, nil

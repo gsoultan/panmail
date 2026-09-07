@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -566,5 +567,77 @@ func TestEachGranularityGetsItsOwnBuckets(t *testing.T) {
 		if len(got) != tc.wantBuckets {
 			t.Errorf("%s: %d buckets, want %d — %v", tc.granularity, len(got), tc.wantBuckets, got)
 		}
+	}
+}
+
+// LatestOnly is per (message, recipient), not per message.
+//
+// The Pebble index it replaces is keyed by both, and the delivery list is a
+// per-recipient view: three people either received a message or did not, and
+// collapsing them into one row is the view failing to answer its own question.
+func TestLatestOnlyKeepsOneRowPerRecipient(t *testing.T) {
+	s, w := newStore(t)
+	base := time.Now().UTC()
+
+	// One message, two recipients, two events each.
+	msg := storetest.ID("msg-shared")
+	var events []*entities.EmailEvent
+	for i, r := range []string{"a@example.com", "b@example.com"} {
+		sent := ev("sent-"+r, r, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT,
+			base.Add(-time.Duration(i+2)*time.Minute))
+		sent.MessageID = msg
+		delivered := ev("delivered-"+r, r, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED,
+			base.Add(-time.Duration(i)*time.Second))
+		delivered.MessageID = msg
+		events = append(events, sent, delivered)
+	}
+	writeEvents(t, s, w, events...)
+
+	got, _, err := s.List(t.Context(), storetest.TenantA,
+		stores.ListFilter{PageSize: 10, LatestOnly: true})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("%d rows; want one per recipient, not one per message", len(got))
+	}
+	for _, e := range got {
+		if e.Type != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+			t.Errorf("%s shows %v; want the newest event for that recipient", e.Recipient, e.Type)
+		}
+	}
+}
+
+// Filtering after the LIMIT returns short pages and computes the next token
+// from a row that was then dropped. Doing it in SQL is what makes a full page
+// full.
+func TestLatestOnlyPagesAreNotShort(t *testing.T) {
+	s, w := newStore(t)
+	base := time.Now().UTC()
+
+	// Twelve messages, two events each: a page of five must contain five.
+	var events []*entities.EmailEvent
+	for i := range 12 {
+		id := storetest.ID("m" + strconv.Itoa(i))
+		sent := ev("s"+strconv.Itoa(i), "r@example.com",
+			panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, base.Add(-time.Duration(i)*time.Hour))
+		sent.MessageID = id
+		delivered := ev("d"+strconv.Itoa(i), "r@example.com",
+			panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, base.Add(-time.Duration(i)*time.Hour+time.Minute))
+		delivered.MessageID = id
+		events = append(events, sent, delivered)
+	}
+	writeEvents(t, s, w, events...)
+
+	page, next, err := s.List(t.Context(), storetest.TenantA,
+		stores.ListFilter{PageSize: 5, LatestOnly: true})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(page) != 5 {
+		t.Errorf("first page has %d rows; want a full page of 5", len(page))
+	}
+	if next == "" {
+		t.Error("no next token, but twelve messages do not fit in a page of five")
 	}
 }
