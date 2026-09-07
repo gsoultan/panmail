@@ -1,9 +1,14 @@
 package pebble
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/gsoultan/panmail/internal/event/repositories/entities"
 )
 
 // archiveRoot is where retention archives are written, one directory per
@@ -68,4 +73,44 @@ func (a *tenantArchiveSet) closeAll() {
 	for _, file := range a.files {
 		_ = file.Close()
 	}
+}
+
+// ArchiveEvents writes events into this instance's per-tenant JSONL archives.
+//
+// Exported for the shared event store. When delivery events live in the
+// database, the rows are deleted by SQL — but the archive they are written to
+// first is still a file on this disk, served by ListArchives and GetArchive,
+// which the shared store delegates here. Without this it would have deleted
+// without archiving: log_retention_days defaults to 14 days, so a deployment
+// would silently lose the escape hatch two weeks after switching over.
+//
+// One file per tenant per call, named the same way the retention pass names
+// its own, because an archive shared between tenants would let anyone who can
+// download one read every other tenant's mail history.
+func (s *store) ArchiveEvents(ctx context.Context, events []*entities.EmailEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	archives := newTenantArchiveSet(fmt.Sprintf("archive_%s%s", time.Now().Format(archiveStamp), archiveExt))
+	defer archives.closeAll()
+
+	for _, e := range events {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if e == nil || e.TenantID == "" {
+			// No tenant means no directory to write into, and a shared file is
+			// the one thing the per-tenant layout exists to prevent.
+			continue
+		}
+		record, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		if err := archives.write(e.TenantID, record); err != nil {
+			return err
+		}
+	}
+	return nil
 }

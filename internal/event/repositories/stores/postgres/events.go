@@ -301,21 +301,97 @@ func (s *Store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 	return out, rows.Err()
 }
 
-// TruncateBefore deletes events older than the cutoff, for internal/retention.
+// archiveBatch bounds how many events are held in memory at once while
+// expiring. A cutoff can match tens of millions of rows, and reading them all
+// to archive them would trade a disk problem for a memory one.
+const archiveBatch = 5000
+
+// eventArchiver writes expiring events to this instance's JSONL archives.
 //
-// This is the change the design doc called out as an improvement: a Pebble
-// key-range prune per instance becomes one DELETE that every instance shares.
+// Asserted rather than required, so a local store that cannot archive degrades
+// to deleting rather than refusing to expire anything.
+type eventArchiver interface {
+	ArchiveEvents(ctx context.Context, events []*entities.EmailEvent) error
+}
+
+// TruncateBefore archives events older than the cutoff and then deletes them.
+//
+// The archive is the point, and it is why this is not one DELETE. Pebble's
+// retention pass wrote every expiring event to a per-tenant JSONL file before
+// removing it — app.archive_retention_days is documented as the escape hatch
+// for log_retention_days, which defaults to fourteen days rather than to
+// forever. A bare DELETE here would have silently stopped writing those
+// archives, and a deployment would not have noticed until it went looking for
+// mail history that no longer existed.
+//
+// Archive first, delete second, in batches. Archiving a row that is then not
+// deleted costs a duplicate archive entry on the next pass; deleting a row that
+// was not archived loses it, and nothing recovers from that.
 func (s *Store) TruncateBefore(ctx context.Context, before time.Time) (int64, error) {
 	conn, err := s.db()
 	if err != nil {
 		return 0, err
 	}
-	res, err := conn.ExecContext(ctx,
-		`DELETE FROM email_events WHERE timestamp < $1`, before.UTC())
-	if err != nil {
-		return 0, err
+
+	archiver, canArchive := s.local.(eventArchiver)
+	var total int64
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+
+		rows, err := conn.QueryContext(ctx,
+			`SELECT `+eventColumns+` FROM email_events
+			 WHERE timestamp < $1 ORDER BY timestamp LIMIT $2`,
+			before.UTC(), archiveBatch)
+		if err != nil {
+			return total, err
+		}
+
+		batch := make([]*entities.EmailEvent, 0, archiveBatch)
+		ids := make([]any, 0, archiveBatch)
+		for rows.Next() {
+			e, err := scanEvent(rows)
+			if err != nil {
+				_ = rows.Close()
+				return total, err
+			}
+			batch = append(batch, e)
+			ids = append(ids, e.ID)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return total, err
+		}
+		if err := rows.Close(); err != nil {
+			return total, err
+		}
+		if len(batch) == 0 {
+			return total, nil
+		}
+
+		if canArchive {
+			if err := archiver.ArchiveEvents(ctx, batch); err != nil {
+				// Stop rather than delete. Whatever could not be archived is
+				// still in the table, so the next pass tries again; deleting
+				// past a failed archive is the one outcome with no recovery.
+				return total, err
+			}
+		}
+
+		if _, err := conn.ExecContext(ctx,
+			`DELETE FROM email_events WHERE id IN (`+placeholders(len(ids), 1)+`)`,
+			ids...); err != nil {
+			return total, err
+		}
+		total += int64(len(batch))
+
+		// A short batch means the cutoff is exhausted.
+		if len(batch) < archiveBatch {
+			return total, nil
+		}
 	}
-	return res.RowsAffected()
 }
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
@@ -411,4 +487,21 @@ func (s *Store) bucketExpr(granularity string) string {
 		return `substr(CAST(timestamp AS TEXT), 1, 13)`
 	}
 	return `substr(CAST(timestamp AS TEXT), 1, 10)`
+}
+
+// placeholders renders $from..$from+n-1 for an IN list.
+//
+// The ids come from a SELECT on this table rather than from a caller, but they
+// are still bound rather than interpolated: an id that is trusted today is an
+// id somebody widens the query for tomorrow.
+func placeholders(n, from int) string {
+	var b strings.Builder
+	for i := range n {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteByte('$')
+		b.WriteString(strconv.Itoa(from + i))
+	}
+	return b.String()
 }

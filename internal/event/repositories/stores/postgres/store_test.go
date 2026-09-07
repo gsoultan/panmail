@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -15,16 +16,35 @@ import (
 // anything else would be the composite failing to implement something itself.
 type localStub struct {
 	stores.EventRepository
-	closed bool
+	closed     bool
+	archived   []*entities.EmailEvent
+	archiveErr error
+}
+
+// ArchiveEvents is what the shared store calls before deleting. Recording it
+// here is how the test below can tell archiving from deleting.
+func (l *localStub) ArchiveEvents(_ context.Context, events []*entities.EmailEvent) error {
+	if l.archiveErr != nil {
+		return l.archiveErr
+	}
+	l.archived = append(l.archived, events...)
+	return nil
 }
 
 func (l *localStub) Close() error { l.closed = true; return nil }
 
 func newStore(t *testing.T) (*Store, *Writer) {
 	t.Helper()
+	s, w, _ := newStoreWithLocal(t)
+	return s, w
+}
+
+func newStoreWithLocal(t *testing.T) (*Store, *Writer, *localStub) {
+	t.Helper()
 	conn := storetest.NewConnection(t)
 	w := NewWriter(conn)
-	return NewStore(conn, &localStub{}, w), w
+	local := &localStub{}
+	return NewStore(conn, local, w), w, local
 }
 
 // writeEvents queues events and runs the writer long enough to flush them.
@@ -354,5 +374,73 @@ func TestCountersAreScopedToTheTenant(t *testing.T) {
 	}
 	if got["SENT"] != 1 {
 		t.Errorf("SENT = %d; want only this tenant's event", got["SENT"])
+	}
+}
+
+// Retention must archive before it deletes.
+//
+// app.archive_retention_days is documented as the escape hatch for
+// log_retention_days, which defaults to fourteen days rather than to forever —
+// so a bare DELETE here loses delivery history two weeks after a deployment
+// switches to the shared store, silently, and nothing recovers it.
+//
+// The Pebble store this replaced wrote every expiring event to a per-tenant
+// JSONL file first. This is that behaviour, kept.
+func TestRetentionArchivesBeforeDeleting(t *testing.T) {
+	s, w, local := newStoreWithLocal(t)
+	old := time.Now().UTC().AddDate(0, 0, -30)
+	writeEvents(t, s, w,
+		ev("stale-a", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, old),
+		ev("stale-b", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED, old),
+		ev("fresh", "c@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, time.Now().UTC()))
+
+	removed, err := s.TruncateBefore(t.Context(), time.Now().UTC().AddDate(0, 0, -1))
+	if err != nil {
+		t.Fatalf("TruncateBefore: %v", err)
+	}
+	if removed != 2 {
+		t.Fatalf("removed %d events; want the two stale ones", removed)
+	}
+	if len(local.archived) != 2 {
+		t.Fatalf("archived %d events; want every deleted event archived first", len(local.archived))
+	}
+
+	// The archived records must carry enough to be worth keeping.
+	if local.archived[0].Recipient == "" || local.archived[0].TenantID == "" {
+		t.Errorf("archived record is missing fields: %+v", local.archived[0])
+	}
+
+	left, _, err := s.List(t.Context(), storetest.TenantA, stores.ListFilter{PageSize: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(left) != 1 {
+		t.Errorf("%d events left; want only the fresh one", len(left))
+	}
+}
+
+// A failed archive must stop the pass rather than delete anyway.
+//
+// Archiving a row that is then not deleted costs a duplicate entry next pass.
+// Deleting a row that was not archived loses it, and nothing recovers from
+// that — so the asymmetry decides which way this fails.
+func TestAFailedArchiveDoesNotDelete(t *testing.T) {
+	s, w, local := newStoreWithLocal(t)
+	local.archiveErr = errors.New("the archive volume is full")
+
+	old := time.Now().UTC().AddDate(0, 0, -30)
+	writeEvents(t, s, w, ev("stale", "a@example.com",
+		panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, old))
+
+	if _, err := s.TruncateBefore(t.Context(), time.Now().UTC().AddDate(0, 0, -1)); err == nil {
+		t.Fatal("a failed archive reported success")
+	}
+
+	left, _, err := s.List(t.Context(), storetest.TenantA, stores.ListFilter{PageSize: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(left) != 1 {
+		t.Errorf("%d events left; the event was deleted despite the archive failing", len(left))
 	}
 }
