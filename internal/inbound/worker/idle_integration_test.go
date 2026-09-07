@@ -201,9 +201,16 @@ func TestIdleRecoversWhenTheServerGoesAway(t *testing.T) {
 	defer cancel()
 	go s.Start(ctx)
 
-	eventually(t, "the first session", func() bool { return s.Sessions() == 1 })
-	deliver(t, smtpAddr, user, "before-the-drop", "body")
-	eventually(t, "the first message", func() bool { return usecase.count() >= 1 })
+	// Proven listening, not merely running -- for exactly the reason the
+	// rebuilt session below is, twenty lines further down. Sessions() counts a
+	// goroutine, not an issued IDLE, so "before-the-drop" could be delivered
+	// into the gap between the two, become backlog rather than an arrival, and
+	// never be announced. That is the same failure this test already guards
+	// against on the second session, and it was left in place on the first.
+	//
+	// It failed that way on CI on 2026-09-07, waiting the full ten seconds for
+	// a message that had already been silently swallowed.
+	awaitIdleListening(t, s, usecase, smtpAddr, user)
 
 	// Cut the session the way a server restart or an idle timeout would, by
 	// cancelling it from underneath. The supervisor should notice and rebuild.
