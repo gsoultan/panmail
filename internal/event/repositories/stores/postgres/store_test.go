@@ -19,6 +19,20 @@ type localStub struct {
 	closed     bool
 	archived   []*entities.EmailEvent
 	archiveErr error
+	written    []*entities.EmailEvent
+	messages   []*entities.EmailMessage
+}
+
+// Write and WriteMessage exist so the tests can tell whether the shared store
+// is still mirroring to the local one, which is what makes a revert a restart.
+func (l *localStub) Write(_ context.Context, e *entities.EmailEvent) error {
+	l.written = append(l.written, e)
+	return nil
+}
+
+func (l *localStub) WriteMessage(_ context.Context, m *entities.EmailMessage) error {
+	l.messages = append(l.messages, m)
+	return nil
 }
 
 // ArchiveEvents is what the shared store calls before deleting. Recording it
@@ -442,5 +456,52 @@ func TestAFailedArchiveDoesNotDelete(t *testing.T) {
 	}
 	if len(left) != 1 {
 		t.Errorf("%d events left; the event was deleted despite the archive failing", len(left))
+	}
+}
+
+// Switching reads must not stop the local writes. That distinction is the
+// whole safety story for step three: while the local store is still written,
+// reverting to it is a restart, because it has everything.
+//
+// The first version of this store lost that by writing only to the database as
+// soon as reads moved — which was documented as reversible and was not.
+func TestSharedModeStillMirrorsToTheLocalStore(t *testing.T) {
+	conn := storetest.NewConnection(t)
+	w := NewWriter(conn)
+	local := &localStub{}
+	s := NewStore(conn, local, w)
+
+	if err := s.Write(t.Context(), ev("mirrored", "a@example.com",
+		panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, time.Now().UTC())); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if len(local.written) != 1 {
+		t.Errorf("the local store received %d events; want the write mirrored so a revert is a restart",
+			len(local.written))
+	}
+
+	m := &entities.EmailMessage{ID: storetest.ID("m"), TenantID: storetest.TenantA,
+		From: "a@example.com", CreatedAt: time.Now().UTC()}
+	if err := s.WriteMessage(t.Context(), m); err != nil {
+		t.Fatalf("WriteMessage: %v", err)
+	}
+	if len(local.messages) != 1 {
+		t.Errorf("the local store received %d messages; want the write mirrored", len(local.messages))
+	}
+}
+
+// And the last step does stop them, which is what makes it the one a restart
+// cannot undo.
+func TestWithoutLocalWritesStopsMirroring(t *testing.T) {
+	conn := storetest.NewConnection(t)
+	local := &localStub{}
+	s := NewStore(conn, local, NewWriter(conn)).WithoutLocalWrites()
+
+	if err := s.Write(t.Context(), ev("only-shared", "a@example.com",
+		panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, time.Now().UTC())); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if len(local.written) != 0 {
+		t.Errorf("the local store received %d events after the writes were stopped", len(local.written))
 	}
 }
