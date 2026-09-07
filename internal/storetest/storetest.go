@@ -90,7 +90,25 @@ func newPostgresDB(t *testing.T, dsn string) *sql.DB {
 	admin.SetMaxOpenConns(1)
 	defer admin.Close()
 
-	if _, err := admin.Exec("CREATE SCHEMA " + schema); err != nil {
+	// Retried, because the failure this suffered was at connect time and not
+	// in the statement.
+	//
+	// Every test here creates a schema and runs all fourteen migrations, and
+	// `go test` runs one binary per package in parallel up to GOMAXPROCS. That
+	// is a connect storm rather than a large pool: the server forks a backend
+	// per connection and occasionally drops one, which arrives as
+	// "read: connection reset by peer" while creating the schema and fails a
+	// test that has nothing to do with whatever was being changed. It did that
+	// in three different packages before it was caught, because the error was
+	// being filtered out of the run output.
+	//
+	// A reset at connect is transient by nature, so retrying is the honest
+	// response — three attempts, backing off, and still failing loudly if the
+	// server really is unavailable.
+	if err := retry(3, 250*time.Millisecond, func() error {
+		_, err := admin.Exec("CREATE SCHEMA " + schema)
+		return err
+	}); err != nil {
 		t.Fatalf("create schema %s: %v", schema, err)
 	}
 	t.Cleanup(func() {
@@ -226,3 +244,19 @@ func ID(name string) string {
 }
 
 var idNamespace = uuid.NewSHA1(uuid.NameSpaceURL, []byte("panmail/storetest"))
+
+// retry runs fn until it succeeds or attempts run out, backing off between
+// tries. Used only for the connection-level operations in this harness, where
+// a failure is a dropped connection rather than a wrong answer.
+func retry(attempts int, backoff time.Duration, fn func() error) error {
+	var err error
+	for i := range attempts {
+		if err = fn(); err == nil {
+			return nil
+		}
+		if i < attempts-1 {
+			time.Sleep(backoff * time.Duration(i+1))
+		}
+	}
+	return err
+}
