@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -30,9 +31,19 @@ type Store struct {
 	conn   db.Connection
 	writer *Writer
 
-	// local is the Pebble store. It keeps archives and resource metrics, and
-	// it is what Close closes.
+	// local is the Pebble store. It keeps archives and resource metrics, it is
+	// what Close closes, and unless stopPebble is set it still receives every
+	// event and message.
 	local stores.EventRepository
+
+	// stopPebble ends the local event and message writes.
+	//
+	// Off by default, and that is the whole safety story for switching reads:
+	// while Pebble is still written, reverting to it is a restart, because it
+	// has everything. Setting this is the step that cannot be undone that way —
+	// events written while it is on exist only in the database, so a revert
+	// leaves a hole exactly as wide as the time it was set.
+	stopPebble bool
 }
 
 // Asserted at compile time, because the interface has fifteen methods split
@@ -41,9 +52,22 @@ type Store struct {
 // nil panic the first time the dashboard calls it.
 var _ stores.EventRepository = (*Store)(nil)
 
-// NewStore composes the shared store over a local one.
+// NewStore composes the shared store over a local one. Reads come from the
+// database; writes go to both, so a revert is a restart.
 func NewStore(conn db.Connection, local stores.EventRepository, writer *Writer) *Store {
 	return &Store{conn: conn, local: local, writer: writer}
+}
+
+// WithoutLocalWrites stops the local event and message writes.
+//
+// The last step of docs/design/0002-shared-event-store.md, and the only one a
+// restart does not undo. Separate from NewStore so that taking it is a
+// deliberate act rather than a consequence of switching reads — which is the
+// distinction the first version of this store lost by writing only to the
+// database as soon as reads moved.
+func (s *Store) WithoutLocalWrites() *Store {
+	s.stopPebble = true
+	return s
 }
 
 func (s *Store) db() (*sql.DB, error) {
@@ -67,8 +91,18 @@ func (s *Store) isPostgres() bool {
 // to return: the write is asynchronous by design, and a caller on the send
 // path has nothing useful to do with a failure it would learn about later.
 // panmail_event_shadow_failed_total is where a failure shows up.
-func (s *Store) Write(_ context.Context, e *entities.EmailEvent) error {
+func (s *Store) Write(ctx context.Context, e *entities.EmailEvent) error {
 	s.writer.Write(e)
+	if s.stopPebble {
+		return nil
+	}
+	// Still written locally, so that reverting to Pebble reads is a restart
+	// rather than an acceptance of a gap. Its failure is not returned: the
+	// database has the event, and nothing reads Pebble in this mode.
+	if err := s.local.Write(ctx, e); err != nil {
+		slog.Warn("could not mirror a delivery event to the local store",
+			"error", err, "id", e.ID)
+	}
 	return nil
 }
 
@@ -98,7 +132,18 @@ func (s *Store) WriteMessage(ctx context.Context, m *entities.EmailMessage) erro
 		encodeList(m.To), encodeList(m.Cc), encodeList(m.Bcc),
 		nullableText(m.Subject), nullableText(m.BodyHTML), nullableText(m.BodyText),
 		encodeAttachments(m.Attachments), m.CreatedAt.UTC())
-	return err
+	if err != nil {
+		return err
+	}
+
+	if s.stopPebble {
+		return nil
+	}
+	if err := s.local.WriteMessage(ctx, m); err != nil {
+		slog.Warn("could not mirror a stored message to the local store",
+			"error", err, "id", m.ID)
+	}
+	return nil
 }
 
 func (s *Store) GetMessage(ctx context.Context, tenantID, messageID string) (*entities.EmailMessage, error) {

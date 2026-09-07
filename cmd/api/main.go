@@ -237,6 +237,15 @@ func main() {
 	sharedEventsFlag := flag.Bool("shared-events", false,
 		"Read delivery events and stored messages from the shared database (implies -shadow-events)")
 
+	// The last step, and the only one a restart does not undo.
+	//
+	// While the local store is still written, reverting to it is a restart,
+	// because it has everything. Setting this leaves a hole exactly as wide as
+	// the time it was on. Requires -shared-events: stopping the local writes
+	// while still reading from there would show an empty dashboard.
+	stopLocalEventsFlag := flag.Bool("stop-local-events", false,
+		"Stop writing delivery events to this instance's Pebble store. Requires -shared-events, and cannot be undone by a restart")
+
 	inboundFlag := flag.Bool("inbound", true,
 		"Receive mail on this instance (IMAP poll and IDLE). Set -inbound=false on send-only replicas")
 	// Loopback by default. Queue depths and send volumes are operational
@@ -404,6 +413,15 @@ func main() {
 	// batch of events on every shutdown.
 	defer func() { _ = eventRepo.Close() }()
 
+	// Refusing rather than quietly ignoring it: an operator who set this meant
+	// to stop the local writes, and starting without doing so would leave them
+	// believing a migration had happened that had not.
+	if *stopLocalEventsFlag && !*sharedEventsFlag {
+		slog.Error("-stop-local-events requires -shared-events",
+			"note", "stopping the local writes while still reading from there would serve an empty dashboard")
+		os.Exit(1)
+	}
+
 	// Wired here, immediately after the local store is opened and before
 	// anything takes a reference to it, so every reader and writer below gets
 	// the same repository.
@@ -414,7 +432,13 @@ func main() {
 		// archives and resource metrics stay local, because a file on this
 		// disk and a measurement of this process mean nothing pooled.
 		shadowEvents = eventpostgres.NewWriter(conn)
-		eventRepo = eventpostgres.NewStore(conn, eventRepo, shadowEvents)
+		shared := eventpostgres.NewStore(conn, eventRepo, shadowEvents)
+		if *stopLocalEventsFlag {
+			shared = shared.WithoutLocalWrites()
+			slog.Warn("delivery events are no longer written to this instance's local store",
+				"note", "a revert to local reads will be missing everything written from now on")
+		}
+		eventRepo = shared
 		slog.Info("delivery events and stored messages are read from the shared database",
 			"note", "archives and resource metrics remain local to this instance")
 
