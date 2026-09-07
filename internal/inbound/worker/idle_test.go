@@ -176,8 +176,19 @@ func newSupervisor(t *testing.T, providers *fakeProviders, factory *fakeFactory,
 // that, on the merge commit for a dependency bump that could not have touched
 // this package -- the same tree had passed as a pull request minutes earlier.
 //
-// If this ever fails at ten seconds, it is not the runner. Look for a
-// supervisor that opened a session and never delivered.
+// Ten is not a ceiling on starvation, and an earlier version of this comment
+// claimed it was: it said a failure here could no longer be the runner. That
+// was wrong, and disproved the same hour. The first run at ten seconds failed
+// too, and re-running the identical commit passed. CI runs "go test -race" over
+// every package at once on a two-core hosted runner, and -race makes each of
+// them several times slower; a goroutine can genuinely wait that long to be
+// scheduled.
+//
+// So a failure here is still most likely the runner. What separates the two is
+// repetition, not the number: re-run the job. A starved runner passes on the
+// second attempt, and a supervisor that opens a session and never delivers
+// fails every time, including locally under
+// "go test -race ./internal/inbound/worker -count=20".
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	eventuallyWithin(t, 10*time.Second, what, cond)
