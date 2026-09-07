@@ -161,15 +161,32 @@ func newSupervisor(t *testing.T, providers *fakeProviders, factory *fakeFactory,
 	return s
 }
 
+// eventually waits for an outcome the supervisor should reach in milliseconds.
+//
+// Ten seconds is not an estimate of how long that takes -- every timing in
+// newSupervisor is wound down to single-digit milliseconds, and locally this
+// passes in under a second with eight copies of the package running at once.
+// It is the margin over a loaded runner, where fifteen test binaries share the
+// machine and a goroutine can wait a long time to be scheduled.
+//
+// The deadline costs nothing when the test passes, because the loop returns as
+// soon as the condition holds. It is paid only on failure, and a test that
+// takes ten seconds to fail is a better trade than one that fails on a busy
+// runner and says the code is wrong. Two seconds bought nothing and did exactly
+// that, on the merge commit for a dependency bump that could not have touched
+// this package -- the same tree had passed as a pull request minutes earlier.
+//
+// If this ever fails at ten seconds, it is not the runner. Look for a
+// supervisor that opened a session and never delivered.
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	eventuallyWithin(t, 2*time.Second, what, cond)
+	eventuallyWithin(t, 10*time.Second, what, cond)
 }
 
 // eventuallyWithin is eventually with a caller-chosen deadline, for the waits
 // that are establishing a precondition rather than asserting an outcome. Those
-// deserve more patience: a slow CI runner failing to establish IDLE in two
-// seconds is not the same fact as the code being wrong.
+// deserve their own number: a slow CI runner failing to establish IDLE is not
+// the same fact as the code being wrong.
 func eventuallyWithin(t *testing.T, within time.Duration, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(within)
