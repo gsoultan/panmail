@@ -258,29 +258,41 @@ func (s *Store) lifetimeMetrics(ctx context.Context, conn *sql.DB, tenantID stri
 // The bucket is formatted in SQL rather than in Go so the grouping happens in
 // the database: pulling every row back to count them in a loop is the shape
 // this whole change exists to avoid.
+// GetTimeSeriesMetrics reads the per-bucket counters.
+//
+// The counters rather than the events, for the same reason GetMetrics reads
+// them: retention prunes rows and never touches counters, so a chart of the
+// last ninety days keeps showing ninety days. Counting rows would empty every
+// bucket older than log_retention_days, and the chart would show history
+// disappearing rather than history.
+//
+// An unrecognised granularity falls back to day, matching the Pebble store —
+// which is the behaviour a caller gets today for anything but the three names.
 func (s *Store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, startTime, endTime time.Time, granularity string) (map[string]map[string]int64, error) {
 	conn, err := s.db()
 	if err != nil {
 		return nil, err
 	}
 
-	bucket := s.bucketExpr(granularity)
+	family, layout := timeseriesFamily(granularity)
 
-	where := []string{"tenant_id = $1"}
-	args := []any{tenantID}
+	where := []string{"tenant_id = $1", "granularity = $2"}
+	args := []any{tenantID, family}
+	// The bucket is text, and the layouts are ISO-ordered, so a string
+	// comparison is a time comparison. Formatting the bounds the same way is
+	// what makes that true.
 	if !startTime.IsZero() {
-		args = append(args, startTime.UTC())
-		where = append(where, fmt.Sprintf("timestamp >= $%d", len(args)))
+		args = append(args, startTime.UTC().Format(layout))
+		where = append(where, fmt.Sprintf("bucket >= $%d", len(args)))
 	}
 	if !endTime.IsZero() {
-		args = append(args, endTime.UTC())
-		where = append(where, fmt.Sprintf("timestamp <= $%d", len(args)))
+		args = append(args, endTime.UTC().Format(layout))
+		where = append(where, fmt.Sprintf("bucket <= $%d", len(args)))
 	}
 
 	rows, err := conn.QueryContext(ctx,
-		`SELECT `+bucket+` AS bucket, type, count(*)
-		 FROM email_events WHERE `+strings.Join(where, " AND ")+
-			` GROUP BY bucket, type ORDER BY bucket`, args...)
+		`SELECT bucket, type, count FROM email_event_timeseries WHERE `+
+			strings.Join(where, " AND ")+` ORDER BY bucket`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -299,6 +311,24 @@ func (s *Store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 		out[bucket][strings.TrimPrefix(name, "EMAIL_EVENT_TYPE_")] = count
 	}
 	return out, rows.Err()
+}
+
+// timeseriesFamily maps a requested granularity onto a stored family and the
+// layout that formats a bound for it.
+//
+// Minute is here because Pebble supports it and the granularity comes straight
+// off the request. The first version of this store handled only hour and fell
+// through to day for everything else, so a client asking for minute silently
+// received day buckets — the wrong data, with no error to say so.
+func timeseriesFamily(granularity string) (family, layout string) {
+	switch granularity {
+	case "minute":
+		return "minute", "2006-01-02 15:04"
+	case "hour":
+		return "hour", "2006-01-02 15"
+	default:
+		return "day", "2006-01-02"
+	}
 }
 
 // archiveBatch bounds how many events are held in memory at once while

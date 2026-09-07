@@ -505,3 +505,66 @@ func TestWithoutLocalWritesStopsMirroring(t *testing.T) {
 		t.Errorf("the local store received %d events after the writes were stopped", len(local.written))
 	}
 }
+
+// The third instance of one mistake. The chart reads counters, not rows,
+// because retention prunes rows and never touches counters — so a chart of the
+// last ninety days keeps showing ninety days rather than emptying from the
+// oldest bucket forward as log_retention_days catches up with it.
+func TestTimeSeriesSurvivesRetention(t *testing.T) {
+	s, w := newStore(t)
+	old := time.Now().UTC().AddDate(0, 0, -30)
+	writeEvents(t, s, w,
+		ev("stale", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, old),
+		ev("fresh", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, time.Now().UTC()))
+
+	before, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, "day")
+	if err != nil {
+		t.Fatalf("GetTimeSeriesMetrics: %v", err)
+	}
+	if len(before) != 2 {
+		t.Fatalf("%d buckets before retention; want 2 distinct days", len(before))
+	}
+
+	if _, err := s.TruncateBefore(t.Context(), time.Now().UTC().AddDate(0, 0, -1)); err != nil {
+		t.Fatalf("TruncateBefore: %v", err)
+	}
+
+	after, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, "day")
+	if err != nil {
+		t.Fatalf("GetTimeSeriesMetrics: %v", err)
+	}
+	if len(after) != 2 {
+		t.Errorf("%d buckets after retention pruned the older day; want the chart's history to hold at 2",
+			len(after))
+	}
+}
+
+// Pebble supports minute, and the granularity comes straight off the request.
+// The first version of this store handled only hour and fell through to day,
+// so a client asking for minute silently received day buckets — wrong data
+// with no error to say so.
+func TestEachGranularityGetsItsOwnBuckets(t *testing.T) {
+	s, w := newStore(t)
+	base := time.Date(2026, 9, 7, 10, 30, 0, 0, time.UTC)
+	writeEvents(t, s, w,
+		ev("a", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, base),
+		// Same day, same hour, a different minute.
+		ev("b", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, base.Add(5*time.Minute)))
+
+	for _, tc := range []struct {
+		granularity string
+		wantBuckets int
+	}{
+		{"day", 1},    // one day
+		{"hour", 1},   // one hour
+		{"minute", 2}, // two distinct minutes
+	} {
+		got, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, tc.granularity)
+		if err != nil {
+			t.Fatalf("GetTimeSeriesMetrics(%s): %v", tc.granularity, err)
+		}
+		if len(got) != tc.wantBuckets {
+			t.Errorf("%s: %d buckets, want %d — %v", tc.granularity, len(got), tc.wantBuckets, got)
+		}
+	}
+}
