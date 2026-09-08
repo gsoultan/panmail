@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -656,7 +655,11 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 }
 
 var (
-	hrefRegexp = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']+)["']`)
+	// One definition, shared with the tracking handler. What the handler
+	// compares a redirect against has to reproduce exactly what the send path
+	// signed, and a second copy that drifted would quietly stop recognising
+	// links panmail itself sent.
+	hrefRegexp = tracking.HrefPattern
 )
 
 // injectTracking adds the open pixel and rewrites links to route through the
@@ -753,7 +756,7 @@ func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipi
 			return match
 		}
 
-		originalURL := unescapeHrefValue(submatch[1])
+		originalURL := tracking.UnescapeHrefValue(submatch[1])
 
 		// Anything that is not an ordinary web link is left alone: anchors and
 		// mailto: links have nothing to track, and other schemes must never be

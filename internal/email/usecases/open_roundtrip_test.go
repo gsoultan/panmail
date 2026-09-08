@@ -40,7 +40,7 @@ func openPixelFromBody(t *testing.T, body string) string {
 	if m == nil {
 		t.Fatalf("the send path emitted no open pixel:\n%s", body)
 	}
-	return unescapeHrefValue(m[1])
+	return tracking.UnescapeHrefValue(m[1])
 }
 
 func TestAnOpenPixelFromTheSendPathRecordsAtTheHandler(t *testing.T) {

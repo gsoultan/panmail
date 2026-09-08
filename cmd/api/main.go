@@ -618,7 +618,11 @@ func main() {
 	// it reports through exists: that one needs the API-key and send usecases,
 	// which are not constructed until the transports are wired.
 
-	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase, trackingSigner)
+	// The stored message is what lets a link survive the key that signed it.
+	// Without this lookup a rotation, or a restore that brought the database but
+	// not the config, strands every link already delivered on a 403 forever.
+	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase, trackingSigner).
+		WithSentMessages(eventRepo)
 
 	// One-click unsubscribe (RFC 8058), which Gmail and Yahoo require from bulk
 	// senders. It suppresses on POST and only shows a confirmation page on GET —
