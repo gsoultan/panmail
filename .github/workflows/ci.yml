@@ -210,7 +210,14 @@ jobs:
           go-version: '1.27'
           cache: true
 
+      # The token is not optional in practice. Without it the action resolves
+      # buf's download URL over the unauthenticated API, which shares a rate
+      # limit with every other job on the same hosted runner IP — so this step
+      # fails with "API rate limit exceeded" and takes the drift check with it,
+      # on a tree that has no drift. Seen on 2026-09-08.
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Regenerate
         run: buf generate
