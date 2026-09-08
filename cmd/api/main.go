@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -949,7 +948,7 @@ func main() {
 
 	settingsService := settingsservices.NewSettingsService(settingsUsecase, smtpSubmissionUsecase)
 
-	setupUsecase := setupusecases.NewSetupUsecase(authUsecase, conn, swappableTokenMaker, migrate)
+	setupUsecase := setupusecases.NewSetupUsecase(authUsecase, conn, swappableTokenMaker, trackingSigner, migrate)
 	setupService := setupservices.NewSetupService(setupUsecase)
 	warnIfSetupIsStillOpen(setupUsecase)
 
@@ -1495,15 +1494,23 @@ func waitForWorkers(wg *sync.WaitGroup, timeout time.Duration) bool {
 
 // newTrackingSigner derives the key that signs open and click links. It is
 // bound to the instance's signing key so that links survive restarts.
+//
+// Before setup there is no symmetric key to derive from, so the signer is left
+// without one and refuses to sign. It used to fall back to a fixed placeholder
+// key, on the reasoning that no links are generated before setup anyway. That
+// held, but it was the wrong window: the signer is built once here, and setup
+// generates the real key later in the same process, so everything sent between
+// setup and the next restart was signed with the placeholder. The restart then
+// derived the real key and rejected every one of those links, which were by
+// then delivered and unfixable. Setup now swaps the key in as soon as it has
+// one, and an unkeyed signer suppresses tracking rather than minting links that
+// cannot outlive the process.
 func newTrackingSigner(cfg *config.Config) (*tracking.Signer, error) {
 	if cfg == nil || cfg.Auth.SymmetricKey == "" {
-		// Not configured yet: links are only generated once a provider exists,
-		// which cannot happen before setup completes.
-		return tracking.NewSigner([]byte("panmail-unconfigured-tracking-key")), nil
+		return tracking.NewSigner(nil), nil
 	}
 
-	key := sha256.Sum256([]byte("panmail-tracking-v1:" + cfg.Auth.SymmetricKey))
-	return tracking.NewSigner(key[:]), nil
+	return tracking.NewSigner(tracking.DeriveKey(cfg.Auth.SymmetricKey)), nil
 }
 
 func buildUI(version string) {

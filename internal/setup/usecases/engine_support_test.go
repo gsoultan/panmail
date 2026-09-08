@@ -19,7 +19,7 @@ func newUnconfiguredUsecase(t *testing.T) SetupUsecase {
 	if _, err := os.Stat(tempHome + "/.panmail/db_config.yaml"); err == nil {
 		t.Fatal("expected no config file in the temporary home")
 	}
-	return NewSetupUsecase(&mockAuthUsecase{isFirstRun: true}, &mockConnection{}, nil, nil)
+	return NewSetupUsecase(&mockAuthUsecase{isFirstRun: true}, &mockConnection{}, nil, nil, nil)
 }
 
 // Choosing MySQL or MariaDB used to succeed: the DDL layer substitutes types

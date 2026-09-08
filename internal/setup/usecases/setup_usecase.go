@@ -13,6 +13,7 @@ import (
 	"github.com/gsoultan/panmail/internal/config"
 	"github.com/gsoultan/panmail/pkg/auth"
 	"github.com/gsoultan/panmail/pkg/db"
+	"github.com/gsoultan/panmail/pkg/tracking"
 )
 
 // errAlreadySetup is returned by every setup operation once the instance has
@@ -53,23 +54,26 @@ type SetupUsecase interface {
 }
 
 type setupUsecase struct {
-	authUsecase usecases.AuthUsecase
-	conn        db.Connection
-	tokenMaker  *auth.SwappableTokenMaker
-	migrateFn   func(db.Connection, string) error
+	authUsecase    usecases.AuthUsecase
+	conn           db.Connection
+	tokenMaker     *auth.SwappableTokenMaker
+	trackingSigner *tracking.Signer
+	migrateFn      func(db.Connection, string) error
 }
 
 func NewSetupUsecase(
 	authUsecase usecases.AuthUsecase,
 	conn db.Connection,
 	tokenMaker *auth.SwappableTokenMaker,
+	trackingSigner *tracking.Signer,
 	migrateFn func(db.Connection, string) error,
 ) SetupUsecase {
 	return &setupUsecase{
-		authUsecase: authUsecase,
-		conn:        conn,
-		tokenMaker:  tokenMaker,
-		migrateFn:   migrateFn,
+		authUsecase:    authUsecase,
+		conn:           conn,
+		tokenMaker:     tokenMaker,
+		trackingSigner: trackingSigner,
+		migrateFn:      migrateFn,
 	}
 }
 
@@ -145,6 +149,16 @@ func (u *setupUsecase) Setup(ctx context.Context, dbCfg *panmailv1.DatabaseConfi
 	maker, err := auth.NewPasetoMaker(appCfg.Auth.SymmetricKey)
 	if err == nil {
 		u.tokenMaker.SetMaker(maker)
+	}
+
+	// The tracking signer has to move to the new key for the same reason the
+	// token maker does, but the consequence of forgetting differs. A stale token
+	// maker logs somebody out and they sign in again; a stale tracking signer
+	// keeps minting links that verify until the next restart and never again,
+	// and those links are already in inboxes by then. Every click answers 403
+	// and every one-click unsubscribe is refused while panmail keeps sending.
+	if u.trackingSigner != nil {
+		u.trackingSigner.SetKey(tracking.DeriveKey(appCfg.Auth.SymmetricKey))
 	}
 
 	// 6. Create admin user
