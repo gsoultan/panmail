@@ -75,12 +75,28 @@ func assertAccepting(t *testing.T, port int) {
 	_ = conn.Close()
 }
 
+// assertNotAccepting waits for the port to stop answering.
+//
+// It polls rather than dialling once. Apply returns after Shutdown has waited
+// for in-flight sessions, but the close still has to reach the kernel, and on a
+// loaded CI machine a single immediate dial can land inside that window. This
+// failed on CI while passing locally, which is the signature of a deadline that
+// was really an assumption about scheduling.
 func assertNotAccepting(t *testing.T, port int) {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), time.Second)
-	if err == nil {
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), time.Second)
+		if err != nil {
+			return
+		}
 		_ = conn.Close()
-		t.Fatalf("port %d is still accepting connections", port)
+
+		if time.Now().After(deadline) {
+			t.Fatalf("port %d is still accepting connections after 5s", port)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -210,6 +226,14 @@ func TestApplyRefusesAConfigurationThatWouldLeakCredentials(t *testing.T) {
 // Two administrators saving at once must serialise rather than race to bind the
 // same port. Run with -race, this is what proves the mutex covers the state the
 // Serve goroutine also writes.
+//
+// It deliberately does not assert that a listener is running at the end. Under
+// concurrent churn a bind can genuinely lose a port to something else on the
+// machine, and if the restore loses it too then nothing running is the correct
+// outcome rather than a bug — asserting otherwise made this fail on CI while
+// passing locally. What is asserted instead is that the supervisor is left
+// honest and usable: whatever it claims to be serving really is accepting, and
+// it still converges on the next apply.
 func TestConcurrentAppliesAreSerialised(t *testing.T) {
 	supervisor := newTestSupervisor(t)
 	ports := []int{freePort(t), freePort(t), freePort(t)}
@@ -227,11 +251,26 @@ func TestConcurrentAppliesAreSerialised(t *testing.T) {
 	}
 	wg.Wait()
 
-	state := supervisor.State()
-	if state.Config == nil {
-		t.Fatal("State().Config = nil, want one of the applied listeners")
+	// Never a listener it only thinks it has.
+	if state := supervisor.State(); state.Config != nil {
+		assertAccepting(t, state.Config.Port)
 	}
-	assertAccepting(t, state.Config.Port)
+
+	// And it still works afterwards, which is what rules out a wedged mutex or
+	// a supervisor left holding a half-stopped server.
+	settled := freePort(t)
+	if err := supervisor.Apply(context.Background(), loopbackConfig(settled)); err != nil {
+		t.Fatalf("Apply() after concurrent churn = %v, want nil", err)
+	}
+	assertAccepting(t, settled)
+
+	state := supervisor.State()
+	if state.Config == nil || state.Config.Port != settled {
+		t.Fatalf("State().Config = %+v, want the listener just applied on %d", state.Config, settled)
+	}
+	if state.LastError != "" {
+		t.Errorf("LastError = %q, want empty once a listener is serving", state.LastError)
+	}
 }
 
 // A cancelled request must still drain the listener it just closed. Inheriting
@@ -294,4 +333,34 @@ func TestRevertingAfterAFailedChangeClearsTheError(t *testing.T) {
 		t.Errorf("LastError = %q, want empty once the desired state is serving again", got)
 	}
 	assertAccepting(t, working)
+}
+
+// Regression. go-smtp only learns about a listener from inside Serve, and Serve
+// runs on a goroutine, so a disable arriving before that goroutine was scheduled
+// used to find an empty listener list, close nothing, and return success — while
+// the accept loop went on serving a port the supervisor reported as stopped.
+//
+// Turning submission off has to actually shut the door. Repeated because the
+// window is a scheduling one and a single pass would usually miss it.
+func TestDisablingImmediatelyAfterEnablingReleasesThePort(t *testing.T) {
+	supervisor := newTestSupervisor(t)
+
+	for i := 0; i < 30; i++ {
+		port := freePort(t)
+
+		if err := supervisor.Apply(context.Background(), loopbackConfig(port)); err != nil {
+			t.Fatalf("Apply(enabled) on pass %d = %v, want nil", i, err)
+		}
+
+		off := loopbackConfig(port)
+		off.Enabled = false
+		if err := supervisor.Apply(context.Background(), off); err != nil {
+			t.Fatalf("Apply(disabled) on pass %d = %v, want nil", i, err)
+		}
+
+		assertNotAccepting(t, port)
+		if state := supervisor.State(); state.Config != nil {
+			t.Fatalf("State().Config = %+v on pass %d, want nil", state.Config, i)
+		}
+	}
 }

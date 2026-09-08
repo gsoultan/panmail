@@ -34,6 +34,23 @@ type Supervisor struct {
 	server  *emailsmtp.Server
 	running *entities.Config
 
+	// listener is held because closing it is this type's job, not the
+	// transport's. go-smtp registers a listener inside Serve, and Serve runs on
+	// a goroutine, so a Shutdown that arrives first finds an empty list and
+	// closes nothing — leaving the accept loop serving a port the supervisor
+	// believes it stopped. Enabling and immediately disabling is enough to hit
+	// it, and the port then stays open for the life of the process.
+	listener net.Listener
+
+	// serveDone is closed once the accept loop has returned.
+	//
+	// Stopping waits on it before calling Shutdown, because go-smtp mutates its
+	// listener slice from both Serve and Shutdown without synchronising the
+	// two: overlapping them is a data race in the library, which the race
+	// detector catches under concurrent applies. Waiting for the accept loop to
+	// exit first means the two never run together.
+	serveDone chan struct{}
+
 	// generation identifies a run, so an error surfacing from a Serve
 	// goroutine that has already been replaced is discarded instead of
 	// overwriting the state of the listener that succeeded it.
@@ -146,7 +163,12 @@ func (s *Supervisor) restoreLocked(previous *entities.Config, cause error) error
 	if err := s.startLocked(previous); err != nil {
 		s.logger.Error("SMTP submission listener could not be restored after a failed change",
 			"addr", previous.Addr(), "cause", cause, "error", err)
-		return fmt.Errorf("%w (the previous listener could not be restored either: %v)", cause, err)
+		combined := fmt.Errorf("%w (the previous listener could not be restored either: %v)", cause, err)
+		// The more urgent fact of the two is that nothing is listening now, so
+		// that is what the dashboard should read rather than the rejected
+		// change alone.
+		s.lastErr = combined.Error()
+		return combined
 	}
 
 	s.lastErr = cause.Error()
@@ -193,11 +215,14 @@ func (s *Supervisor) startLocked(cfg *entities.Config) error {
 
 	s.generation++
 	generation := s.generation
+	done := make(chan struct{})
 	s.server = server
+	s.listener = listener
+	s.serveDone = done
 	clone := *cfg
 	s.running = &clone
 
-	go s.serve(server, listener, generation, cfg.Addr())
+	go s.serve(server, listener, generation, cfg.Addr(), done)
 
 	s.logger.Info("SMTP submission listener started",
 		"addr", cfg.Addr(),
@@ -212,8 +237,20 @@ func (s *Supervisor) startLocked(cfg *entities.Config) error {
 // accept loop returning is how it reports that it noticed. Anything else is a
 // listener that died on its own, which is worth surfacing — the reconcile loop
 // will bring it back, and the recorded error explains the gap.
-func (s *Supervisor) serve(server *emailsmtp.Server, listener net.Listener, generation uint64, addr string) {
+func (s *Supervisor) serve(
+	server *emailsmtp.Server,
+	listener net.Listener,
+	generation uint64,
+	addr string,
+	done chan struct{},
+) {
 	err := server.Serve(listener)
+
+	// Signalled before any lock is taken. A stop holds the mutex while it waits
+	// here, so acquiring it first and closing after would deadlock the two
+	// against each other.
+	close(done)
+
 	if err == nil || errors.Is(err, net.ErrClosed) {
 		return
 	}
@@ -229,6 +266,7 @@ func (s *Supervisor) serve(server *emailsmtp.Server, listener net.Listener, gene
 	}
 	s.lastErr = err.Error()
 	s.server = nil
+	s.listener = nil
 	s.running = nil
 }
 
@@ -265,14 +303,42 @@ func (s *Supervisor) stopLocked(ctx context.Context) {
 		addr = s.running.Addr()
 	}
 
+	// Closed here rather than left to Shutdown, which cannot be relied on to do
+	// it: the transport only learns about this listener once its Serve
+	// goroutine has been scheduled. Closing first also stops new connections
+	// immediately, which is what Shutdown would do anyway, and leaves it the
+	// job it is actually needed for — draining the sessions already in flight.
+	if s.listener != nil {
+		// Already closed is the ordinary case when the accept loop noticed
+		// first, and is not worth reporting.
+		_ = s.listener.Close()
+		s.listener = nil
+	}
+
+	// Then wait for the accept loop to notice, so Serve and Shutdown never
+	// touch go-smtp's listener slice at the same time. Bounded rather than
+	// unconditional: a wait that could not time out would turn a stuck accept
+	// loop into a stuck gateway, and draining is still worth attempting.
+	if s.serveDone != nil {
+		timer := time.NewTimer(shutdownTimeout)
+		select {
+		case <-s.serveDone:
+		case <-timer.C:
+			s.logger.Warn("SMTP submission accept loop did not exit before the deadline",
+				"addr", addr)
+		}
+		timer.Stop()
+		s.serveDone = nil
+	}
+
 	// Detached from the caller's context on purpose. A request that is
-	// cancelled mid-save must still drain the listener it just closed;
-	// inheriting the cancellation would leave the port held by sessions nobody
-	// is waiting for and make the next bind fail.
+	// cancelled mid-save must still drain the sessions on the listener it just
+	// closed; inheriting the cancellation would leave the port held by sessions
+	// nobody is waiting for and make the next bind fail.
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 
-	if err := s.server.Shutdown(shutdownCtx); err != nil {
+	if err := s.server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, net.ErrClosed) {
 		s.logger.Warn("SMTP submission listener shutdown did not finish cleanly",
 			"addr", addr, "error", err)
 	} else {
