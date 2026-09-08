@@ -11,14 +11,29 @@ import (
 	"github.com/gsoultan/panmail/internal/smtp_submission/repositories"
 )
 
-// reconcileInterval is how often an instance re-reads the stored configuration.
+// DefaultReconcileInterval is how often an instance re-reads the stored
+// configuration when nothing else is asked for.
 //
 // The settings this sits beside are shared by every gateway against one
 // database, and a change saved through one instance has to reach the others or
 // the deployment is inconsistent in exactly the way moving settings out of
 // config.yaml was meant to end. The same pass restarts a listener that died on
 // its own, so the interval is also the worst-case gap in that recovery.
-const reconcileInterval = 30 * time.Second
+//
+// It is a default rather than a constant because the two costs it balances
+// scale differently: the settings read is per gateway per interval, so a large
+// fleet pays for a short one, while the propagation delay it buys is the same
+// whether there are two gateways or fifty. An operator with many instances is
+// the one who needs to move it, and they cannot rebuild the binary.
+const DefaultReconcileInterval = 30 * time.Second
+
+// MinReconcileInterval is the shortest interval that will be honoured.
+//
+// Below this the pass stops being a safety net and becomes a load generator
+// against the settings row, and the failure it produces — a database busy
+// serving reconciles — looks nothing like its cause. A value under this is
+// raised to it and said out loud rather than accepted quietly.
+const MinReconcileInterval = time.Second
 
 // Errors the service maps to RPC codes.
 var (
@@ -117,6 +132,8 @@ type usecase struct {
 	// one a certificate cannot be stored, so the panel says so up front
 	// instead of failing at save.
 	secretsConfigured bool
+
+	reconcileInterval time.Duration
 }
 
 // NewUsecase builds the usecase.
@@ -124,21 +141,36 @@ type usecase struct {
 // A nil supervisor means this process does not run the listener itself, which
 // is the flag-managed case: the flag path in cmd/api owns the socket and this
 // only reports it.
+//
+// A zero reconcileInterval takes DefaultReconcileInterval, so a caller that has
+// no opinion does not have to have one.
 func NewUsecase(
 	repo repositories.ConfigRepository,
 	supervisor *Supervisor,
 	flags *FlagListener,
 	secretsConfigured bool,
+	reconcileInterval time.Duration,
 	logger *slog.Logger,
 ) Usecase {
 	if logger == nil {
 		logger = slog.Default()
 	}
+
+	switch {
+	case reconcileInterval <= 0:
+		reconcileInterval = DefaultReconcileInterval
+	case reconcileInterval < MinReconcileInterval:
+		logger.Warn("SMTP submission reconcile interval raised to the minimum",
+			"requested", reconcileInterval, "using", MinReconcileInterval)
+		reconcileInterval = MinReconcileInterval
+	}
+
 	return &usecase{
 		repo:              repo,
 		supervisor:        supervisor,
 		flags:             flags,
 		secretsConfigured: secretsConfigured,
+		reconcileInterval: reconcileInterval,
 		logger:            logger,
 	}
 }
@@ -306,7 +338,7 @@ func (u *usecase) Run(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(reconcileInterval)
+	ticker := time.NewTicker(u.reconcileInterval)
 	defer ticker.Stop()
 
 	for {

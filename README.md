@@ -314,7 +314,10 @@ submitted by anyone holding an admin session:
   so a key cannot widen the surface on which its own kind is accepted.
 
 The change takes effect immediately, without a restart, and reaches every
-gateway sharing the database within thirty seconds. If the port cannot be
+gateway sharing the database within one reconcile interval — thirty seconds by
+default, and `--smtp-reconcile-interval` if a large fleet would rather trade
+propagation delay for fewer settings reads. The same pass revives a listener
+that died on its own, so the interval is also the worst case for that. If the port cannot be
 bound — something else is already on it, or it is privileged and this process
 lacks the capability — the previous listener is left running and the panel says
 why.

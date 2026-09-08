@@ -271,6 +271,13 @@ func main() {
 	// an explicit flag rather than being what happens when TLS is unset.
 	smtpAllowInsecureFlag := flag.Bool("smtp-allow-insecure-auth", false,
 		"Permit SMTP AUTH without TLS; only for a listener on loopback or a private network")
+	// How fast a listener change made on one gateway reaches the others, and
+	// how long a listener that died on its own stays dead. Configurable
+	// because the two costs scale differently: the settings read is per
+	// gateway per interval, so a large fleet pays for a short one, while the
+	// propagation delay it buys is the same at any size.
+	smtpReconcileIntervalFlag := flag.Duration("smtp-reconcile-interval", smtpusecases.DefaultReconcileInterval,
+		"How often to re-read the stored SMTP submission configuration; ignored when --smtp-addr is set")
 	flag.Parse()
 
 	if *versionFlag {
@@ -922,6 +929,7 @@ func main() {
 		smtpSupervisor,
 		smtpFlags,
 		keyring != nil,
+		*smtpReconcileIntervalFlag,
 		slog.Default(),
 	)
 

@@ -103,7 +103,7 @@ func TestUpdateKeepsAStoredKeypairWhenTheFormDoesNotResendIt(t *testing.T) {
 	// certificate on every unrelated save.
 	cert, key := testTLSMaterial(t)
 	repo := &fakeRepo{config: storedTLS(cert, key)}
-	usecase := NewUsecase(repo, nil, nil, true, discardLogger())
+	usecase := NewUsecase(repo, nil, nil, true, 0, discardLogger())
 
 	_, err := usecase.Update(context.Background(), Change{
 		Enabled:   true,
@@ -177,7 +177,7 @@ func TestUpdateTLSRules(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeRepo{config: storedTLS(cert, key)}
-			usecase := NewUsecase(repo, nil, nil, true, discardLogger())
+			usecase := NewUsecase(repo, nil, nil, true, 0, discardLogger())
 
 			_, err := usecase.Update(context.Background(), tc.change)
 
@@ -204,7 +204,7 @@ func TestUpdateRefusesToWidenExposureWithoutTLS(t *testing.T) {
 	// End to end through the usecase, because the guard being in the entity is
 	// only useful if every write path actually reaches it.
 	repo := &fakeRepo{}
-	usecase := NewUsecase(repo, nil, nil, true, discardLogger())
+	usecase := NewUsecase(repo, nil, nil, true, 0, discardLogger())
 
 	_, err := usecase.Update(context.Background(), Change{
 		Enabled:           true,
@@ -223,7 +223,7 @@ func TestUpdateRefusesToWidenExposureWithoutTLS(t *testing.T) {
 func TestFlagsWinOverTheStoredConfiguration(t *testing.T) {
 	repo := &fakeRepo{config: storedTLS(testTLSMaterial(t))}
 	flags := &FlagListener{Host: "mail.example.com", Port: 587, STARTTLS: true}
-	usecase := NewUsecase(repo, nil, flags, true, discardLogger())
+	usecase := NewUsecase(repo, nil, flags, true, 0, discardLogger())
 
 	snapshot, err := usecase.Describe(context.Background())
 	if err != nil {
@@ -250,7 +250,7 @@ func TestDescribeWithdrawsAWildcardHost(t *testing.T) {
 	// base_url instead.
 	cert, key := testTLSMaterial(t)
 	repo := &fakeRepo{config: storedTLS(cert, key)}
-	usecase := NewUsecase(repo, nil, nil, true, discardLogger())
+	usecase := NewUsecase(repo, nil, nil, true, 0, discardLogger())
 
 	snapshot, err := usecase.Describe(context.Background())
 	if err != nil {
@@ -267,7 +267,7 @@ func TestDescribeWithdrawsAWildcardHost(t *testing.T) {
 func TestDescribeSaysWhyItCannotBeEdited(t *testing.T) {
 	// Without a data key a certificate cannot be stored, so the panel says so
 	// up front rather than failing at save.
-	usecase := NewUsecase(&fakeRepo{}, nil, nil, false, discardLogger())
+	usecase := NewUsecase(&fakeRepo{}, nil, nil, false, 0, discardLogger())
 
 	snapshot, err := usecase.Describe(context.Background())
 	if err != nil {
@@ -294,7 +294,7 @@ func TestAStoredChangeIsReportedEvenWhenItCannotBind(t *testing.T) {
 
 	repo := &fakeRepo{}
 	supervisor := newTestSupervisor(t)
-	usecase := NewUsecase(repo, supervisor, nil, true, discardLogger())
+	usecase := NewUsecase(repo, supervisor, nil, true, 0, discardLogger())
 
 	snapshot, err := usecase.Update(context.Background(), Change{
 		Enabled:           true,
@@ -325,7 +325,7 @@ func TestReconcileAppliesTheStoredConfiguration(t *testing.T) {
 		AllowInsecureAuth: true,
 	}}
 	supervisor := newTestSupervisor(t)
-	usecase := NewUsecase(repo, supervisor, nil, true, discardLogger())
+	usecase := NewUsecase(repo, supervisor, nil, true, 0, discardLogger())
 
 	if err := usecase.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile() = %v, want nil", err)
@@ -342,9 +342,68 @@ func TestReconcileRefusesAnUnusableStoredRow(t *testing.T) {
 		Port:              2525,
 		AllowInsecureAuth: true,
 	}}
-	usecase := NewUsecase(repo, newTestSupervisor(t), nil, true, discardLogger())
+	usecase := NewUsecase(repo, newTestSupervisor(t), nil, true, 0, discardLogger())
 
 	if err := usecase.Reconcile(context.Background()); err == nil {
 		t.Fatal("Reconcile() = nil, want a refusal for a row that would leak API keys")
+	}
+}
+
+func TestReconcileIntervalIsBounded(t *testing.T) {
+	// The flag is operator input, so the two ways of getting it wrong both have
+	// a defined answer: unset takes the default, and a value short enough to
+	// turn the safety net into load against the settings row is raised rather
+	// than honoured.
+	testCases := []struct {
+		name      string
+		requested time.Duration
+		want      time.Duration
+	}{
+		{name: "unset takes the default", requested: 0, want: DefaultReconcileInterval},
+		{name: "negative takes the default", requested: -time.Minute, want: DefaultReconcileInterval},
+		{name: "below the floor is raised", requested: time.Millisecond, want: MinReconcileInterval},
+		{name: "the floor itself is honoured", requested: MinReconcileInterval, want: MinReconcileInterval},
+		{name: "a longer interval is honoured", requested: 5 * time.Minute, want: 5 * time.Minute},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			u := NewUsecase(&fakeRepo{}, nil, nil, true, tc.requested, discardLogger()).(*usecase)
+			if u.reconcileInterval != tc.want {
+				t.Errorf("reconcileInterval = %v, want %v", u.reconcileInterval, tc.want)
+			}
+		})
+	}
+}
+
+// Run has to honour the configured interval, not the default: a test that only
+// checked the stored field would pass while Run went on using a constant.
+func TestRunReconcilesOnTheConfiguredInterval(t *testing.T) {
+	port := freePort(t)
+	repo := &fakeRepo{config: &entities.Config{
+		Enabled:           true,
+		BindScope:         entities.BindScopeLoopback,
+		Port:              port,
+		AllowInsecureAuth: true,
+	}}
+	supervisor := newTestSupervisor(t)
+	usecase := NewUsecase(repo, supervisor, nil, true, MinReconcileInterval, discardLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go usecase.Run(ctx)
+
+	// One second is the floor, so a listener that is never started within a few
+	// of them means Run is not ticking on what it was given.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if state := supervisor.State(); state.Config != nil {
+			assertAccepting(t, port)
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Run did not reconcile within 10s on a one-second interval")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
