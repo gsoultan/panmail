@@ -1,4 +1,4 @@
-import type { SmtpSubmission } from '../../../api/panmail/v1/system_settings_pb';
+import type { SmtpSubmission } from '../../../../api/panmail/v1/system_settings_pb';
 
 // How the panel worked out the hostname it is showing. The panel says which,
 // because "we are guessing" and "the server told us" deserve different

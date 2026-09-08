@@ -51,6 +51,12 @@ func TestRunCreatesTheFullSchema(t *testing.T) {
 	tables := []string{
 		"tenants", "users", "email_providers", "api_keys",
 		"templates", "suppressions", "webhooks", "outbox", "schema_migrations",
+		// The SMTP submission listener is stored rather than passed as a flag,
+		// so an administrator can open the door from the dashboard. It is its
+		// own table and not more columns on system_settings because it holds a
+		// TLS private key, and system_settings is served to every authenticated
+		// caller.
+		"smtp_submission",
 	}
 	for _, table := range tables {
 		t.Run(table, func(t *testing.T) {

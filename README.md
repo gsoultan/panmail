@@ -295,7 +295,39 @@ goes through the same send usecase as the RPC API, so the rate limit, backlog
 ceiling, suppression list and per-provider `AllowedDomains` anti-spoofing
 checks all apply unchanged.
 
-The listener is **off by default**. Enable it with `--smtp-addr`:
+The listener is **off by default**, and there are two ways to turn it on.
+
+**From the dashboard**, under **API Keys → SMTP submission → Configure**. An
+administrator picks whether the port is reachable only from this machine or
+from the network, sets the port, and pastes a TLS certificate and key. The key
+is encrypted with the gateway's data key before it is stored and is never
+readable back — not through the API and not in the panel, which shows the
+certificate's subject, expiry and SHA-256 fingerprint instead.
+
+Two rules are enforced by the server and are stricter here than for the flags
+below, because a flag is set by someone with shell access and a form is
+submitted by anyone holding an admin session:
+
+- Sign-in without TLS is **refused** on any listener reachable from another
+  host, rather than warned about. The SMTP password is an API key.
+- Only a signed-in administrator may change it. API keys are refused outright,
+  so a key cannot widen the surface on which its own kind is accepted.
+
+The change takes effect immediately, without a restart, and reaches every
+gateway sharing the database within one reconcile interval — thirty seconds by
+default, and `--smtp-reconcile-interval` if a large fleet would rather trade
+propagation delay for fewer settings reads. The same pass revives a listener
+that died on its own, so the interval is also the worst case for that. If the port cannot be
+bound — something else is already on it, or it is privileged and this process
+lacks the capability — the previous listener is left running and the panel says
+why.
+
+**From process flags**, which win over the stored configuration: a gateway
+started with `--smtp-addr` ignores the stored row entirely and the panel renders
+read-only. This is the original path and is unchanged, including being fatal at
+startup when the listener will not build.
+
+Enable it with `--smtp-addr`:
 
 ```bash
 panmail --smtp-addr :587 \
@@ -325,6 +357,11 @@ one provider; the header is stripped before the message goes out.
 entire sending authority, so the server refuses to start without either a
 keypair or an explicit `--smtp-allow-insecure-auth`. Use that flag only where
 the hop is already private, such as a container network or loopback.
+
+Storing a certificate through the dashboard requires a data encryption key
+(`PANMAIL_SECRET_KEY`, the same one that protects provider credentials). Without
+one the panel is read-only and says so: a TLS private key is never written in
+the clear as a fallback.
 
 #### What the reply codes mean
 

@@ -14,13 +14,25 @@ import {
   ActionIcon,
   Tooltip,
   Loader,
+  Button,
   rem,
 } from '@mantine/core';
-import { IconMail, IconCopy, IconCheck, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
+import {
+  IconMail,
+  IconCopy,
+  IconCheck,
+  IconAlertTriangle,
+  IconInfoCircle,
+  IconSettings,
+  IconLock,
+} from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { settingsService } from '../../../services/settings';
-import { emailProviderService } from '../../email-providers/services/emailProvider';
+import { settingsService } from '../../../../services/settings';
+import { useAuthStore } from '../../../../store/authStore';
+import { UserRole } from '../../../../api/panmail/v1/auth_pb';
+import { emailProviderService } from '../../../email-providers/services/emailProvider';
 import { describeConnection } from './smtpConnection';
+import { SmtpSubmissionForm } from './SmtpSubmissionForm';
 
 // A copyable value in the connection table. Everything here is destined for a
 // config file somewhere else, so nothing is worth making anyone retype.
@@ -91,6 +103,7 @@ export const SmtpIntegrationPanel: React.FC = () => {
   });
 
   const [providerId, setProviderId] = React.useState<string | null>(null);
+  const [configuring, setConfiguring] = React.useState(false);
 
   const connection = describeConnection(submission, settings?.baseUrl);
   const providerOptions = (providers?.providers ?? []).map((p: { id: string; name: string }) => ({
@@ -100,20 +113,78 @@ export const SmtpIntegrationPanel: React.FC = () => {
 
   const selected = providerId ?? providerOptions[0]?.value ?? '';
 
+  // Two separate questions, and conflating them shows a button that 403s.
+  // `editable` is about this gateway — not managed by flags, and holding a data
+  // key to seal a certificate with. Whether *this* caller may change it is a
+  // role check, which the server enforces and the nav bar already mirrors the
+  // same way.
+  const { user } = useAuthStore();
+  const mayConfigure =
+    user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const editable = (submission?.editable ?? false) && mayConfigure;
+
   const header = (
     <Group justify="space-between" align="center">
       <Group gap="sm">
         <IconMail size={20} />
         <Title order={4}>SMTP submission</Title>
       </Group>
-      {isLoading ? (
-        <Loader size="xs" />
-      ) : (
-        <Badge color={connection.enabled ? 'teal' : 'gray'} variant="light">
-          {connection.enabled ? 'Enabled' : 'Disabled'}
-        </Badge>
-      )}
+      <Group gap="xs">
+        {isLoading ? (
+          <Loader size="xs" />
+        ) : (
+          <Badge color={connection.enabled ? 'teal' : 'gray'} variant="light">
+            {connection.enabled ? 'Enabled' : 'Disabled'}
+          </Badge>
+        )}
+        {!isLoading && editable && (
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<IconSettings size={14} />}
+            onClick={() => setConfiguring(true)}
+          >
+            Configure
+          </Button>
+        )}
+      </Group>
     </Group>
+  );
+
+  // Why the panel is read-only, when it is. Three different reasons, and they
+  // want different words: the caller's role, flags winning over the stored
+  // configuration, or a gateway with no data key to seal a certificate with.
+  // Telling an administrator without permission to go and edit a systemd unit
+  // would be the wrong instruction entirely.
+  const readOnlyReason = !mayConfigure
+    ? 'changing it needs administrator access.'
+    : submission?.notEditableReason
+      ? submission.notEditableReason
+      : '';
+
+  const readOnlyNotice = !editable && readOnlyReason && (
+    <Alert icon={<IconInfoCircle size={16} />} color="gray" variant="light">
+      <Text size="sm">This panel is read-only: {readOnlyReason}</Text>
+    </Alert>
+  );
+
+  // Enabling now happens at runtime, so the setting and the socket can
+  // disagree. At startup they could not — a listener that would not bind was
+  // fatal — which is why this has no equivalent on the flag path.
+  const failureNotice = submission?.lastError && (
+    <Alert icon={<IconAlertTriangle size={16} />} color="red" variant="light">
+      <Text size="sm">
+        The listener is not running: {submission.lastError}
+      </Text>
+    </Alert>
+  );
+
+  const configureModal = (
+    <SmtpSubmissionForm
+      opened={configuring}
+      onClose={() => setConfiguring(false)}
+      submission={submission}
+    />
   );
 
   if (isLoading) {
@@ -134,14 +205,36 @@ export const SmtpIntegrationPanel: React.FC = () => {
             the API. Messages submitted this way go through the same pipeline as the API,
             so rate limits, suppressions and sender checks all still apply.
           </Text>
-          <Alert icon={<IconInfoCircle size={16} />} color="gray" variant="light">
-            <Text size="sm">
-              This server is not accepting SMTP submissions. Start panmail with{' '}
-              <Code>--smtp-addr</Code> to enable it — for example{' '}
-              <Code>--smtp-addr :587 --smtp-tls-cert cert.pem --smtp-tls-key key.pem</Code>.
-            </Text>
-          </Alert>
+          {failureNotice}
+          {readOnlyNotice}
+          {editable ? (
+            <Group>
+              <Button
+                variant="light"
+                leftSection={<IconSettings size={16} />}
+                onClick={() => setConfiguring(true)}
+              >
+                Enable SMTP submission
+              </Button>
+            </Group>
+          ) : mayConfigure ? (
+            <Alert icon={<IconInfoCircle size={16} />} color="gray" variant="light">
+              <Text size="sm">
+                This server is not accepting SMTP submissions. Start panmail with{' '}
+                <Code>--smtp-addr</Code> to enable it — for example{' '}
+                <Code>--smtp-addr :587 --smtp-tls-cert cert.pem --smtp-tls-key key.pem</Code>.
+              </Text>
+            </Alert>
+          ) : (
+            <Alert icon={<IconInfoCircle size={16} />} color="gray" variant="light">
+              <Text size="sm">
+                This server is not accepting SMTP submissions. An administrator can turn it
+                on here.
+              </Text>
+            </Alert>
+          )}
         </Stack>
+        {configureModal}
       </Paper>
     );
   }
@@ -156,6 +249,23 @@ export const SmtpIntegrationPanel: React.FC = () => {
           same pipeline as the API, so rate limits, suppressions and sender checks apply
           unchanged.
         </Text>
+
+        {failureNotice}
+        {readOnlyNotice}
+
+        {submission?.certificate && (
+          <Group gap="xs">
+            <IconLock size={14} />
+            <Text size="xs" c="dimmed">
+              {submission.certificate.subject} · valid until {submission.certificate.notAfter}
+            </Text>
+            {submission.certificate.expired && (
+              <Badge color="red" variant="light" size="sm">
+                Expired
+              </Badge>
+            )}
+          </Group>
+        )}
 
         {connection.insecureAuthAllowed && (
           <Alert icon={<IconAlertTriangle size={16} />} color="orange" variant="light">
@@ -259,6 +369,7 @@ export const SmtpIntegrationPanel: React.FC = () => {
           </Table.Tbody>
         </Table>
       </Stack>
+      {configureModal}
     </Paper>
   );
 };

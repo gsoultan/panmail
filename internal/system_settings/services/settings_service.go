@@ -9,23 +9,25 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
 	"github.com/gsoultan/panmail/internal/auth/middlewares"
+	smtpusecases "github.com/gsoultan/panmail/internal/smtp_submission/usecases"
 	"github.com/gsoultan/panmail/internal/system_settings/usecases"
 )
 
 type settingsService struct {
 	usecase        usecases.SettingsUsecase
-	smtpSubmission *panmailv1.SmtpSubmission
+	smtpSubmission smtpusecases.Usecase
 }
 
 // NewSettingsService builds the settings handler.
 //
-// smtpSubmission describes the SMTP listener this process is running, and is
-// reported unchanged on every read. It is a value rather than something the
-// service looks up because it cannot change while the process is alive: it
-// comes from the flags the process started with.
+// smtpSubmission describes the SMTP listener and is now consulted on every
+// read rather than captured once. The listener used to be built from flags and
+// fixed for the life of the process, so a value was enough; it can now be
+// turned on and off by an administrator, and a cached answer would go stale the
+// moment somebody did.
 func NewSettingsService(
 	usecase usecases.SettingsUsecase,
-	smtpSubmission *panmailv1.SmtpSubmission,
+	smtpSubmission smtpusecases.Usecase,
 ) panmailv1connect.SystemSettingsServiceHandler {
 	return &settingsService{usecase: usecase, smtpSubmission: smtpSubmission}
 }
@@ -35,9 +37,14 @@ func (s *settingsService) GetSettings(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	submission, err := s.describeSubmission(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	return connect.NewResponse(&panmailv1.GetSettingsResponse{
 		Settings:       settings,
-		SmtpSubmission: s.smtpSubmission,
+		SmtpSubmission: submission,
 	}), nil
 }
 
