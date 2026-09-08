@@ -80,16 +80,22 @@ and a decryption error nobody can place.
 
 1. Put the four stores where the new instance expects them.
 2. Restore `config.yaml`, or copy the `auth.symmetric_key` from it into the
-   new one. Skipping this invalidates every session and API key — and every
-   tracking link in mail already delivered, which is the part with no way back:
-   those messages are in inboxes and cannot be reissued. Clicks answer `403
-   Invalid tracking link` and opens stop recording silently.
+   new one. Skipping this invalidates every session and API key. It also
+   invalidates the signature on every tracking link in mail already delivered —
+   messages that are in inboxes and cannot be reissued. Clicks survive that,
+   because the handler checks the stored copy of the message and follows the
+   link if that message really did contain the destination; opens and
+   one-click unsubscribes do not, and the open pixel is served either way so
+   nothing reports it. The click fallback lasts only as long as the message
+   bodies do, so restoring the key is still the thing to get right.
 3. Set `PANMAIL_SECRET_KEY` to the key named in the manifest.
 4. Start the gateway and check three things — that you can sign in, that a
    provider's host still reads correctly, and that clicking a tracking link
    from a message sent *before* the backup still redirects. The first proves
-   the auth key came across, the second proves the data key did, and the third
-   proves it for the one place where getting it wrong is silent and permanent.
+   the auth key came across and the second proves the data key did. The third
+   does not prove the auth key came across, because the stored-message fallback
+   will carry that click either way: it proves the fallback is working, which
+   is what stands between a wrong key here and a customer-visible outage.
 
 Step 4 is the test. A restore that has not been checked is a hypothesis.
 

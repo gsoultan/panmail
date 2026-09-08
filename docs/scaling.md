@@ -153,11 +153,14 @@ Shared, and must be the same everywhere:
 - `auth.symmetric_key` — a token minted by one instance is verified by another,
   and it also keys the open, click and unsubscribe links in outgoing mail. The
   two failures do not look alike. A mismatched key logs everyone out, which is
-  noticed within minutes; it also makes every tracking link the other instance
-  issued answer `403 Invalid tracking link` for as long as those messages exist,
-  and opens simply stop being recorded, because the pixel is served either way.
-  Nothing reports that second one. Check it deliberately after any change: send
-  a message from one instance and click its link against another.
+  noticed within minutes. What it does to tracking is quieter, and only partly
+  recoverable: a **click** still works, because the handler falls back to the
+  stored copy of the message and follows the link if that message really did
+  contain the destination — but only while the body is retained. An **open** or
+  an **unsubscribe** carries no destination to check against, so those are
+  simply lost, and the open pixel is served either way so nothing reports it.
+  Check it deliberately after any change: send a message from one instance and
+  click its link against another.
 - `PANMAIL_SECRET_KEY` — the key stored credentials are encrypted under. An
   instance without it cannot read any provider configuration.
 
