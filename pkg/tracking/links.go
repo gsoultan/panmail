@@ -1,12 +1,13 @@
-package usecases
+package tracking
 
 import (
+	"regexp"
 	"strings"
 
 	nethtml "golang.org/x/net/html"
 )
 
-// unescapeHrefValue recovers the URL a mail client will actually request from
+// UnescapeHrefValue recovers the URL a mail client will actually request from
 // the raw bytes of an href attribute in the message source.
 //
 // It is not html.UnescapeString, which was what this used to be. That function
@@ -23,7 +24,7 @@ import (
 // signature still verified, because both halves agreed on the corrupted target,
 // so this failed as a wrong destination rather than a rejected link — which is
 // why nothing caught it.
-func unescapeHrefValue(raw string) string {
+func UnescapeHrefValue(raw string) string {
 	// No reference without an ampersand, and most hrefs have none.
 	if strings.IndexByte(raw, '&') < 0 {
 		return raw
@@ -89,4 +90,31 @@ func unescapeViaTokenizer(raw string) string {
 			return raw
 		}
 	}
+}
+
+// HrefPattern matches an href attribute. Exported so the send path and anything
+// that has to reproduce what the send path signed use one definition.
+var HrefPattern = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']+)["']`)
+
+// LinkTargets returns the http(s) destinations an HTML body links to, in the
+// exact form the send path signs them.
+//
+// This has to agree with rewriteLinks byte for byte. It is the same regexp and
+// the same unescaping because it is the same function: a second implementation
+// that drifted would quietly stop recognising links panmail itself sent.
+func LinkTargets(htmlBody string) []string {
+	var out []string
+	seen := make(map[string]struct{})
+	for _, m := range HrefPattern.FindAllStringSubmatch(htmlBody, -1) {
+		target := UnescapeHrefValue(m[1])
+		if ValidateTarget(target) != nil {
+			continue
+		}
+		if _, dup := seen[target]; dup {
+			continue
+		}
+		seen[target] = struct{}{}
+		out = append(out, target)
+	}
+	return out
 }

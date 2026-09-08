@@ -58,7 +58,7 @@ func clickLinkFromBody(t *testing.T, body string) string {
 	t.Helper()
 	for _, m := range hrefValue.FindAllStringSubmatch(body, -1) {
 		if strings.Contains(m[1], "/track/click/") {
-			return unescapeHrefValue(m[1])
+			return tracking.UnescapeHrefValue(m[1])
 		}
 	}
 	t.Fatalf("the send path emitted no click tracking link:\n%s", body)

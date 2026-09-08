@@ -1,4 +1,4 @@
-package usecases
+package tracking
 
 import (
 	"fmt"
@@ -93,8 +93,8 @@ func TestUnescapeHrefValue(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := unescapeHrefValue(tc.raw); got != tc.want {
-				t.Errorf("unescapeHrefValue(%q)\n got: %q\nwant: %q", tc.raw, got, tc.want)
+			if got := UnescapeHrefValue(tc.raw); got != tc.want {
+				t.Errorf("UnescapeHrefValue(%q)\n got: %q\nwant: %q", tc.raw, got, tc.want)
 			}
 		})
 	}
@@ -105,7 +105,7 @@ func TestUnescapeHrefValue(t *testing.T) {
 // depend on its only caller to stay safe.
 func TestUnescapeHrefValueRefusesToTruncateOnAQuote(t *testing.T) {
 	raw := `https://example.com/a?x=1&amp;q="`
-	if got := unescapeHrefValue(raw); got != raw {
+	if got := UnescapeHrefValue(raw); got != raw {
 		t.Errorf("a value containing a quote was rewritten to %q; the URL would be cut short", got)
 	}
 }
@@ -122,7 +122,7 @@ func TestNoParameterNameBecomesACharacter(t *testing.T) {
 	}
 	for _, n := range names {
 		raw := "https://example.com/a?" + n + "=1&" + n + "=2"
-		got := unescapeHrefValue(raw)
+		got := UnescapeHrefValue(raw)
 		if got != raw {
 			t.Errorf("parameter %q was mangled:\n got: %q\nwant: %q", n, got, raw)
 		}
@@ -163,7 +163,7 @@ func TestFastPathMatchesTheTokenizer(t *testing.T) {
 				}
 				checked++
 
-				got := unescapeHrefValue(raw)
+				got := UnescapeHrefValue(raw)
 				want := unescapeViaTokenizer(raw)
 				if strings.IndexByte(raw, '&') < 0 {
 					want = raw // the no-ampersand path is a pass-through by design
