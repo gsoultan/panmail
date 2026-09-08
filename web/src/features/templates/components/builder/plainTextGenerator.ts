@@ -22,22 +22,37 @@ import { Block, EmailDesign } from './types';
 // wrap show one very long line.
 const WRAP_COLUMNS = 78;
 
-/** Strips tags and decodes the handful of entities the builder can produce. */
-const htmlToText = (html: string): string => {
-  if (!html) return '';
-  return html
-    // Block-level boundaries become line breaks before tags are removed, or
-    // paragraphs run together into one wall of text.
-    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
-    .replace(/<\s*\/\s*(p|div|h[1-6]|li|tr|blockquote)\s*>/gi, '\n')
-    .replace(/<\s*li[^>]*>/gi, '  - ')
-    .replace(/<[^>]+>/g, '')
+// Undoes exactly the escaping htmlGenerator's `esc` applies, and nothing else.
+//
+// The list is closed on purpose. It is tempting to reach for a general entity
+// decoder, but HTML lets a named reference omit its semicolon, so a text-context
+// decoder turns the "&copy=" and "&reg=" of an ordinary query string into "©"
+// and "®". A URL written into the text part has no markup around it to make that
+// recoverable — the reader copies whatever is printed. Decoding only what the
+// builder can emit cannot misfire.
+const decodeEscapes = (s: string): string =>
+  s
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    // Last, so that a "&amp;lt;" in the source ends up as the literal "&lt;"
+    // rather than being decoded twice into "<".
+    .replace(/&amp;/gi, '&');
+
+/** Strips tags and decodes the handful of entities the builder can produce. */
+const htmlToText = (html: string): string => {
+  if (!html) return '';
+  return decodeEscapes(
+    html
+      // Block-level boundaries become line breaks before tags are removed, or
+      // paragraphs run together into one wall of text.
+      .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      .replace(/<\s*\/\s*(p|div|h[1-6]|li|tr|blockquote)\s*>/gi, '\n')
+      .replace(/<\s*li[^>]*>/gi, '  - ')
+      .replace(/<[^>]+>/g, ''),
+  )
     // Collapse the runs of blank lines that stripping tags leaves behind.
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -50,7 +65,11 @@ const linksFrom = (html: string): string[] => {
   const re = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
-    const href = m[1].trim();
+    // The href is markup, so it has been escaped: a link to "?a=1&b=2" is
+    // written "?a=1&amp;b=2". Printing that verbatim gives the reader of the
+    // text part a URL with an "amp;" wedged into a parameter name, which is a
+    // different page — and unlike the HTML part, there is no client to undo it.
+    const href = decodeEscapes(m[1].trim());
     const label = htmlToText(m[2]).replace(/\s+/g, ' ').trim();
     if (!href || href === '#') continue;
     out.push(label && label !== href ? `${label}: ${href}` : href);

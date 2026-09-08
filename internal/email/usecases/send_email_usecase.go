@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"net/url"
 	"regexp"
@@ -754,7 +753,7 @@ func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipi
 			return match
 		}
 
-		originalURL := html.UnescapeString(submatch[1])
+		originalURL := unescapeHrefValue(submatch[1])
 
 		// Anything that is not an ordinary web link is left alone: anchors and
 		// mailto: links have nothing to track, and other schemes must never be

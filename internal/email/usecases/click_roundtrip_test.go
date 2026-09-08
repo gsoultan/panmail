@@ -49,16 +49,16 @@ func (r *recordingEvents) RecordEvent(_ context.Context, _, _, _ string,
 	return nil
 }
 
-// hrefValue pulls the first href out of a document, then undoes the HTML
-// entity escaping — which is what a mail client does before it makes a request.
-// The attribute is markup, so "&amp;" in the source is one "&" on the wire.
+// hrefValue pulls the first href out of a document, then undoes the character
+// references — which is what a mail client does before it makes a request. The
+// attribute is markup, so "&amp;" in the source is one "&" on the wire.
 var hrefValue = regexp.MustCompile(`(?i)href\s*=\s*"([^"]+)"`)
 
 func clickLinkFromBody(t *testing.T, body string) string {
 	t.Helper()
 	for _, m := range hrefValue.FindAllStringSubmatch(body, -1) {
 		if strings.Contains(m[1], "/track/click/") {
-			return html.UnescapeString(m[1])
+			return unescapeHrefValue(m[1])
 		}
 	}
 	t.Fatalf("the send path emitted no click tracking link:\n%s", body)
@@ -101,5 +101,59 @@ func TestALinkFromTheSendPathRedirectsAtTheHandler(t *testing.T) {
 	}
 	if len(events.clicks) != 1 || events.clicks[0] != target {
 		t.Errorf("recorded clicks = %v, want exactly [%s]", events.clicks, target)
+	}
+}
+
+// The destination has to be the page the author linked, not merely a page the
+// signature agrees on.
+//
+// A tracking link that verifies and then redirects somewhere else is the
+// quieter half of this feature going wrong: nothing errors, the click is
+// recorded, and the recipient lands on a URL nobody wrote. It happened for
+// every campaign whose links carried a parameter sharing a name with one of
+// HTML's legacy character references — "copy" and "reg" being the ones that
+// actually turn up in real links.
+func TestParametersNamedLikeEntitiesSurviveTheRoundTrip(t *testing.T) {
+	const (
+		tenantID  = "11111111-1111-1111-1111-111111111111"
+		messageID = "msg-1"
+		recipient = "person+tag@example.org"
+	)
+
+	targets := []string{
+		"https://shop.example.com/sale?copy=long&utm_source=email",
+		"https://shop.example.com/sale?id=7&reg=uk",
+		"https://shop.example.com/sale?not=1&para=2&sect=3&times=4",
+		"https://shop.example.com/sale?utm_source=email&utm_campaign=spring",
+	}
+
+	signer := tracking.NewSigner([]byte("a key for the round trip"))
+	sender := &sendEmailUsecase{staticBaseURL: "https://mail.example.com", trackingSigner: signer}
+
+	for _, target := range targets {
+		t.Run(target, func(t *testing.T) {
+			// html.EscapeString is how a template engine writes a URL into an
+			// attribute, so this is the document a real send produces.
+			body := sender.injectTracking(tenantID, messageID, recipient,
+				`<html><body><a href="`+html.EscapeString(target)+`">buy</a></body></html>`)
+			body = hardenForOutlook(body)
+
+			link := clickLinkFromBody(t, body)
+
+			events := &recordingEvents{}
+			rec := httptest.NewRecorder()
+			eventhttp.NewTrackingHandler(events, signer).
+				HandleClick(rec, httptest.NewRequest(http.MethodGet, link, nil))
+
+			if rec.Code != http.StatusFound {
+				t.Fatalf("HTTP %d: %s\nlink: %s", rec.Code, strings.TrimSpace(rec.Body.String()), link)
+			}
+			if got := rec.Header().Get("Location"); got != target {
+				t.Errorf("the recipient is sent to the wrong page\n got: %s\nwant: %s", got, target)
+			}
+			if len(events.clicks) != 1 || events.clicks[0] != target {
+				t.Errorf("the click was recorded against %v, not %s", events.clicks, target)
+			}
+		})
 	}
 }
