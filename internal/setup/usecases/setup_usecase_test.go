@@ -96,7 +96,7 @@ func TestIsSetup(t *testing.T) {
 
 			authUsecase := &mockAuthUsecase{}
 			conn := &mockConnection{}
-			u := NewSetupUsecase(authUsecase, conn, nil, nil)
+			u := NewSetupUsecase(authUsecase, conn, nil, nil, nil)
 
 			got, err := u.IsSetup(context.Background())
 			if err != nil {
@@ -131,7 +131,7 @@ func TestSetupPreventedIfAlreadySetup(t *testing.T) {
 
 	authUsecase := &mockAuthUsecase{isFirstRun: false}
 	conn := &mockConnection{isConnected: true}
-	u := NewSetupUsecase(authUsecase, conn, nil, nil)
+	u := NewSetupUsecase(authUsecase, conn, nil, nil, nil)
 
 	err = u.Setup(context.Background(), &panmailv1.DatabaseConfig{}, "admin@example.com", "password", "Admin", "http://localhost")
 	if err == nil {

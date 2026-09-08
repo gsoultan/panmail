@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"net/url"
 	"regexp"
@@ -684,7 +683,11 @@ func hardenForOutlook(html string) string {
 }
 
 func (u *sendEmailUsecase) injectTracking(tenantID, messageID, recipient, htmlContent string) string {
-	if u.baseURL() == "" || u.trackingSigner == nil {
+	// A signer with no key yet means setup has not finished. Sending the body
+	// untracked loses a metric; embedding links signed with a key this process
+	// invented would lose them anyway, one restart later, after the message had
+	// already been delivered.
+	if u.baseURL() == "" || u.trackingSigner == nil || !u.trackingSigner.HasKey() {
 		return htmlContent
 	}
 
@@ -704,7 +707,7 @@ func (u *sendEmailUsecase) setUnsubscribeHeaders(msg *gsmail.Email, tenantID, me
 	if u.baseURL() == "" {
 		return fmt.Errorf("no base URL is configured, so no unsubscribe link can be built")
 	}
-	if u.trackingSigner == nil {
+	if u.trackingSigner == nil || !u.trackingSigner.HasKey() {
 		return fmt.Errorf("no tracking signer is configured")
 	}
 
@@ -750,7 +753,7 @@ func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipi
 			return match
 		}
 
-		originalURL := html.UnescapeString(submatch[1])
+		originalURL := unescapeHrefValue(submatch[1])
 
 		// Anything that is not an ordinary web link is left alone: anchors and
 		// mailto: links have nothing to track, and other schemes must never be

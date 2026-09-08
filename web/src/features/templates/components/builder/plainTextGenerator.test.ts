@@ -57,6 +57,34 @@ describe('destinations survive', () => {
     expect(out).toBe('Track parcel: https://x.test/track');
   });
 
+  // The href in the markup is escaped, so a query string arrives here as
+  // "?a=1&amp;b=2". Printed verbatim it is a different URL, and the reader of
+  // the text part copies exactly what they see.
+  test('a query string in a link is printed as a URL, not as markup', () => {
+    const out = generatePlainText(design([
+      block('text', {
+        text: '<p><a href="https://x.test/sale?utm_source=email&amp;utm_campaign=spring">Sale</a></p>',
+      }),
+    ]));
+    expect(out).toContain('https://x.test/sale?utm_source=email&utm_campaign=spring');
+    expect(out).not.toContain('amp;');
+  });
+
+  // The mirror of the bug fixed on the send path: a general entity decoder
+  // would read "&copy=" as a copyright sign, because HTML lets that name drop
+  // its semicolon. These are parameter names, not characters.
+  test('parameters named after entities are left alone', () => {
+    const out = generatePlainText(design([
+      block('text', {
+        text: '<p><a href="https://x.test/a?copy=long&amp;reg=uk&amp;not=1">Go</a></p>',
+      }),
+    ]));
+    expect(out).toContain('https://x.test/a?copy=long&reg=uk&not=1');
+    expect(out).not.toContain('\u00a9');
+    expect(out).not.toContain('\u00ae');
+    expect(out).not.toContain('\u00ac');
+  });
+
   test('a placeholder href is not offered as a link', () => {
     const out = generatePlainText(design([block('button', { label: 'Click', url: '#' })]));
     expect(out).toBe('Click');
