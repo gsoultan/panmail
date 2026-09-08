@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, Badge, ActionIcon, Menu, Avatar, Button, Modal, TextInput, PasswordInput, Select, Switch } from '@mantine/core';
-import { IconUsers, IconUserCircle, IconDotsVertical, IconTrash, IconShieldLock, IconPlus, IconCheck, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { Container, Title, Group, Stack, Box, Text, rem, ThemeIcon, Table, Badge, ActionIcon, Menu, Avatar, Button, Modal, TextInput, PasswordInput, Select, Switch, Tooltip } from '@mantine/core';
+import { IconUsers, IconUserCircle, IconDotsVertical, IconTrash, IconShieldLock, IconPlus, IconCheck, IconChevronLeft, IconChevronRight, IconBuildingCommunity } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userClient } from '../services/client';
 import { UserRole } from '../api/panmail/v1/auth_pb';
@@ -8,6 +8,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../store/authStore';
+import { UserTenantsModal } from '../features/auth/components/UserTenantsModal';
 
 const roleConfig: Record<UserRole, { label: string, color: string }> = {
   [UserRole.UNSPECIFIED]: { label: 'Unspecified', color: 'gray' },
@@ -18,9 +19,13 @@ const roleConfig: Record<UserRole, { label: string, color: string }> = {
 };
 
 export const UsersPage: React.FC = () => {
-  const { user } = useAuthStore();
+  const { user, selectedTenantID } = useAuthStore();
+  // Only a super admin sees every tenant, so only they can lend an account to
+  // one — the server enforces the same rule.
+  const isSuperAdmin = user?.role === UserRole.SUPER_ADMIN;
   const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure(false);
   const [roleOpened, { open: openRole, close: closeRole }] = useDisclosure(false);
+  const [tenantsOpened, { open: openTenants, close: closeTenants }] = useDisclosure(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [pageToken, setPageToken] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<string[]>([]);
@@ -110,6 +115,13 @@ export const UsersPage: React.FC = () => {
       });
       closeRole();
     },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Failed to update the role',
+        color: 'red',
+      });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -120,6 +132,13 @@ export const UsersPage: React.FC = () => {
         title: 'Success',
         message: 'User deleted successfully',
         color: 'green',
+      });
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.message || 'Failed to delete the user',
+        color: 'red',
       });
     },
   });
@@ -215,6 +234,12 @@ export const UsersPage: React.FC = () => {
           </form>
         </Modal>
 
+        <UserTenantsModal
+          opened={tenantsOpened}
+          onClose={closeTenants}
+          user={selectedUser}
+        />
+
         <Box style={{
           backgroundColor: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',
           borderRadius: rem(12),
@@ -233,6 +258,10 @@ export const UsersPage: React.FC = () => {
             <Table.Tbody>
               {users.map((u: any) => {
                 const role = roleConfig[u.role as UserRole] || roleConfig[UserRole.VIEWER];
+                // A guest's account lives in their home tenant. Removing them
+                // from this one revokes the membership; deleting the account
+                // is not this tenant's to do, and the server refuses it.
+                const isGuest = !!selectedTenantID && !!u.tenantId && u.tenantId !== selectedTenantID;
                 return (
                   <Table.Tr key={u.id} style={{ borderBottom: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))' }}>
                     <Table.Td>
@@ -244,6 +273,11 @@ export const UsersPage: React.FC = () => {
                           <Text size="sm" fw={700} c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">{u.name}</Text>
                           <Text size="xs" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))">{u.email}</Text>
                         </div>
+                        {selectedTenantID && u.tenantId && u.tenantId !== selectedTenantID && (
+                          <Tooltip label="Assigned from another tenant. Their account, password and home role live there.">
+                            <Badge size="xs" variant="light" color="grape" radius="sm">Guest</Badge>
+                          </Tooltip>
+                        )}
                       </Group>
                     </Table.Td>
                     <Table.Td>
@@ -273,11 +307,31 @@ export const UsersPage: React.FC = () => {
                             roleForm.setValues({ role: u.role });
                             openRole();
                           }}>Change Role</Menu.Item>
-                          <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => {
-                            if (window.confirm(`Are you sure you want to delete user "${u.name}"?`)) {
-                              deleteMutation.mutate(u.id);
-                            }
-                          }}>Delete User</Menu.Item>
+                          {isSuperAdmin && (
+                            <Menu.Item leftSection={<IconBuildingCommunity size={14} />} onClick={() => {
+                              setSelectedUser(u);
+                              openTenants();
+                            }}>Tenant Access</Menu.Item>
+                          )}
+                          {isGuest ? (
+                            <Menu.Item
+                              color="red"
+                              leftSection={<IconBuildingCommunity size={14} />}
+                              disabled={!isSuperAdmin}
+                              onClick={() => {
+                                setSelectedUser(u);
+                                openTenants();
+                              }}
+                            >
+                              Remove from this tenant
+                            </Menu.Item>
+                          ) : (
+                            <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete user "${u.name}"?`)) {
+                                deleteMutation.mutate(u.id);
+                              }
+                            }}>Delete User</Menu.Item>
+                          )}
                         </Menu.Dropdown>
                       </Menu>
                     </Table.Td>

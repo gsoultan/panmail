@@ -46,6 +46,7 @@ import { useAuthStore } from '../store/authStore';
 import { Select } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { tenantService } from '../services/tenant';
+import { userService } from '../services/user';
 import { UserRole } from '../api/panmail/v1/auth_pb';
 import classes from './AppLayout.module.css';
 
@@ -67,14 +68,28 @@ export const AppLayout: React.FC = () => {
 
   const isSuperAdmin = user?.role === UserRole.SUPER_ADMIN;
 
+  // A super admin may act in any tenant, so they choose from all of them.
   const { data: tenantsData } = useQuery({
     queryKey: ['tenants'],
     queryFn: () => tenantService.listTenants(),
     enabled: isSuperAdmin,
   });
 
-  const tenants = tenantsData?.tenants || [];
-  const tenantOptions = tenants.map(t => ({ value: t.id, label: t.name }));
+  // Everybody else chooses from the tenants they have been assigned to. Most
+  // users have exactly one, and the switcher stays hidden for them.
+  const { data: membershipsData } = useQuery({
+    queryKey: ['user-tenants', 'me'],
+    queryFn: () => userService.listUserTenants(),
+    enabled: !!user && !isSuperAdmin,
+  });
+
+  const tenantOptions = isSuperAdmin
+    ? (tenantsData?.tenants ?? []).map(t => ({ value: t.id, label: t.name }))
+    : (membershipsData?.tenants ?? []).map(m => ({ value: m.tenantId, label: m.tenantName }));
+
+  // One tenant is not a choice. Showing a switcher with a single entry invites
+  // a click that does nothing.
+  const canSwitchTenant = isSuperAdmin ? tenantOptions.length > 0 : tenantOptions.length > 1;
 
   const handleSignOut = () => {
     clearAuth();
@@ -150,7 +165,7 @@ export const AppLayout: React.FC = () => {
           </Group>
 
           <Group gap="md">
-            {isSuperAdmin && tenantOptions.length > 0 && (
+            {canSwitchTenant && (
               <Select
                 placeholder="Switch Tenant"
                 data={tenantOptions}

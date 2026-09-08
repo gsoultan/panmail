@@ -89,6 +89,11 @@ type authUsecase struct {
 	tenantRepo tenantrepositories.TenantRepository
 	tokenMaker auth.TokenMaker
 
+	// memberships records the first administrator's membership of the tenant
+	// created alongside them. Nil is tolerated so that an instance wired
+	// without it still completes setup.
+	memberships repositories.MembershipRepository
+
 	loginLimiter     *attemptLimiter
 	twoFactorLimiter *attemptLimiter
 	pendingTwoFactor *pendingTwoFactorStore
@@ -97,11 +102,13 @@ type authUsecase struct {
 func NewAuthUsecase(
 	repo repositories.UserRepository,
 	tenantRepo tenantrepositories.TenantRepository,
+	memberships repositories.MembershipRepository,
 	tokenMaker auth.TokenMaker,
 ) AuthUsecase {
 	return &authUsecase{
 		repo:             repo,
 		tenantRepo:       tenantRepo,
+		memberships:      memberships,
 		tokenMaker:       tokenMaker,
 		loginLimiter:     newAttemptLimiter(maxLoginAttempts, loginBlockPeriod),
 		twoFactorLimiter: newAttemptLimiter(maxTwoFactorAttempts, twoFactorBlockPeriod),
@@ -229,7 +236,25 @@ func (u *authUsecase) CreateAdmin(ctx context.Context, admin NewAdmin) error {
 		UpdatedAt: time.Now(),
 	}
 
-	return u.repo.Create(ctx, user)
+	if err := u.repo.Create(ctx, user); err != nil {
+		return err
+	}
+
+	// The home tenant is a membership like any other, so that the first
+	// administrator is listed among their own tenant's members and can be
+	// assigned to further tenants by the same path as anybody else. A super
+	// admin's global role is not a tenant role, so the row records
+	// administrator, the strongest role that can be held locally.
+	if u.memberships == nil {
+		return nil
+	}
+	return u.memberships.Assign(ctx, &entities.UserTenant{
+		UserID:    user.ID,
+		TenantID:  tenantID,
+		Role:      entities.RoleAdmin,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	})
 }
 
 func validatePassword(password string) error {

@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"time"
 
 	"connectrpc.com/connect"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
@@ -18,10 +20,15 @@ const (
 
 type AuthService struct {
 	usecase usecases.AuthUsecase
+
+	// memberships answers which tenants the signed-in user may act in. Nil
+	// leaves GetCurrentUser reporting the user alone, which is what an
+	// instance wired without membership should do.
+	memberships usecases.MembershipUsecase
 }
 
-func NewAuthService(u usecases.AuthUsecase) *AuthService {
-	return &AuthService{usecase: u}
+func NewAuthService(u usecases.AuthUsecase, memberships usecases.MembershipUsecase) *AuthService {
+	return &AuthService{usecase: u, memberships: memberships}
 }
 
 func (s *AuthService) SignIn(
@@ -72,9 +79,31 @@ func (s *AuthService) GetCurrentUser(
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 
-	return connect.NewResponse(&panmailv1.GetCurrentUserResponse{
-		User: toProtoUser(user),
-	}), nil
+	res := &panmailv1.GetCurrentUserResponse{User: toProtoUser(user)}
+
+	// The console builds its tenant switcher from this, so a user with more
+	// than one membership can move between them without a second call. A
+	// failure here is not fatal to knowing who you are: report the user and
+	// let the switcher be empty rather than failing the whole request.
+	if s.memberships != nil {
+		memberships, err := s.memberships.ListUserTenants(ctx, userID)
+		if err != nil {
+			slog.Warn("could not read the signed-in user's tenants; the switcher will be empty",
+				"user_id", userID, "error", err)
+		} else {
+			for _, m := range memberships {
+				res.Tenants = append(res.Tenants, &panmailv1.UserTenant{
+					TenantId:   m.TenantID,
+					TenantName: m.TenantName,
+					Role:       panmailv1.UserRole(panmailv1.UserRole_value[m.Role]),
+					IsHome:     m.IsHome,
+					CreatedAt:  m.CreatedAt.Format(time.RFC3339),
+				})
+			}
+		}
+	}
+
+	return connect.NewResponse(res), nil
 }
 
 func (s *AuthService) SetupTwoFactor(

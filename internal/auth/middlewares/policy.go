@@ -5,12 +5,14 @@ import (
 	"github.com/gsoultan/panmail/internal/auth/entities"
 )
 
-// Role names as they appear in tokens and the users table.
+// Role names as they appear in tokens and the users table. The definitions
+// live in entities so that usecases can share them without importing a
+// middleware; these aliases keep the policy readable.
 const (
-	RoleViewer     = "USER_ROLE_VIEWER"
-	RoleEditor     = "USER_ROLE_EDITOR"
-	RoleAdmin      = "USER_ROLE_ADMIN"
-	RoleSuperAdmin = "USER_ROLE_SUPER_ADMIN"
+	RoleViewer     = entities.RoleViewer
+	RoleEditor     = entities.RoleEditor
+	RoleAdmin      = entities.RoleAdmin
+	RoleSuperAdmin = entities.RoleSuperAdmin
 )
 
 var roleLevel = map[string]int{
@@ -53,7 +55,13 @@ var procedurePolicy = map[string]access{
 	panmailv1connect.SetupServiceTestDatabaseConnectionProcedure: {public: true},
 
 	// --- Any signed-in user -------------------------------------------------
-	panmailv1connect.AuthServiceGetCurrentUserProcedure:   {minRole: RoleViewer},
+	panmailv1connect.AuthServiceGetCurrentUserProcedure: {minRole: RoleViewer},
+
+	// Reading which tenants you may act in is how the console builds its own
+	// switcher, so it is open to any signed-in user. Naming somebody else
+	// requires administrator, which the handler enforces — the policy table
+	// cannot express "depends on the argument".
+	panmailv1connect.UserServiceListUserTenantsProcedure:  {minRole: RoleViewer},
 	panmailv1connect.AuthServiceSetupTwoFactorProcedure:   {minRole: RoleViewer},
 	panmailv1connect.AuthServiceEnableTwoFactorProcedure:  {minRole: RoleViewer},
 	panmailv1connect.AuthServiceDisableTwoFactorProcedure: {minRole: RoleViewer},
@@ -63,6 +71,14 @@ var procedurePolicy = map[string]access{
 	panmailv1connect.TenantServiceUpdateTenantProcedure: {minRole: RoleSuperAdmin},
 	panmailv1connect.TenantServiceDeleteTenantProcedure: {minRole: RoleSuperAdmin},
 	panmailv1connect.TenantServiceListTenantsProcedure:  {minRole: RoleSuperAdmin},
+
+	// Membership crosses a tenant boundary by definition: it names a tenant
+	// other than the one the caller is acting in, and grants standing there.
+	// An administrator is confined to their own tenant, so neither of these is
+	// theirs to make — only a super admin sees every tenant and can be held
+	// responsible for lending an account to one.
+	panmailv1connect.UserServiceAssignUserToTenantProcedure:   {minRole: RoleSuperAdmin},
+	panmailv1connect.UserServiceRemoveUserFromTenantProcedure: {minRole: RoleSuperAdmin},
 
 	// --- Administrator ------------------------------------------------------
 	panmailv1connect.ApiKeyServiceCreateApiKeyProcedure:           {minRole: RoleAdmin},

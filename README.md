@@ -29,6 +29,25 @@ Panmail implements a strict 4-tier Role-Based Access Control system to ensure se
 - **Editor**: Configuration management. Manages Email Providers, Templates, Webhooks, and Suppressions. Can send test emails.
 - **Viewer**: Read-only access to analytics, logs, and configurations. Cannot perform any modifications.
 
+### One account, several tenants
+
+A user does not need a separate login per tenant. A Super Administrator can assign an
+existing account to another tenant from **Dashboard → Users → Tenant Access**, and the
+person keeps one address and one password.
+
+- Each user has a **home** tenant — the one they sign in to, and where their role above
+  applies.
+- Any further tenant is a **membership**, and carries its own role. An Administrator at
+  home joins another tenant as a Viewer unless told otherwise, so lending an account never
+  hands over authority by accident.
+- Users belonging to more than one tenant get a switcher in the header. Everyone else
+  sees no switcher, because there is nothing to switch to.
+- **Super Administrator is global**, not per tenant: it already reaches every tenant, so
+  it cannot be granted as a membership.
+
+Revoking a membership removes access to that tenant only. The account itself lives in its
+home tenant and can only be deleted from there.
+
 ## 🔐 Security
 
 Panmail is designed with a "Security First" mindset:

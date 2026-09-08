@@ -85,6 +85,15 @@ const (
 	// UserServiceUpdateUserTwoFactorProcedure is the fully-qualified name of the UserService's
 	// UpdateUserTwoFactor RPC.
 	UserServiceUpdateUserTwoFactorProcedure = "/panmail.v1.UserService/UpdateUserTwoFactor"
+	// UserServiceAssignUserToTenantProcedure is the fully-qualified name of the UserService's
+	// AssignUserToTenant RPC.
+	UserServiceAssignUserToTenantProcedure = "/panmail.v1.UserService/AssignUserToTenant"
+	// UserServiceRemoveUserFromTenantProcedure is the fully-qualified name of the UserService's
+	// RemoveUserFromTenant RPC.
+	UserServiceRemoveUserFromTenantProcedure = "/panmail.v1.UserService/RemoveUserFromTenant"
+	// UserServiceListUserTenantsProcedure is the fully-qualified name of the UserService's
+	// ListUserTenants RPC.
+	UserServiceListUserTenantsProcedure = "/panmail.v1.UserService/ListUserTenants"
 	// TenantServiceCreateTenantProcedure is the fully-qualified name of the TenantService's
 	// CreateTenant RPC.
 	TenantServiceCreateTenantProcedure = "/panmail.v1.TenantService/CreateTenant"
@@ -508,6 +517,15 @@ type UserServiceClient interface {
 	UpdateUserRole(context.Context, *connect.Request[v1.UpdateUserRoleRequest]) (*connect.Response[v1.UpdateUserRoleResponse], error)
 	DeleteUser(context.Context, *connect.Request[v1.DeleteUserRequest]) (*connect.Response[v1.DeleteUserResponse], error)
 	UpdateUserTwoFactor(context.Context, *connect.Request[v1.UpdateUserTwoFactorRequest]) (*connect.Response[v1.UpdateUserTwoFactorResponse], error)
+	// Membership: one account may act in several tenants.
+	//
+	// The alternative was a second account per tenant, which users.email UNIQUE
+	// refuses, so the same person needed an aliased address and another
+	// password. These three RPCs replace that with one account and a set of
+	// memberships.
+	AssignUserToTenant(context.Context, *connect.Request[v1.AssignUserToTenantRequest]) (*connect.Response[v1.AssignUserToTenantResponse], error)
+	RemoveUserFromTenant(context.Context, *connect.Request[v1.RemoveUserFromTenantRequest]) (*connect.Response[v1.RemoveUserFromTenantResponse], error)
+	ListUserTenants(context.Context, *connect.Request[v1.ListUserTenantsRequest]) (*connect.Response[v1.ListUserTenantsResponse], error)
 }
 
 // NewUserServiceClient constructs a client for the panmail.v1.UserService service. By default, it
@@ -551,16 +569,37 @@ func NewUserServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(userServiceMethods.ByName("UpdateUserTwoFactor")),
 			connect.WithClientOptions(opts...),
 		),
+		assignUserToTenant: connect.NewClient[v1.AssignUserToTenantRequest, v1.AssignUserToTenantResponse](
+			httpClient,
+			baseURL+UserServiceAssignUserToTenantProcedure,
+			connect.WithSchema(userServiceMethods.ByName("AssignUserToTenant")),
+			connect.WithClientOptions(opts...),
+		),
+		removeUserFromTenant: connect.NewClient[v1.RemoveUserFromTenantRequest, v1.RemoveUserFromTenantResponse](
+			httpClient,
+			baseURL+UserServiceRemoveUserFromTenantProcedure,
+			connect.WithSchema(userServiceMethods.ByName("RemoveUserFromTenant")),
+			connect.WithClientOptions(opts...),
+		),
+		listUserTenants: connect.NewClient[v1.ListUserTenantsRequest, v1.ListUserTenantsResponse](
+			httpClient,
+			baseURL+UserServiceListUserTenantsProcedure,
+			connect.WithSchema(userServiceMethods.ByName("ListUserTenants")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // userServiceClient implements UserServiceClient.
 type userServiceClient struct {
-	createUser          *connect.Client[v1.CreateUserRequest, v1.CreateUserResponse]
-	listUsers           *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
-	updateUserRole      *connect.Client[v1.UpdateUserRoleRequest, v1.UpdateUserRoleResponse]
-	deleteUser          *connect.Client[v1.DeleteUserRequest, v1.DeleteUserResponse]
-	updateUserTwoFactor *connect.Client[v1.UpdateUserTwoFactorRequest, v1.UpdateUserTwoFactorResponse]
+	createUser           *connect.Client[v1.CreateUserRequest, v1.CreateUserResponse]
+	listUsers            *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
+	updateUserRole       *connect.Client[v1.UpdateUserRoleRequest, v1.UpdateUserRoleResponse]
+	deleteUser           *connect.Client[v1.DeleteUserRequest, v1.DeleteUserResponse]
+	updateUserTwoFactor  *connect.Client[v1.UpdateUserTwoFactorRequest, v1.UpdateUserTwoFactorResponse]
+	assignUserToTenant   *connect.Client[v1.AssignUserToTenantRequest, v1.AssignUserToTenantResponse]
+	removeUserFromTenant *connect.Client[v1.RemoveUserFromTenantRequest, v1.RemoveUserFromTenantResponse]
+	listUserTenants      *connect.Client[v1.ListUserTenantsRequest, v1.ListUserTenantsResponse]
 }
 
 // CreateUser calls panmail.v1.UserService.CreateUser.
@@ -588,6 +627,21 @@ func (c *userServiceClient) UpdateUserTwoFactor(ctx context.Context, req *connec
 	return c.updateUserTwoFactor.CallUnary(ctx, req)
 }
 
+// AssignUserToTenant calls panmail.v1.UserService.AssignUserToTenant.
+func (c *userServiceClient) AssignUserToTenant(ctx context.Context, req *connect.Request[v1.AssignUserToTenantRequest]) (*connect.Response[v1.AssignUserToTenantResponse], error) {
+	return c.assignUserToTenant.CallUnary(ctx, req)
+}
+
+// RemoveUserFromTenant calls panmail.v1.UserService.RemoveUserFromTenant.
+func (c *userServiceClient) RemoveUserFromTenant(ctx context.Context, req *connect.Request[v1.RemoveUserFromTenantRequest]) (*connect.Response[v1.RemoveUserFromTenantResponse], error) {
+	return c.removeUserFromTenant.CallUnary(ctx, req)
+}
+
+// ListUserTenants calls panmail.v1.UserService.ListUserTenants.
+func (c *userServiceClient) ListUserTenants(ctx context.Context, req *connect.Request[v1.ListUserTenantsRequest]) (*connect.Response[v1.ListUserTenantsResponse], error) {
+	return c.listUserTenants.CallUnary(ctx, req)
+}
+
 // UserServiceHandler is an implementation of the panmail.v1.UserService service.
 type UserServiceHandler interface {
 	CreateUser(context.Context, *connect.Request[v1.CreateUserRequest]) (*connect.Response[v1.CreateUserResponse], error)
@@ -595,6 +649,15 @@ type UserServiceHandler interface {
 	UpdateUserRole(context.Context, *connect.Request[v1.UpdateUserRoleRequest]) (*connect.Response[v1.UpdateUserRoleResponse], error)
 	DeleteUser(context.Context, *connect.Request[v1.DeleteUserRequest]) (*connect.Response[v1.DeleteUserResponse], error)
 	UpdateUserTwoFactor(context.Context, *connect.Request[v1.UpdateUserTwoFactorRequest]) (*connect.Response[v1.UpdateUserTwoFactorResponse], error)
+	// Membership: one account may act in several tenants.
+	//
+	// The alternative was a second account per tenant, which users.email UNIQUE
+	// refuses, so the same person needed an aliased address and another
+	// password. These three RPCs replace that with one account and a set of
+	// memberships.
+	AssignUserToTenant(context.Context, *connect.Request[v1.AssignUserToTenantRequest]) (*connect.Response[v1.AssignUserToTenantResponse], error)
+	RemoveUserFromTenant(context.Context, *connect.Request[v1.RemoveUserFromTenantRequest]) (*connect.Response[v1.RemoveUserFromTenantResponse], error)
+	ListUserTenants(context.Context, *connect.Request[v1.ListUserTenantsRequest]) (*connect.Response[v1.ListUserTenantsResponse], error)
 }
 
 // NewUserServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -634,6 +697,24 @@ func NewUserServiceHandler(svc UserServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(userServiceMethods.ByName("UpdateUserTwoFactor")),
 		connect.WithHandlerOptions(opts...),
 	)
+	userServiceAssignUserToTenantHandler := connect.NewUnaryHandler(
+		UserServiceAssignUserToTenantProcedure,
+		svc.AssignUserToTenant,
+		connect.WithSchema(userServiceMethods.ByName("AssignUserToTenant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	userServiceRemoveUserFromTenantHandler := connect.NewUnaryHandler(
+		UserServiceRemoveUserFromTenantProcedure,
+		svc.RemoveUserFromTenant,
+		connect.WithSchema(userServiceMethods.ByName("RemoveUserFromTenant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	userServiceListUserTenantsHandler := connect.NewUnaryHandler(
+		UserServiceListUserTenantsProcedure,
+		svc.ListUserTenants,
+		connect.WithSchema(userServiceMethods.ByName("ListUserTenants")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/panmail.v1.UserService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case UserServiceCreateUserProcedure:
@@ -646,6 +727,12 @@ func NewUserServiceHandler(svc UserServiceHandler, opts ...connect.HandlerOption
 			userServiceDeleteUserHandler.ServeHTTP(w, r)
 		case UserServiceUpdateUserTwoFactorProcedure:
 			userServiceUpdateUserTwoFactorHandler.ServeHTTP(w, r)
+		case UserServiceAssignUserToTenantProcedure:
+			userServiceAssignUserToTenantHandler.ServeHTTP(w, r)
+		case UserServiceRemoveUserFromTenantProcedure:
+			userServiceRemoveUserFromTenantHandler.ServeHTTP(w, r)
+		case UserServiceListUserTenantsProcedure:
+			userServiceListUserTenantsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -673,6 +760,18 @@ func (UnimplementedUserServiceHandler) DeleteUser(context.Context, *connect.Requ
 
 func (UnimplementedUserServiceHandler) UpdateUserTwoFactor(context.Context, *connect.Request[v1.UpdateUserTwoFactorRequest]) (*connect.Response[v1.UpdateUserTwoFactorResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.UserService.UpdateUserTwoFactor is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) AssignUserToTenant(context.Context, *connect.Request[v1.AssignUserToTenantRequest]) (*connect.Response[v1.AssignUserToTenantResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.UserService.AssignUserToTenant is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) RemoveUserFromTenant(context.Context, *connect.Request[v1.RemoveUserFromTenantRequest]) (*connect.Response[v1.RemoveUserFromTenantResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.UserService.RemoveUserFromTenant is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) ListUserTenants(context.Context, *connect.Request[v1.ListUserTenantsRequest]) (*connect.Response[v1.ListUserTenantsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.UserService.ListUserTenants is not implemented"))
 }
 
 // TenantServiceClient is a client for the panmail.v1.TenantService service.

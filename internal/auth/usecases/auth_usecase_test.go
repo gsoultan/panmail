@@ -86,7 +86,7 @@ func newTestUsecase(t *testing.T, repo *stubUserRepo) (AuthUsecase, auth.TokenMa
 	if err != nil {
 		t.Fatalf("failed to build token maker: %v", err)
 	}
-	return NewAuthUsecase(repo, &stubTenantRepo{}, maker), maker
+	return NewAuthUsecase(repo, &stubTenantRepo{}, nil, maker), maker
 }
 
 func newUser(t *testing.T, secret string) *entities.User {
