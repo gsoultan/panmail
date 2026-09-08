@@ -80,11 +80,16 @@ and a decryption error nobody can place.
 
 1. Put the four stores where the new instance expects them.
 2. Restore `config.yaml`, or copy the `auth.symmetric_key` from it into the
-   new one. Skipping this invalidates every session and API key.
+   new one. Skipping this invalidates every session and API key — and every
+   tracking link in mail already delivered, which is the part with no way back:
+   those messages are in inboxes and cannot be reissued. Clicks answer `403
+   Invalid tracking link` and opens stop recording silently.
 3. Set `PANMAIL_SECRET_KEY` to the key named in the manifest.
-4. Start the gateway and check two things — that you can sign in, and that a
-   provider's host still reads correctly. The first proves the auth key came
-   across, the second proves the data key did.
+4. Start the gateway and check three things — that you can sign in, that a
+   provider's host still reads correctly, and that clicking a tracking link
+   from a message sent *before* the backup still redirects. The first proves
+   the auth key came across, the second proves the data key did, and the third
+   proves it for the one place where getting it wrong is silent and permanent.
 
 Step 4 is the test. A restore that has not been checked is a hypothesis.
 

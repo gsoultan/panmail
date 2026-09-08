@@ -150,7 +150,14 @@ is worth having and does nothing for the wire.
 Shared, and must be the same everywhere:
 
 - the SQL database
-- `auth.symmetric_key` — a token minted by one instance is verified by another
+- `auth.symmetric_key` — a token minted by one instance is verified by another,
+  and it also keys the open, click and unsubscribe links in outgoing mail. The
+  two failures do not look alike. A mismatched key logs everyone out, which is
+  noticed within minutes; it also makes every tracking link the other instance
+  issued answer `403 Invalid tracking link` for as long as those messages exist,
+  and opens simply stop being recorded, because the pixel is served either way.
+  Nothing reports that second one. Check it deliberately after any change: send
+  a message from one instance and click its link against another.
 - `PANMAIL_SECRET_KEY` — the key stored credentials are encrypted under. An
   instance without it cannot read any provider configuration.
 
