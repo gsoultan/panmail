@@ -21,6 +21,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// SmtpBindScope is where the submission listener accepts connections, as a
+// closed set rather than a host string.
+//
+// An address typed into a form is unvalidatable input that decides how far a
+// port is reachable, so the wire carries the decision instead of the address:
+// there are exactly two answers worth giving, and neither can be malformed.
+type SmtpBindScope int32
+
+const (
+	SmtpBindScope_SMTP_BIND_SCOPE_UNSPECIFIED SmtpBindScope = 0
+	// 127.0.0.1 — reachable only from this host. The only scope on which
+	// cleartext AUTH is allowed, because nothing can be on the path.
+	SmtpBindScope_SMTP_BIND_SCOPE_LOOPBACK SmtpBindScope = 1
+	// 0.0.0.0 — every interface. Requires TLS: see allow_insecure_auth.
+	SmtpBindScope_SMTP_BIND_SCOPE_ALL_INTERFACES SmtpBindScope = 2
+)
+
+// Enum value maps for SmtpBindScope.
+var (
+	SmtpBindScope_name = map[int32]string{
+		0: "SMTP_BIND_SCOPE_UNSPECIFIED",
+		1: "SMTP_BIND_SCOPE_LOOPBACK",
+		2: "SMTP_BIND_SCOPE_ALL_INTERFACES",
+	}
+	SmtpBindScope_value = map[string]int32{
+		"SMTP_BIND_SCOPE_UNSPECIFIED":    0,
+		"SMTP_BIND_SCOPE_LOOPBACK":       1,
+		"SMTP_BIND_SCOPE_ALL_INTERFACES": 2,
+	}
+)
+
+func (x SmtpBindScope) Enum() *SmtpBindScope {
+	p := new(SmtpBindScope)
+	*p = x
+	return p
+}
+
+func (x SmtpBindScope) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SmtpBindScope) Descriptor() protoreflect.EnumDescriptor {
+	return file_panmail_v1_system_settings_proto_enumTypes[0].Descriptor()
+}
+
+func (SmtpBindScope) Type() protoreflect.EnumType {
+	return &file_panmail_v1_system_settings_proto_enumTypes[0]
+}
+
+func (x SmtpBindScope) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SmtpBindScope.Descriptor instead.
+func (SmtpBindScope) EnumDescriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{0}
+}
+
 // ContentRedaction is how hard the gateway looks for secrets in a message body
 // before showing it back.
 //
@@ -86,11 +144,11 @@ func (x ContentRedaction) String() string {
 }
 
 func (ContentRedaction) Descriptor() protoreflect.EnumDescriptor {
-	return file_panmail_v1_system_settings_proto_enumTypes[0].Descriptor()
+	return file_panmail_v1_system_settings_proto_enumTypes[1].Descriptor()
 }
 
 func (ContentRedaction) Type() protoreflect.EnumType {
-	return &file_panmail_v1_system_settings_proto_enumTypes[0]
+	return &file_panmail_v1_system_settings_proto_enumTypes[1]
 }
 
 func (x ContentRedaction) Number() protoreflect.EnumNumber {
@@ -99,7 +157,7 @@ func (x ContentRedaction) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ContentRedaction.Descriptor instead.
 func (ContentRedaction) EnumDescriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{0}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{1}
 }
 
 type GetSettingsRequest struct {
@@ -280,16 +338,124 @@ func (x *UpdateSettingsResponse) GetSettings() *SystemSettings {
 	return nil
 }
 
+// TlsCertificateInfo describes the stored keypair without disclosing it.
+//
+// Everything here is derived from the certificate, which is public by
+// construction. The private key has no field in any response message, so there
+// is no code path that can read one back out of the gateway.
+type TlsCertificateInfo struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Subject string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
+	// The names this certificate is valid for, so an administrator can see
+	// whether it matches the host their applications will dial.
+	DnsNames  []string `protobuf:"bytes,2,rep,name=dns_names,json=dnsNames,proto3" json:"dns_names,omitempty"`
+	Issuer    string   `protobuf:"bytes,3,opt,name=issuer,proto3" json:"issuer,omitempty"`
+	NotBefore string   `protobuf:"bytes,4,opt,name=not_before,json=notBefore,proto3" json:"not_before,omitempty"`
+	NotAfter  string   `protobuf:"bytes,5,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
+	// Lowercase hex SHA-256 of the DER, the same value openssl prints. It is how
+	// an operator confirms the gateway holds the certificate they meant to
+	// install without the gateway having to show it.
+	FingerprintSha256 string `protobuf:"bytes,6,opt,name=fingerprint_sha256,json=fingerprintSha256,proto3" json:"fingerprint_sha256,omitempty"`
+	// True when not_after has passed. Stored certificates are not deleted when
+	// they expire — the listener keeps serving the one it has, and saying so is
+	// more useful than silently refusing to start.
+	Expired       bool `protobuf:"varint,7,opt,name=expired,proto3" json:"expired,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TlsCertificateInfo) Reset() {
+	*x = TlsCertificateInfo{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TlsCertificateInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TlsCertificateInfo) ProtoMessage() {}
+
+func (x *TlsCertificateInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TlsCertificateInfo.ProtoReflect.Descriptor instead.
+func (*TlsCertificateInfo) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *TlsCertificateInfo) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *TlsCertificateInfo) GetDnsNames() []string {
+	if x != nil {
+		return x.DnsNames
+	}
+	return nil
+}
+
+func (x *TlsCertificateInfo) GetIssuer() string {
+	if x != nil {
+		return x.Issuer
+	}
+	return ""
+}
+
+func (x *TlsCertificateInfo) GetNotBefore() string {
+	if x != nil {
+		return x.NotBefore
+	}
+	return ""
+}
+
+func (x *TlsCertificateInfo) GetNotAfter() string {
+	if x != nil {
+		return x.NotAfter
+	}
+	return ""
+}
+
+func (x *TlsCertificateInfo) GetFingerprintSha256() string {
+	if x != nil {
+		return x.FingerprintSha256
+	}
+	return ""
+}
+
+func (x *TlsCertificateInfo) GetExpired() bool {
+	if x != nil {
+		return x.Expired
+	}
+	return false
+}
+
 // SmtpSubmission reports the SMTP submission listener, so the dashboard can
 // show an integrator real connection details instead of guessing at them.
 //
-// It is deliberately not part of SystemSettings. The listener is configured by
-// process flags and cannot be changed by an administrator at runtime, and a
-// field that appears in an editable form but silently ignores edits is worse
-// than one that is absent.
+// It is deliberately not part of SystemSettings. SystemSettings is readable by
+// any authenticated caller, and this message is adjacent to key material;
+// keeping them apart means a widening of that read can never reach the
+// listener's configuration by accident.
 type SmtpSubmission struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Whether this process is listening for submissions at all.
+	// Whether submission is turned on. This is the setting, not proof of a live
+	// socket: a listener that was enabled but could not bind reports enabled with
+	// last_error set, because a form needs to show the administrator the state
+	// they asked for alongside the reason it did not take.
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// The hostname clients should connect to, empty when the listener binds
 	// every interface. A wildcard bind gives no hostname worth reporting, and
@@ -303,13 +469,35 @@ type SmtpSubmission struct {
 	// key can cross the network in the clear, which is a deployment decision
 	// worth showing rather than burying in a log line at startup.
 	InsecureAuthAllowed bool `protobuf:"varint,5,opt,name=insecure_auth_allowed,json=insecureAuthAllowed,proto3" json:"insecure_auth_allowed,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// True when this process was started with --smtp-addr. Flags win over the
+	// stored configuration, so an existing deployment keeps behaving exactly as
+	// it did, and the dashboard renders read-only rather than offering an edit
+	// that would be ignored.
+	ManagedByFlags bool `protobuf:"varint,6,opt,name=managed_by_flags,json=managedByFlags,proto3" json:"managed_by_flags,omitempty"`
+	// Whether UpdateSmtpSubmission would be accepted. False also when no
+	// encryption key is configured, because a TLS private key must never be
+	// stored in the clear.
+	Editable bool `protobuf:"varint,7,opt,name=editable,proto3" json:"editable,omitempty"`
+	// Why editable is false, in words meant for an administrator. Empty when
+	// editable is true.
+	NotEditableReason string        `protobuf:"bytes,8,opt,name=not_editable_reason,json=notEditableReason,proto3" json:"not_editable_reason,omitempty"`
+	BindScope         SmtpBindScope `protobuf:"varint,9,opt,name=bind_scope,json=bindScope,proto3,enum=panmail.v1.SmtpBindScope" json:"bind_scope,omitempty"`
+	// The stored keypair, absent when none is stored.
+	Certificate *TlsCertificateInfo `protobuf:"bytes,10,opt,name=certificate,proto3" json:"certificate,omitempty"`
+	// Why the listener is not running despite being enabled — a port already in
+	// use, or a bind refused. Empty when the desired and actual states agree.
+	//
+	// This exists because enabling now happens at runtime: at startup a listener
+	// that would not bind was fatal, so the two could not disagree. A toggle in a
+	// form cannot take the process down, so the failure has to be reportable.
+	LastError     string `protobuf:"bytes,11,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SmtpSubmission) Reset() {
 	*x = SmtpSubmission{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -321,7 +509,7 @@ func (x *SmtpSubmission) String() string {
 func (*SmtpSubmission) ProtoMessage() {}
 
 func (x *SmtpSubmission) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -334,7 +522,7 @@ func (x *SmtpSubmission) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SmtpSubmission.ProtoReflect.Descriptor instead.
 func (*SmtpSubmission) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{4}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SmtpSubmission) GetEnabled() bool {
@@ -370,6 +558,250 @@ func (x *SmtpSubmission) GetInsecureAuthAllowed() bool {
 		return x.InsecureAuthAllowed
 	}
 	return false
+}
+
+func (x *SmtpSubmission) GetManagedByFlags() bool {
+	if x != nil {
+		return x.ManagedByFlags
+	}
+	return false
+}
+
+func (x *SmtpSubmission) GetEditable() bool {
+	if x != nil {
+		return x.Editable
+	}
+	return false
+}
+
+func (x *SmtpSubmission) GetNotEditableReason() string {
+	if x != nil {
+		return x.NotEditableReason
+	}
+	return ""
+}
+
+func (x *SmtpSubmission) GetBindScope() SmtpBindScope {
+	if x != nil {
+		return x.BindScope
+	}
+	return SmtpBindScope_SMTP_BIND_SCOPE_UNSPECIFIED
+}
+
+func (x *SmtpSubmission) GetCertificate() *TlsCertificateInfo {
+	if x != nil {
+		return x.Certificate
+	}
+	return nil
+}
+
+func (x *SmtpSubmission) GetLastError() string {
+	if x != nil {
+		return x.LastError
+	}
+	return ""
+}
+
+// SmtpSubmissionConfig is the desired state of the listener.
+//
+// The TLS fields are write-only: they are accepted here and never returned by
+// any read. Omitting both leaves whatever is already stored in place, so an
+// administrator can change the port without re-pasting a private key.
+type SmtpSubmissionConfig struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Enabled   bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	BindScope SmtpBindScope          `protobuf:"varint,2,opt,name=bind_scope,json=bindScope,proto3,enum=panmail.v1.SmtpBindScope" json:"bind_scope,omitempty"`
+	// The listen port. Submission ports are 587 (STARTTLS) and 2525; 25 is
+	// refused, because it is the port a mail exchanger answers on and this
+	// gateway is not one — binding it invites relay expectations it will not
+	// meet.
+	Port int32 `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+	// PEM, including any intermediates. Both TLS fields must be sent together.
+	TlsCertificatePem string `protobuf:"bytes,4,opt,name=tls_certificate_pem,json=tlsCertificatePem,proto3" json:"tls_certificate_pem,omitempty"`
+	// PEM. Encrypted with the gateway's data key before it is stored, and never
+	// read back.
+	TlsPrivateKeyPem string `protobuf:"bytes,5,opt,name=tls_private_key_pem,json=tlsPrivateKeyPem,proto3" json:"tls_private_key_pem,omitempty"`
+	// Permit AUTH over an unencrypted connection. Honoured only when bind_scope
+	// is LOOPBACK; on any other scope the request is refused rather than
+	// downgraded, because the SMTP password is an API key and this field decides
+	// whether it crosses a network in the clear.
+	AllowInsecureAuth bool `protobuf:"varint,6,opt,name=allow_insecure_auth,json=allowInsecureAuth,proto3" json:"allow_insecure_auth,omitempty"`
+	// Discard the stored keypair. Separate from sending empty PEM fields, which
+	// means "leave it alone" — the two are opposite instructions and an empty
+	// string cannot express both.
+	ClearTls      bool `protobuf:"varint,7,opt,name=clear_tls,json=clearTls,proto3" json:"clear_tls,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SmtpSubmissionConfig) Reset() {
+	*x = SmtpSubmissionConfig{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SmtpSubmissionConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SmtpSubmissionConfig) ProtoMessage() {}
+
+func (x *SmtpSubmissionConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SmtpSubmissionConfig.ProtoReflect.Descriptor instead.
+func (*SmtpSubmissionConfig) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SmtpSubmissionConfig) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *SmtpSubmissionConfig) GetBindScope() SmtpBindScope {
+	if x != nil {
+		return x.BindScope
+	}
+	return SmtpBindScope_SMTP_BIND_SCOPE_UNSPECIFIED
+}
+
+func (x *SmtpSubmissionConfig) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *SmtpSubmissionConfig) GetTlsCertificatePem() string {
+	if x != nil {
+		return x.TlsCertificatePem
+	}
+	return ""
+}
+
+func (x *SmtpSubmissionConfig) GetTlsPrivateKeyPem() string {
+	if x != nil {
+		return x.TlsPrivateKeyPem
+	}
+	return ""
+}
+
+func (x *SmtpSubmissionConfig) GetAllowInsecureAuth() bool {
+	if x != nil {
+		return x.AllowInsecureAuth
+	}
+	return false
+}
+
+func (x *SmtpSubmissionConfig) GetClearTls() bool {
+	if x != nil {
+		return x.ClearTls
+	}
+	return false
+}
+
+type UpdateSmtpSubmissionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Config        *SmtpSubmissionConfig  `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateSmtpSubmissionRequest) Reset() {
+	*x = UpdateSmtpSubmissionRequest{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateSmtpSubmissionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateSmtpSubmissionRequest) ProtoMessage() {}
+
+func (x *UpdateSmtpSubmissionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateSmtpSubmissionRequest.ProtoReflect.Descriptor instead.
+func (*UpdateSmtpSubmissionRequest) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *UpdateSmtpSubmissionRequest) GetConfig() *SmtpSubmissionConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+type UpdateSmtpSubmissionResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The listener as it now stands, read back from the supervisor rather than
+	// echoed from the request, so a change that was stored but could not be
+	// bound reports last_error instead of a success the caller cannot see.
+	SmtpSubmission *SmtpSubmission `protobuf:"bytes,1,opt,name=smtp_submission,json=smtpSubmission,proto3" json:"smtp_submission,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *UpdateSmtpSubmissionResponse) Reset() {
+	*x = UpdateSmtpSubmissionResponse{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateSmtpSubmissionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateSmtpSubmissionResponse) ProtoMessage() {}
+
+func (x *UpdateSmtpSubmissionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateSmtpSubmissionResponse.ProtoReflect.Descriptor instead.
+func (*UpdateSmtpSubmissionResponse) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *UpdateSmtpSubmissionResponse) GetSmtpSubmission() *SmtpSubmission {
+	if x != nil {
+		return x.SmtpSubmission
+	}
+	return nil
 }
 
 // SystemSettings holds the global, admin-editable configuration.
@@ -437,7 +869,7 @@ type SystemSettings struct {
 
 func (x *SystemSettings) Reset() {
 	*x = SystemSettings{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -449,7 +881,7 @@ func (x *SystemSettings) String() string {
 func (*SystemSettings) ProtoMessage() {}
 
 func (x *SystemSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -462,7 +894,7 @@ func (x *SystemSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemSettings.ProtoReflect.Descriptor instead.
 func (*SystemSettings) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{5}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SystemSettings) GetBaseUrl() string {
@@ -555,13 +987,44 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x15UpdateSettingsRequest\x126\n" +
 	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"P\n" +
 	"\x16UpdateSettingsResponse\x126\n" +
-	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"\xa2\x01\n" +
+	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\"\xe8\x01\n" +
+	"\x12TlsCertificateInfo\x12\x18\n" +
+	"\asubject\x18\x01 \x01(\tR\asubject\x12\x1b\n" +
+	"\tdns_names\x18\x02 \x03(\tR\bdnsNames\x12\x16\n" +
+	"\x06issuer\x18\x03 \x01(\tR\x06issuer\x12\x1d\n" +
+	"\n" +
+	"not_before\x18\x04 \x01(\tR\tnotBefore\x12\x1b\n" +
+	"\tnot_after\x18\x05 \x01(\tR\bnotAfter\x12-\n" +
+	"\x12fingerprint_sha256\x18\x06 \x01(\tR\x11fingerprintSha256\x12\x18\n" +
+	"\aexpired\x18\a \x01(\bR\aexpired\"\xb3\x03\n" +
 	"\x0eSmtpSubmission\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1a\n" +
 	"\bstarttls\x18\x04 \x01(\bR\bstarttls\x122\n" +
-	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\"\xd6\x06\n" +
+	"\x15insecure_auth_allowed\x18\x05 \x01(\bR\x13insecureAuthAllowed\x12(\n" +
+	"\x10managed_by_flags\x18\x06 \x01(\bR\x0emanagedByFlags\x12\x1a\n" +
+	"\beditable\x18\a \x01(\bR\beditable\x12.\n" +
+	"\x13not_editable_reason\x18\b \x01(\tR\x11notEditableReason\x128\n" +
+	"\n" +
+	"bind_scope\x18\t \x01(\x0e2\x19.panmail.v1.SmtpBindScopeR\tbindScope\x12@\n" +
+	"\vcertificate\x18\n" +
+	" \x01(\v2\x1e.panmail.v1.TlsCertificateInfoR\vcertificate\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\v \x01(\tR\tlastError\"\xaa\x02\n" +
+	"\x14SmtpSubmissionConfig\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x128\n" +
+	"\n" +
+	"bind_scope\x18\x02 \x01(\x0e2\x19.panmail.v1.SmtpBindScopeR\tbindScope\x12\x12\n" +
+	"\x04port\x18\x03 \x01(\x05R\x04port\x12.\n" +
+	"\x13tls_certificate_pem\x18\x04 \x01(\tR\x11tlsCertificatePem\x12-\n" +
+	"\x13tls_private_key_pem\x18\x05 \x01(\tR\x10tlsPrivateKeyPem\x12.\n" +
+	"\x13allow_insecure_auth\x18\x06 \x01(\bR\x11allowInsecureAuth\x12\x1b\n" +
+	"\tclear_tls\x18\a \x01(\bR\bclearTls\"W\n" +
+	"\x1bUpdateSmtpSubmissionRequest\x128\n" +
+	"\x06config\x18\x01 \x01(\v2 .panmail.v1.SmtpSubmissionConfigR\x06config\"c\n" +
+	"\x1cUpdateSmtpSubmissionResponse\x12C\n" +
+	"\x0fsmtp_submission\x18\x01 \x01(\v2\x1a.panmail.v1.SmtpSubmissionR\x0esmtpSubmission\"\xd6\x06\n" +
 	"\x0eSystemSettings\x12\x1e\n" +
 	"\bbase_url\x18\x01 \x01(\tH\x00R\abaseUrl\x88\x01\x01\x121\n" +
 	"\x12log_retention_days\x18\x02 \x01(\x05H\x01R\x10logRetentionDays\x88\x01\x01\x12#\n" +
@@ -583,16 +1046,21 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x17_app_log_retention_daysB\x19\n" +
 	"\x17_inbound_retention_daysB\x19\n" +
 	"\x17_archive_retention_daysB\x1c\n" +
-	"\x1a_quarantine_retention_days*\xad\x01\n" +
+	"\x1a_quarantine_retention_days*r\n" +
+	"\rSmtpBindScope\x12\x1f\n" +
+	"\x1bSMTP_BIND_SCOPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18SMTP_BIND_SCOPE_LOOPBACK\x10\x01\x12\"\n" +
+	"\x1eSMTP_BIND_SCOPE_ALL_INTERFACES\x10\x02*\xad\x01\n" +
 	"\x10ContentRedaction\x12!\n" +
 	"\x1dCONTENT_REDACTION_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15CONTENT_REDACTION_OFF\x10\x01\x12\x1f\n" +
 	"\x1bCONTENT_REDACTION_PASSWORDS\x10\x02\x12\x1b\n" +
 	"\x17CONTENT_REDACTION_CODES\x10\x03\x12\x1d\n" +
-	"\x19CONTENT_REDACTION_SECRETS\x10\x042\xc0\x01\n" +
+	"\x19CONTENT_REDACTION_SECRETS\x10\x042\xab\x02\n" +
 	"\x15SystemSettingsService\x12N\n" +
 	"\vGetSettings\x12\x1e.panmail.v1.GetSettingsRequest\x1a\x1f.panmail.v1.GetSettingsResponse\x12W\n" +
-	"\x0eUpdateSettings\x12!.panmail.v1.UpdateSettingsRequest\x1a\".panmail.v1.UpdateSettingsResponseB\xa4\x01\n" +
+	"\x0eUpdateSettings\x12!.panmail.v1.UpdateSettingsRequest\x1a\".panmail.v1.UpdateSettingsResponse\x12i\n" +
+	"\x14UpdateSmtpSubmission\x12'.panmail.v1.UpdateSmtpSubmissionRequest\x1a(.panmail.v1.UpdateSmtpSubmissionResponseB\xa4\x01\n" +
 	"\x0ecom.panmail.v1B\x13SystemSettingsProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"
@@ -609,32 +1077,44 @@ func file_panmail_v1_system_settings_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_system_settings_proto_rawDescData
 }
 
-var file_panmail_v1_system_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_panmail_v1_system_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_panmail_v1_system_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_panmail_v1_system_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_panmail_v1_system_settings_proto_goTypes = []any{
-	(ContentRedaction)(0),          // 0: panmail.v1.ContentRedaction
-	(*GetSettingsRequest)(nil),     // 1: panmail.v1.GetSettingsRequest
-	(*GetSettingsResponse)(nil),    // 2: panmail.v1.GetSettingsResponse
-	(*UpdateSettingsRequest)(nil),  // 3: panmail.v1.UpdateSettingsRequest
-	(*UpdateSettingsResponse)(nil), // 4: panmail.v1.UpdateSettingsResponse
-	(*SmtpSubmission)(nil),         // 5: panmail.v1.SmtpSubmission
-	(*SystemSettings)(nil),         // 6: panmail.v1.SystemSettings
+	(SmtpBindScope)(0),                   // 0: panmail.v1.SmtpBindScope
+	(ContentRedaction)(0),                // 1: panmail.v1.ContentRedaction
+	(*GetSettingsRequest)(nil),           // 2: panmail.v1.GetSettingsRequest
+	(*GetSettingsResponse)(nil),          // 3: panmail.v1.GetSettingsResponse
+	(*UpdateSettingsRequest)(nil),        // 4: panmail.v1.UpdateSettingsRequest
+	(*UpdateSettingsResponse)(nil),       // 5: panmail.v1.UpdateSettingsResponse
+	(*TlsCertificateInfo)(nil),           // 6: panmail.v1.TlsCertificateInfo
+	(*SmtpSubmission)(nil),               // 7: panmail.v1.SmtpSubmission
+	(*SmtpSubmissionConfig)(nil),         // 8: panmail.v1.SmtpSubmissionConfig
+	(*UpdateSmtpSubmissionRequest)(nil),  // 9: panmail.v1.UpdateSmtpSubmissionRequest
+	(*UpdateSmtpSubmissionResponse)(nil), // 10: panmail.v1.UpdateSmtpSubmissionResponse
+	(*SystemSettings)(nil),               // 11: panmail.v1.SystemSettings
 }
 var file_panmail_v1_system_settings_proto_depIdxs = []int32{
-	6, // 0: panmail.v1.GetSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
-	5, // 1: panmail.v1.GetSettingsResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
-	6, // 2: panmail.v1.UpdateSettingsRequest.settings:type_name -> panmail.v1.SystemSettings
-	6, // 3: panmail.v1.UpdateSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
-	0, // 4: panmail.v1.SystemSettings.content_redaction:type_name -> panmail.v1.ContentRedaction
-	1, // 5: panmail.v1.SystemSettingsService.GetSettings:input_type -> panmail.v1.GetSettingsRequest
-	3, // 6: panmail.v1.SystemSettingsService.UpdateSettings:input_type -> panmail.v1.UpdateSettingsRequest
-	2, // 7: panmail.v1.SystemSettingsService.GetSettings:output_type -> panmail.v1.GetSettingsResponse
-	4, // 8: panmail.v1.SystemSettingsService.UpdateSettings:output_type -> panmail.v1.UpdateSettingsResponse
-	7, // [7:9] is the sub-list for method output_type
-	5, // [5:7] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	11, // 0: panmail.v1.GetSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
+	7,  // 1: panmail.v1.GetSettingsResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
+	11, // 2: panmail.v1.UpdateSettingsRequest.settings:type_name -> panmail.v1.SystemSettings
+	11, // 3: panmail.v1.UpdateSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
+	0,  // 4: panmail.v1.SmtpSubmission.bind_scope:type_name -> panmail.v1.SmtpBindScope
+	6,  // 5: panmail.v1.SmtpSubmission.certificate:type_name -> panmail.v1.TlsCertificateInfo
+	0,  // 6: panmail.v1.SmtpSubmissionConfig.bind_scope:type_name -> panmail.v1.SmtpBindScope
+	8,  // 7: panmail.v1.UpdateSmtpSubmissionRequest.config:type_name -> panmail.v1.SmtpSubmissionConfig
+	7,  // 8: panmail.v1.UpdateSmtpSubmissionResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
+	1,  // 9: panmail.v1.SystemSettings.content_redaction:type_name -> panmail.v1.ContentRedaction
+	2,  // 10: panmail.v1.SystemSettingsService.GetSettings:input_type -> panmail.v1.GetSettingsRequest
+	4,  // 11: panmail.v1.SystemSettingsService.UpdateSettings:input_type -> panmail.v1.UpdateSettingsRequest
+	9,  // 12: panmail.v1.SystemSettingsService.UpdateSmtpSubmission:input_type -> panmail.v1.UpdateSmtpSubmissionRequest
+	3,  // 13: panmail.v1.SystemSettingsService.GetSettings:output_type -> panmail.v1.GetSettingsResponse
+	5,  // 14: panmail.v1.SystemSettingsService.UpdateSettings:output_type -> panmail.v1.UpdateSettingsResponse
+	10, // 15: panmail.v1.SystemSettingsService.UpdateSmtpSubmission:output_type -> panmail.v1.UpdateSmtpSubmissionResponse
+	13, // [13:16] is the sub-list for method output_type
+	10, // [10:13] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_system_settings_proto_init() }
@@ -642,14 +1122,14 @@ func file_panmail_v1_system_settings_proto_init() {
 	if File_panmail_v1_system_settings_proto != nil {
 		return
 	}
-	file_panmail_v1_system_settings_proto_msgTypes[5].OneofWrappers = []any{}
+	file_panmail_v1_system_settings_proto_msgTypes[9].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_system_settings_proto_rawDesc), len(file_panmail_v1_system_settings_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   6,
+			NumEnums:      2,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

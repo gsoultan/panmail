@@ -124,30 +124,27 @@ func TestInsecureAuthGuardIsTheTransportsOwn(t *testing.T) {
 // What the dashboard is told about the listener has to match what an
 // integrator would actually have to dial. A wildcard bind names no such host,
 // and reporting one would send them somewhere that does not answer.
-func TestDescribedSMTPSubmissionMatchesTheFlags(t *testing.T) {
+func TestDescribedSMTPFlagsMatchTheFlags(t *testing.T) {
+	// describeSMTPFlags is only reached when --smtp-addr was given, so there is
+	// no disabled case here any more: "no address" is now the branch that hands
+	// the listener to the supervisor instead, and TestSMTPListenerIsOffUnlessAskedFor
+	// is what still covers it.
 	testCases := []struct {
 		name          string
 		addr          string
 		cert          string
 		key           string
 		allowInsecure bool
-		wantEnabled   bool
 		wantHost      string
-		wantPort      int32
+		wantPort      int
 		wantStarttls  bool
 		wantInsecure  bool
 	}{
-		{
-			name:        "disabled when no address is given",
-			addr:        "",
-			wantEnabled: false,
-		},
 		{
 			name:         "a named host is reported",
 			addr:         "mail.example.com:587",
 			cert:         "cert.pem",
 			key:          "key.pem",
-			wantEnabled:  true,
 			wantHost:     "mail.example.com",
 			wantPort:     587,
 			wantStarttls: true,
@@ -156,7 +153,6 @@ func TestDescribedSMTPSubmissionMatchesTheFlags(t *testing.T) {
 			name:          "an ipv4 wildcard reports no host",
 			addr:          "0.0.0.0:587",
 			allowInsecure: true,
-			wantEnabled:   true,
 			wantHost:      "",
 			wantPort:      587,
 			wantInsecure:  true,
@@ -165,7 +161,6 @@ func TestDescribedSMTPSubmissionMatchesTheFlags(t *testing.T) {
 			name:          "a bare port reports no host",
 			addr:          ":2525",
 			allowInsecure: true,
-			wantEnabled:   true,
 			wantHost:      "",
 			wantPort:      2525,
 			wantInsecure:  true,
@@ -174,7 +169,6 @@ func TestDescribedSMTPSubmissionMatchesTheFlags(t *testing.T) {
 			name:          "an ipv6 wildcard reports no host",
 			addr:          "[::]:587",
 			allowInsecure: true,
-			wantEnabled:   true,
 			wantHost:      "",
 			wantPort:      587,
 			wantInsecure:  true,
@@ -183,7 +177,6 @@ func TestDescribedSMTPSubmissionMatchesTheFlags(t *testing.T) {
 			name:          "loopback is a real host and is reported",
 			addr:          "127.0.0.1:587",
 			allowInsecure: true,
-			wantEnabled:   true,
 			wantHost:      "127.0.0.1",
 			wantPort:      587,
 			wantInsecure:  true,
@@ -194,7 +187,6 @@ func TestDescribedSMTPSubmissionMatchesTheFlags(t *testing.T) {
 			cert:          "cert.pem",
 			key:           "key.pem",
 			allowInsecure: true,
-			wantEnabled:   true,
 			wantHost:      "mail.example.com",
 			wantPort:      587,
 			wantStarttls:  true,
@@ -204,23 +196,20 @@ func TestDescribedSMTPSubmissionMatchesTheFlags(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := describeSMTPSubmission(tc.addr, tc.cert, tc.key, tc.allowInsecure)
+			got := describeSMTPFlags(tc.addr, tc.cert, tc.key, tc.allowInsecure)
 
-			if got.GetEnabled() != tc.wantEnabled {
-				t.Errorf("Enabled = %v, want %v", got.GetEnabled(), tc.wantEnabled)
+			if got.Host != tc.wantHost {
+				t.Errorf("Host = %q, want %q", got.Host, tc.wantHost)
 			}
-			if got.GetHost() != tc.wantHost {
-				t.Errorf("Host = %q, want %q", got.GetHost(), tc.wantHost)
+			if got.Port != tc.wantPort {
+				t.Errorf("Port = %d, want %d", got.Port, tc.wantPort)
 			}
-			if got.GetPort() != tc.wantPort {
-				t.Errorf("Port = %d, want %d", got.GetPort(), tc.wantPort)
+			if got.STARTTLS != tc.wantStarttls {
+				t.Errorf("STARTTLS = %v, want %v", got.STARTTLS, tc.wantStarttls)
 			}
-			if got.GetStarttls() != tc.wantStarttls {
-				t.Errorf("Starttls = %v, want %v", got.GetStarttls(), tc.wantStarttls)
-			}
-			if got.GetInsecureAuthAllowed() != tc.wantInsecure {
+			if got.InsecureAuthAllowed != tc.wantInsecure {
 				t.Errorf("InsecureAuthAllowed = %v, want %v",
-					got.GetInsecureAuthAllowed(), tc.wantInsecure)
+					got.InsecureAuthAllowed, tc.wantInsecure)
 			}
 		})
 	}

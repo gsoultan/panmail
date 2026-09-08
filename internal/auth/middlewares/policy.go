@@ -77,6 +77,12 @@ var procedurePolicy = map[string]access{
 	panmailv1connect.UserServiceUpdateUserTwoFactorProcedure:      {minRole: RoleAdmin},
 	panmailv1connect.SystemSettingsServiceUpdateSettingsProcedure: {minRole: RoleAdmin},
 
+	// Opening a listening port is a signed-in-administrator action, and the
+	// absent scope is doing real work: it denies API keys outright. The SMTP
+	// password is an API key, so a key that could enable the listener would be
+	// a credential able to widen the surface on which its own kind is accepted.
+	panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure: {minRole: RoleAdmin},
+
 	// --- Editor: configuration changes --------------------------------------
 	panmailv1connect.EmailProviderServiceCreateEmailProviderProcedure:     {minRole: RoleEditor, scope: entities.ScopeProvidersWrite},
 	panmailv1connect.EmailProviderServiceUpdateEmailProviderProcedure:     {minRole: RoleEditor, scope: entities.ScopeProvidersWrite},

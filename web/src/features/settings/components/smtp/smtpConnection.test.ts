@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { describeConnection, hostFromBaseUrl } from './smtpConnection';
-import type { SmtpSubmission } from '../../../api/panmail/v1/system_settings_pb';
+import type { SmtpSubmission } from '../../../../api/panmail/v1/system_settings_pb';
 
 // Build a reported listener state. The generated type carries a $typeName, so
 // the cast keeps the fixtures readable without asserting a whole message.

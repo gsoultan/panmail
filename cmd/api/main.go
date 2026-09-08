@@ -29,7 +29,6 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpchealth"
-	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
 	authmiddlewares "github.com/gsoultan/panmail/internal/auth/middlewares"
 	authstores "github.com/gsoultan/panmail/internal/auth/repositories/stores/postgres"
@@ -68,6 +67,8 @@ import (
 	"github.com/gsoultan/panmail/internal/retention"
 	setupservices "github.com/gsoultan/panmail/internal/setup/services"
 	setupusecases "github.com/gsoultan/panmail/internal/setup/usecases"
+	smtpsubmissionstores "github.com/gsoultan/panmail/internal/smtp_submission/repositories/stores/postgres"
+	smtpusecases "github.com/gsoultan/panmail/internal/smtp_submission/usecases"
 	suppressionstores "github.com/gsoultan/panmail/internal/suppression/repositories/stores/postgres"
 	suppressionservices "github.com/gsoultan/panmail/internal/suppression/services"
 	suppressionusecases "github.com/gsoultan/panmail/internal/suppression/usecases"
@@ -607,10 +608,9 @@ func main() {
 	warnAboutUnboundedRetention(settingsRepo)
 
 	settingsUsecase := settingsusecases.NewSettingsUsecase(settingsRepo, retentionWorker)
-	settingsService := settingsservices.NewSettingsService(
-		settingsUsecase,
-		describeSMTPSubmission(*smtpAddrFlag, *smtpTLSCertFlag, *smtpTLSKeyFlag, *smtpAllowInsecureFlag),
-	)
+	// settingsService is built further down, once the SMTP submission usecase
+	// it reports through exists: that one needs the API-key and send usecases,
+	// which are not constructed until the transports are wired.
 
 	trackingHandler := eventhttp.NewTrackingHandler(processEventUsecase, trackingSigner)
 
@@ -878,25 +878,68 @@ func main() {
 	// it accepts goes through the send usecase the RPC handler calls, so the
 	// rate limit, backlog ceiling, suppression list and anti-spoofing checks
 	// apply to it unchanged.
-	smtpServer, err := buildSMTPServer(
-		*smtpAddrFlag, *smtpTLSCertFlag, *smtpTLSKeyFlag, *smtpAllowInsecureFlag,
-		apiKeyUsecase, sendEmailUsecase,
+	//
+	// There are two ways to configure it and only one is in force at a time.
+	// Flags win. A deployment that passes --smtp-addr keeps the behaviour it
+	// has always had, down to being fatal when the listener will not build, and
+	// the dashboard renders read-only. Everything else runs the listener from
+	// the stored configuration, where an administrator can turn it on.
+	var (
+		smtpServer     *emailsmtp.Server
+		smtpSupervisor *smtpusecases.Supervisor
+		smtpFlags      *smtpusecases.FlagListener
 	)
-	if err != nil {
-		// Fatal, unlike the metrics listener. An operator who asked for SMTP
-		// and silently did not get it would find out from the application
-		// that could not send.
-		slog.Error("failed to configure the SMTP submission listener", "error", err)
-		os.Exit(1)
-	}
-	if smtpServer != nil {
+
+	if *smtpAddrFlag != "" {
+		smtpServer, err = buildSMTPServer(
+			*smtpAddrFlag, *smtpTLSCertFlag, *smtpTLSKeyFlag, *smtpAllowInsecureFlag,
+			apiKeyUsecase, sendEmailUsecase,
+		)
+		if err != nil {
+			// Fatal, unlike the metrics listener. An operator who asked for SMTP
+			// and silently did not get it would find out from the application
+			// that could not send.
+			slog.Error("failed to configure the SMTP submission listener", "error", err)
+			os.Exit(1)
+		}
 		go func() {
 			slog.Info("SMTP submission listener started", "addr", smtpServer.Addr())
 			if err := smtpServer.ListenAndServe(); err != nil && !errors.Is(err, net.ErrClosed) {
 				slog.Error("SMTP submission listener stopped", "error", err)
 			}
 		}()
+		smtpFlags = describeSMTPFlags(*smtpAddrFlag, *smtpTLSCertFlag, *smtpTLSKeyFlag, *smtpAllowInsecureFlag)
+	} else {
+		smtpSupervisor = smtpusecases.NewSupervisor(apiKeyUsecase, sendEmailUsecase, slog.Default())
 	}
+
+	// keyring != nil is what decides whether a certificate can be stored at
+	// all: the private key is sealed with the data key and there is no
+	// plaintext fallback, so the panel says so up front rather than failing at
+	// save time.
+	smtpSubmissionUsecase := smtpusecases.NewUsecase(
+		smtpsubmissionstores.NewStore(conn, keyring),
+		smtpSupervisor,
+		smtpFlags,
+		keyring != nil,
+		slog.Default(),
+	)
+
+	if smtpSupervisor != nil {
+		// Not fatal, and this is the one place the stored path deliberately
+		// differs from the flag path. A flag that will not bind is a mistake in
+		// a deployment nobody can fix without a restart anyway. A stored row is
+		// fixable from the dashboard, and exiting here would take down the
+		// dashboard that is the only way to fix it.
+		if err := smtpSubmissionUsecase.Reconcile(workerCtx); err != nil {
+			slog.Error("the stored SMTP submission configuration could not be applied",
+				"error", err,
+				"fix", "correct it under Settings, or start with --smtp-addr to configure the listener by flag")
+		}
+		runWorker(&workers, workerCtx, "smtp-submission", func() { smtpSubmissionUsecase.Run(workerCtx) })
+	}
+
+	settingsService := settingsservices.NewSettingsService(settingsUsecase, smtpSubmissionUsecase)
 
 	setupUsecase := setupusecases.NewSetupUsecase(authUsecase, conn, swappableTokenMaker, migrate)
 	setupService := setupservices.NewSetupService(setupUsecase)
@@ -1107,13 +1150,16 @@ func main() {
 	if metricsServer != nil {
 		_ = metricsServer.Shutdown(shutdownCtx)
 	}
+	// Draining matters more here than for a scrape endpoint: a client mid-DATA
+	// has already been told to send, and dropping the connection makes it retry
+	// a message that may yet be queued. Exactly one of these is ever running.
 	if smtpServer != nil {
-		// Draining matters more here than for a scrape endpoint: a client
-		// mid-DATA has already been told to send, and dropping the connection
-		// makes it retry a message that may yet be queued.
 		if err := smtpServer.Shutdown(shutdownCtx); err != nil {
 			slog.Warn("SMTP submission listener shutdown failed", "error", err)
 		}
+	}
+	if smtpSupervisor != nil {
+		smtpSupervisor.Close(shutdownCtx)
 	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown failed", "error", err)
@@ -1794,21 +1840,18 @@ func buildSMTPServer(
 	return emailsmtp.NewServer(cfg, verifier, sender, slog.Default())
 }
 
-// describeSMTPSubmission reports the SMTP listener this process is running, so
-// the dashboard can show an integrator real connection details.
+// describeSMTPFlags reports the flag-configured listener, so the dashboard can
+// show an integrator real connection details.
 //
 // It describes the flags rather than the running server on purpose: the two
-// cannot disagree, because a listener that failed to build is fatal at
-// startup, and nothing can change either of them afterwards.
-func describeSMTPSubmission(addr, certFile, keyFile string, allowInsecure bool) *panmailv1.SmtpSubmission {
-	if addr == "" {
-		return &panmailv1.SmtpSubmission{Enabled: false}
-	}
-
+// cannot disagree, because a flag-configured listener that failed to build is
+// fatal at startup, and nothing can change either of them afterwards. That is
+// what separates this path from the stored one, which needs a last_error field
+// precisely because a runtime change can fail without stopping the process.
+func describeSMTPFlags(addr, certFile, keyFile string, allowInsecure bool) *smtpusecases.FlagListener {
 	starttls := certFile != "" && keyFile != ""
-	submission := &panmailv1.SmtpSubmission{
-		Enabled:             true,
-		Starttls:            starttls,
+	listener := &smtpusecases.FlagListener{
+		STARTTLS:            starttls,
 		InsecureAuthAllowed: !starttls && allowInsecure,
 	}
 
@@ -1817,10 +1860,10 @@ func describeSMTPSubmission(addr, certFile, keyFile string, allowInsecure bool) 
 		// An address the listener accepted but this cannot split is not worth
 		// guessing at. Reporting the port as zero tells the dashboard it has
 		// nothing to show, which is the truth.
-		return submission
+		return listener
 	}
 	if parsed, convErr := strconv.Atoi(port); convErr == nil {
-		submission.Port = int32(parsed)
+		listener.Port = parsed
 	}
 
 	// A wildcard bind names no host a client could dial. Reporting it would
@@ -1828,9 +1871,9 @@ func describeSMTPSubmission(addr, certFile, keyFile string, allowInsecure bool) 
 	// it is falling back to the base URL, which is at least a host that
 	// answers.
 	if !isWildcardHost(host) {
-		submission.Host = host
+		listener.Host = host
 	}
-	return submission
+	return listener
 }
 
 // isWildcardHost reports whether a bind host stands for every interface rather

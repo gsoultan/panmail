@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/system_settings.proto.
  */
 export const file_panmail_v1_system_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QieAoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MSMwoPc210cF9zdWJtaXNzaW9uGAIgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiJFChVVcGRhdGVTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIkYKFlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIm4KDlNtdHBTdWJtaXNzaW9uEg8KB2VuYWJsZWQYASABKAgSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgFEhAKCHN0YXJ0dGxzGAQgASgIEh0KFWluc2VjdXJlX2F1dGhfYWxsb3dlZBgFIAEoCCKABQoOU3lzdGVtU2V0dGluZ3MSFQoIYmFzZV91cmwYASABKAlIAIgBARIfChJsb2dfcmV0ZW50aW9uX2RheXMYAiABKAVIAYgBARIVCg1yZXRyeV9wYXR0ZXJuGAMgAygJEiMKFm1lc3NhZ2VfcmV0ZW50aW9uX2RheXMYBCABKAVIAogBARIiChVvdXRib3hfcmV0ZW50aW9uX2RheXMYBSABKAVIA4gBARIjChZ3ZWJob29rX3JldGVudGlvbl9kYXlzGAYgASgFSASIAQESIwoWYXBwX2xvZ19yZXRlbnRpb25fZGF5cxgHIAEoBUgFiAEBEiMKFmluYm91bmRfcmV0ZW50aW9uX2RheXMYCCABKAVIBogBARIjChZhcmNoaXZlX3JldGVudGlvbl9kYXlzGAkgASgFSAeIAQESJgoZcXVhcmFudGluZV9yZXRlbnRpb25fZGF5cxgKIAEoBUgIiAEBEjcKEWNvbnRlbnRfcmVkYWN0aW9uGAsgASgOMhwucGFubWFpbC52MS5Db250ZW50UmVkYWN0aW9uQgsKCV9iYXNlX3VybEIVChNfbG9nX3JldGVudGlvbl9kYXlzQhkKF19tZXNzYWdlX3JldGVudGlvbl9kYXlzQhgKFl9vdXRib3hfcmV0ZW50aW9uX2RheXNCGQoXX3dlYmhvb2tfcmV0ZW50aW9uX2RheXNCGQoXX2FwcF9sb2dfcmV0ZW50aW9uX2RheXNCGQoXX2luYm91bmRfcmV0ZW50aW9uX2RheXNCGQoXX2FyY2hpdmVfcmV0ZW50aW9uX2RheXNCHAoaX3F1YXJhbnRpbmVfcmV0ZW50aW9uX2RheXMqrQEKEENvbnRlbnRSZWRhY3Rpb24SIQodQ09OVEVOVF9SRURBQ1RJT05fVU5TUEVDSUZJRUQQABIZChVDT05URU5UX1JFREFDVElPTl9PRkYQARIfChtDT05URU5UX1JFREFDVElPTl9QQVNTV09SRFMQAhIbChdDT05URU5UX1JFREFDVElPTl9DT0RFUxADEh0KGUNPTlRFTlRfUkVEQUNUSU9OX1NFQ1JFVFMQBDLAAQoVU3lzdGVtU2V0dGluZ3NTZXJ2aWNlEk4KC0dldFNldHRpbmdzEh4ucGFubWFpbC52MS5HZXRTZXR0aW5nc1JlcXVlc3QaHy5wYW5tYWlsLnYxLkdldFNldHRpbmdzUmVzcG9uc2USVwoOVXBkYXRlU2V0dGluZ3MSIS5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVxdWVzdBoiLnBhbm1haWwudjEuVXBkYXRlU2V0dGluZ3NSZXNwb25zZUKkAQoOY29tLnBhbm1haWwudjFCE1N5c3RlbVNldHRpbmdzUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM");
+  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QieAoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MSMwoPc210cF9zdWJtaXNzaW9uGAIgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiJFChVVcGRhdGVTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIkYKFlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIpwBChJUbHNDZXJ0aWZpY2F0ZUluZm8SDwoHc3ViamVjdBgBIAEoCRIRCglkbnNfbmFtZXMYAiADKAkSDgoGaXNzdWVyGAMgASgJEhIKCm5vdF9iZWZvcmUYBCABKAkSEQoJbm90X2FmdGVyGAUgASgJEhoKEmZpbmdlcnByaW50X3NoYTI1NhgGIAEoCRIPCgdleHBpcmVkGAcgASgIIq8CCg5TbXRwU3VibWlzc2lvbhIPCgdlbmFibGVkGAEgASgIEgwKBGhvc3QYAiABKAkSDAoEcG9ydBgDIAEoBRIQCghzdGFydHRscxgEIAEoCBIdChVpbnNlY3VyZV9hdXRoX2FsbG93ZWQYBSABKAgSGAoQbWFuYWdlZF9ieV9mbGFncxgGIAEoCBIQCghlZGl0YWJsZRgHIAEoCBIbChNub3RfZWRpdGFibGVfcmVhc29uGAggASgJEi0KCmJpbmRfc2NvcGUYCSABKA4yGS5wYW5tYWlsLnYxLlNtdHBCaW5kU2NvcGUSMwoLY2VydGlmaWNhdGUYCiABKAsyHi5wYW5tYWlsLnYxLlRsc0NlcnRpZmljYXRlSW5mbxISCgpsYXN0X2Vycm9yGAsgASgJIs4BChRTbXRwU3VibWlzc2lvbkNvbmZpZxIPCgdlbmFibGVkGAEgASgIEi0KCmJpbmRfc2NvcGUYAiABKA4yGS5wYW5tYWlsLnYxLlNtdHBCaW5kU2NvcGUSDAoEcG9ydBgDIAEoBRIbChN0bHNfY2VydGlmaWNhdGVfcGVtGAQgASgJEhsKE3Rsc19wcml2YXRlX2tleV9wZW0YBSABKAkSGwoTYWxsb3dfaW5zZWN1cmVfYXV0aBgGIAEoCBIRCgljbGVhcl90bHMYByABKAgiTwobVXBkYXRlU210cFN1Ym1pc3Npb25SZXF1ZXN0EjAKBmNvbmZpZxgBIAEoCzIgLnBhbm1haWwudjEuU210cFN1Ym1pc3Npb25Db25maWciUwocVXBkYXRlU210cFN1Ym1pc3Npb25SZXNwb25zZRIzCg9zbXRwX3N1Ym1pc3Npb24YASABKAsyGi5wYW5tYWlsLnYxLlNtdHBTdWJtaXNzaW9uIoAFCg5TeXN0ZW1TZXR0aW5ncxIVCghiYXNlX3VybBgBIAEoCUgAiAEBEh8KEmxvZ19yZXRlbnRpb25fZGF5cxgCIAEoBUgBiAEBEhUKDXJldHJ5X3BhdHRlcm4YAyADKAkSIwoWbWVzc2FnZV9yZXRlbnRpb25fZGF5cxgEIAEoBUgCiAEBEiIKFW91dGJveF9yZXRlbnRpb25fZGF5cxgFIAEoBUgDiAEBEiMKFndlYmhvb2tfcmV0ZW50aW9uX2RheXMYBiABKAVIBIgBARIjChZhcHBfbG9nX3JldGVudGlvbl9kYXlzGAcgASgFSAWIAQESIwoWaW5ib3VuZF9yZXRlbnRpb25fZGF5cxgIIAEoBUgGiAEBEiMKFmFyY2hpdmVfcmV0ZW50aW9uX2RheXMYCSABKAVIB4gBARImChlxdWFyYW50aW5lX3JldGVudGlvbl9kYXlzGAogASgFSAiIAQESNwoRY29udGVudF9yZWRhY3Rpb24YCyABKA4yHC5wYW5tYWlsLnYxLkNvbnRlbnRSZWRhY3Rpb25CCwoJX2Jhc2VfdXJsQhUKE19sb2dfcmV0ZW50aW9uX2RheXNCGQoXX21lc3NhZ2VfcmV0ZW50aW9uX2RheXNCGAoWX291dGJveF9yZXRlbnRpb25fZGF5c0IZChdfd2ViaG9va19yZXRlbnRpb25fZGF5c0IZChdfYXBwX2xvZ19yZXRlbnRpb25fZGF5c0IZChdfaW5ib3VuZF9yZXRlbnRpb25fZGF5c0IZChdfYXJjaGl2ZV9yZXRlbnRpb25fZGF5c0IcChpfcXVhcmFudGluZV9yZXRlbnRpb25fZGF5cypyCg1TbXRwQmluZFNjb3BlEh8KG1NNVFBfQklORF9TQ09QRV9VTlNQRUNJRklFRBAAEhwKGFNNVFBfQklORF9TQ09QRV9MT09QQkFDSxABEiIKHlNNVFBfQklORF9TQ09QRV9BTExfSU5URVJGQUNFUxACKq0BChBDb250ZW50UmVkYWN0aW9uEiEKHUNPTlRFTlRfUkVEQUNUSU9OX1VOU1BFQ0lGSUVEEAASGQoVQ09OVEVOVF9SRURBQ1RJT05fT0ZGEAESHwobQ09OVEVOVF9SRURBQ1RJT05fUEFTU1dPUkRTEAISGwoXQ09OVEVOVF9SRURBQ1RJT05fQ09ERVMQAxIdChlDT05URU5UX1JFREFDVElPTl9TRUNSRVRTEAQyqwIKFVN5c3RlbVNldHRpbmdzU2VydmljZRJOCgtHZXRTZXR0aW5ncxIeLnBhbm1haWwudjEuR2V0U2V0dGluZ3NSZXF1ZXN0Gh8ucGFubWFpbC52MS5HZXRTZXR0aW5nc1Jlc3BvbnNlElcKDlVwZGF0ZVNldHRpbmdzEiEucGFubWFpbC52MS5VcGRhdGVTZXR0aW5nc1JlcXVlc3QaIi5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USaQoUVXBkYXRlU210cFN1Ym1pc3Npb24SJy5wYW5tYWlsLnYxLlVwZGF0ZVNtdHBTdWJtaXNzaW9uUmVxdWVzdBooLnBhbm1haWwudjEuVXBkYXRlU210cFN1Ym1pc3Npb25SZXNwb25zZUKkAQoOY29tLnBhbm1haWwudjFCE1N5c3RlbVNldHRpbmdzUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM");
 
 /**
  * @generated from message panmail.v1.GetSettingsRequest
@@ -85,19 +85,86 @@ export const UpdateSettingsResponseSchema: GenMessage<UpdateSettingsResponse> = 
   messageDesc(file_panmail_v1_system_settings, 3);
 
 /**
+ * TlsCertificateInfo describes the stored keypair without disclosing it.
+ *
+ * Everything here is derived from the certificate, which is public by
+ * construction. The private key has no field in any response message, so there
+ * is no code path that can read one back out of the gateway.
+ *
+ * @generated from message panmail.v1.TlsCertificateInfo
+ */
+export type TlsCertificateInfo = Message<"panmail.v1.TlsCertificateInfo"> & {
+  /**
+   * @generated from field: string subject = 1;
+   */
+  subject: string;
+
+  /**
+   * The names this certificate is valid for, so an administrator can see
+   * whether it matches the host their applications will dial.
+   *
+   * @generated from field: repeated string dns_names = 2;
+   */
+  dnsNames: string[];
+
+  /**
+   * @generated from field: string issuer = 3;
+   */
+  issuer: string;
+
+  /**
+   * @generated from field: string not_before = 4;
+   */
+  notBefore: string;
+
+  /**
+   * @generated from field: string not_after = 5;
+   */
+  notAfter: string;
+
+  /**
+   * Lowercase hex SHA-256 of the DER, the same value openssl prints. It is how
+   * an operator confirms the gateway holds the certificate they meant to
+   * install without the gateway having to show it.
+   *
+   * @generated from field: string fingerprint_sha256 = 6;
+   */
+  fingerprintSha256: string;
+
+  /**
+   * True when not_after has passed. Stored certificates are not deleted when
+   * they expire — the listener keeps serving the one it has, and saying so is
+   * more useful than silently refusing to start.
+   *
+   * @generated from field: bool expired = 7;
+   */
+  expired: boolean;
+};
+
+/**
+ * Describes the message panmail.v1.TlsCertificateInfo.
+ * Use `create(TlsCertificateInfoSchema)` to create a new message.
+ */
+export const TlsCertificateInfoSchema: GenMessage<TlsCertificateInfo> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 4);
+
+/**
  * SmtpSubmission reports the SMTP submission listener, so the dashboard can
  * show an integrator real connection details instead of guessing at them.
  *
- * It is deliberately not part of SystemSettings. The listener is configured by
- * process flags and cannot be changed by an administrator at runtime, and a
- * field that appears in an editable form but silently ignores edits is worse
- * than one that is absent.
+ * It is deliberately not part of SystemSettings. SystemSettings is readable by
+ * any authenticated caller, and this message is adjacent to key material;
+ * keeping them apart means a widening of that read can never reach the
+ * listener's configuration by accident.
  *
  * @generated from message panmail.v1.SmtpSubmission
  */
 export type SmtpSubmission = Message<"panmail.v1.SmtpSubmission"> & {
   /**
-   * Whether this process is listening for submissions at all.
+   * Whether submission is turned on. This is the setting, not proof of a live
+   * socket: a listener that was enabled but could not bind reports enabled with
+   * last_error set, because a form needs to show the administrator the state
+   * they asked for alongside the reason it did not take.
    *
    * @generated from field: bool enabled = 1;
    */
@@ -133,6 +200,57 @@ export type SmtpSubmission = Message<"panmail.v1.SmtpSubmission"> & {
    * @generated from field: bool insecure_auth_allowed = 5;
    */
   insecureAuthAllowed: boolean;
+
+  /**
+   * True when this process was started with --smtp-addr. Flags win over the
+   * stored configuration, so an existing deployment keeps behaving exactly as
+   * it did, and the dashboard renders read-only rather than offering an edit
+   * that would be ignored.
+   *
+   * @generated from field: bool managed_by_flags = 6;
+   */
+  managedByFlags: boolean;
+
+  /**
+   * Whether UpdateSmtpSubmission would be accepted. False also when no
+   * encryption key is configured, because a TLS private key must never be
+   * stored in the clear.
+   *
+   * @generated from field: bool editable = 7;
+   */
+  editable: boolean;
+
+  /**
+   * Why editable is false, in words meant for an administrator. Empty when
+   * editable is true.
+   *
+   * @generated from field: string not_editable_reason = 8;
+   */
+  notEditableReason: string;
+
+  /**
+   * @generated from field: panmail.v1.SmtpBindScope bind_scope = 9;
+   */
+  bindScope: SmtpBindScope;
+
+  /**
+   * The stored keypair, absent when none is stored.
+   *
+   * @generated from field: panmail.v1.TlsCertificateInfo certificate = 10;
+   */
+  certificate?: TlsCertificateInfo | undefined;
+
+  /**
+   * Why the listener is not running despite being enabled — a port already in
+   * use, or a bind refused. Empty when the desired and actual states agree.
+   *
+   * This exists because enabling now happens at runtime: at startup a listener
+   * that would not bind was fatal, so the two could not disagree. A toggle in a
+   * form cannot take the process down, so the failure has to be reportable.
+   *
+   * @generated from field: string last_error = 11;
+   */
+  lastError: string;
 };
 
 /**
@@ -140,7 +258,117 @@ export type SmtpSubmission = Message<"panmail.v1.SmtpSubmission"> & {
  * Use `create(SmtpSubmissionSchema)` to create a new message.
  */
 export const SmtpSubmissionSchema: GenMessage<SmtpSubmission> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 4);
+  messageDesc(file_panmail_v1_system_settings, 5);
+
+/**
+ * SmtpSubmissionConfig is the desired state of the listener.
+ *
+ * The TLS fields are write-only: they are accepted here and never returned by
+ * any read. Omitting both leaves whatever is already stored in place, so an
+ * administrator can change the port without re-pasting a private key.
+ *
+ * @generated from message panmail.v1.SmtpSubmissionConfig
+ */
+export type SmtpSubmissionConfig = Message<"panmail.v1.SmtpSubmissionConfig"> & {
+  /**
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+
+  /**
+   * @generated from field: panmail.v1.SmtpBindScope bind_scope = 2;
+   */
+  bindScope: SmtpBindScope;
+
+  /**
+   * The listen port. Submission ports are 587 (STARTTLS) and 2525; 25 is
+   * refused, because it is the port a mail exchanger answers on and this
+   * gateway is not one — binding it invites relay expectations it will not
+   * meet.
+   *
+   * @generated from field: int32 port = 3;
+   */
+  port: number;
+
+  /**
+   * PEM, including any intermediates. Both TLS fields must be sent together.
+   *
+   * @generated from field: string tls_certificate_pem = 4;
+   */
+  tlsCertificatePem: string;
+
+  /**
+   * PEM. Encrypted with the gateway's data key before it is stored, and never
+   * read back.
+   *
+   * @generated from field: string tls_private_key_pem = 5;
+   */
+  tlsPrivateKeyPem: string;
+
+  /**
+   * Permit AUTH over an unencrypted connection. Honoured only when bind_scope
+   * is LOOPBACK; on any other scope the request is refused rather than
+   * downgraded, because the SMTP password is an API key and this field decides
+   * whether it crosses a network in the clear.
+   *
+   * @generated from field: bool allow_insecure_auth = 6;
+   */
+  allowInsecureAuth: boolean;
+
+  /**
+   * Discard the stored keypair. Separate from sending empty PEM fields, which
+   * means "leave it alone" — the two are opposite instructions and an empty
+   * string cannot express both.
+   *
+   * @generated from field: bool clear_tls = 7;
+   */
+  clearTls: boolean;
+};
+
+/**
+ * Describes the message panmail.v1.SmtpSubmissionConfig.
+ * Use `create(SmtpSubmissionConfigSchema)` to create a new message.
+ */
+export const SmtpSubmissionConfigSchema: GenMessage<SmtpSubmissionConfig> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 6);
+
+/**
+ * @generated from message panmail.v1.UpdateSmtpSubmissionRequest
+ */
+export type UpdateSmtpSubmissionRequest = Message<"panmail.v1.UpdateSmtpSubmissionRequest"> & {
+  /**
+   * @generated from field: panmail.v1.SmtpSubmissionConfig config = 1;
+   */
+  config?: SmtpSubmissionConfig | undefined;
+};
+
+/**
+ * Describes the message panmail.v1.UpdateSmtpSubmissionRequest.
+ * Use `create(UpdateSmtpSubmissionRequestSchema)` to create a new message.
+ */
+export const UpdateSmtpSubmissionRequestSchema: GenMessage<UpdateSmtpSubmissionRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 7);
+
+/**
+ * @generated from message panmail.v1.UpdateSmtpSubmissionResponse
+ */
+export type UpdateSmtpSubmissionResponse = Message<"panmail.v1.UpdateSmtpSubmissionResponse"> & {
+  /**
+   * The listener as it now stands, read back from the supervisor rather than
+   * echoed from the request, so a change that was stored but could not be
+   * bound reports last_error instead of a success the caller cannot see.
+   *
+   * @generated from field: panmail.v1.SmtpSubmission smtp_submission = 1;
+   */
+  smtpSubmission?: SmtpSubmission | undefined;
+};
+
+/**
+ * Describes the message panmail.v1.UpdateSmtpSubmissionResponse.
+ * Use `create(UpdateSmtpSubmissionResponseSchema)` to create a new message.
+ */
+export const UpdateSmtpSubmissionResponseSchema: GenMessage<UpdateSmtpSubmissionResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 8);
 
 /**
  * SystemSettings holds the global, admin-editable configuration.
@@ -262,7 +490,45 @@ export type SystemSettings = Message<"panmail.v1.SystemSettings"> & {
  * Use `create(SystemSettingsSchema)` to create a new message.
  */
 export const SystemSettingsSchema: GenMessage<SystemSettings> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 5);
+  messageDesc(file_panmail_v1_system_settings, 9);
+
+/**
+ * SmtpBindScope is where the submission listener accepts connections, as a
+ * closed set rather than a host string.
+ *
+ * An address typed into a form is unvalidatable input that decides how far a
+ * port is reachable, so the wire carries the decision instead of the address:
+ * there are exactly two answers worth giving, and neither can be malformed.
+ *
+ * @generated from enum panmail.v1.SmtpBindScope
+ */
+export enum SmtpBindScope {
+  /**
+   * @generated from enum value: SMTP_BIND_SCOPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * 127.0.0.1 — reachable only from this host. The only scope on which
+   * cleartext AUTH is allowed, because nothing can be on the path.
+   *
+   * @generated from enum value: SMTP_BIND_SCOPE_LOOPBACK = 1;
+   */
+  LOOPBACK = 1,
+
+  /**
+   * 0.0.0.0 — every interface. Requires TLS: see allow_insecure_auth.
+   *
+   * @generated from enum value: SMTP_BIND_SCOPE_ALL_INTERFACES = 2;
+   */
+  ALL_INTERFACES = 2,
+}
+
+/**
+ * Describes the enum panmail.v1.SmtpBindScope.
+ */
+export const SmtpBindScopeSchema: GenEnum<SmtpBindScope> = /*@__PURE__*/
+  enumDesc(file_panmail_v1_system_settings, 0);
 
 /**
  * ContentRedaction is how hard the gateway looks for secrets in a message body
@@ -329,7 +595,7 @@ export enum ContentRedaction {
  * Describes the enum panmail.v1.ContentRedaction.
  */
 export const ContentRedactionSchema: GenEnum<ContentRedaction> = /*@__PURE__*/
-  enumDesc(file_panmail_v1_system_settings, 0);
+  enumDesc(file_panmail_v1_system_settings, 1);
 
 /**
  * @generated from service panmail.v1.SystemSettingsService
@@ -350,6 +616,16 @@ export const SystemSettingsService: GenService<{
     methodKind: "unary";
     input: typeof UpdateSettingsRequestSchema;
     output: typeof UpdateSettingsResponseSchema;
+  },
+  /**
+   * Opens or closes the SMTP submission listener at runtime. Admin only.
+   *
+   * @generated from rpc panmail.v1.SystemSettingsService.UpdateSmtpSubmission
+   */
+  updateSmtpSubmission: {
+    methodKind: "unary";
+    input: typeof UpdateSmtpSubmissionRequestSchema;
+    output: typeof UpdateSmtpSubmissionResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_panmail_v1_system_settings, 0);

@@ -7,6 +7,9 @@ option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
 service SystemSettingsService {
   rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
   rpc UpdateSettings(UpdateSettingsRequest) returns (UpdateSettingsResponse);
+
+  // Opens or closes the SMTP submission listener at runtime. Admin only.
+  rpc UpdateSmtpSubmission(UpdateSmtpSubmissionRequest) returns (UpdateSmtpSubmissionResponse);
 }
 
 message GetSettingsRequest {}
@@ -27,15 +30,62 @@ message UpdateSettingsResponse {
   SystemSettings settings = 1;
 }
 
+// SmtpBindScope is where the submission listener accepts connections, as a
+// closed set rather than a host string.
+//
+// An address typed into a form is unvalidatable input that decides how far a
+// port is reachable, so the wire carries the decision instead of the address:
+// there are exactly two answers worth giving, and neither can be malformed.
+enum SmtpBindScope {
+  SMTP_BIND_SCOPE_UNSPECIFIED = 0;
+
+  // 127.0.0.1 — reachable only from this host. The only scope on which
+  // cleartext AUTH is allowed, because nothing can be on the path.
+  SMTP_BIND_SCOPE_LOOPBACK = 1;
+
+  // 0.0.0.0 — every interface. Requires TLS: see allow_insecure_auth.
+  SMTP_BIND_SCOPE_ALL_INTERFACES = 2;
+}
+
+// TlsCertificateInfo describes the stored keypair without disclosing it.
+//
+// Everything here is derived from the certificate, which is public by
+// construction. The private key has no field in any response message, so there
+// is no code path that can read one back out of the gateway.
+message TlsCertificateInfo {
+  string subject = 1;
+
+  // The names this certificate is valid for, so an administrator can see
+  // whether it matches the host their applications will dial.
+  repeated string dns_names = 2;
+
+  string issuer = 3;
+  string not_before = 4;
+  string not_after = 5;
+
+  // Lowercase hex SHA-256 of the DER, the same value openssl prints. It is how
+  // an operator confirms the gateway holds the certificate they meant to
+  // install without the gateway having to show it.
+  string fingerprint_sha256 = 6;
+
+  // True when not_after has passed. Stored certificates are not deleted when
+  // they expire — the listener keeps serving the one it has, and saying so is
+  // more useful than silently refusing to start.
+  bool expired = 7;
+}
+
 // SmtpSubmission reports the SMTP submission listener, so the dashboard can
 // show an integrator real connection details instead of guessing at them.
 //
-// It is deliberately not part of SystemSettings. The listener is configured by
-// process flags and cannot be changed by an administrator at runtime, and a
-// field that appears in an editable form but silently ignores edits is worse
-// than one that is absent.
+// It is deliberately not part of SystemSettings. SystemSettings is readable by
+// any authenticated caller, and this message is adjacent to key material;
+// keeping them apart means a widening of that read can never reach the
+// listener's configuration by accident.
 message SmtpSubmission {
-  // Whether this process is listening for submissions at all.
+  // Whether submission is turned on. This is the setting, not proof of a live
+  // socket: a listener that was enabled but could not bind reports enabled with
+  // last_error set, because a form needs to show the administrator the state
+  // they asked for alongside the reason it did not take.
   bool enabled = 1;
 
   // The hostname clients should connect to, empty when the listener binds
@@ -53,6 +103,80 @@ message SmtpSubmission {
   // key can cross the network in the clear, which is a deployment decision
   // worth showing rather than burying in a log line at startup.
   bool insecure_auth_allowed = 5;
+
+  // True when this process was started with --smtp-addr. Flags win over the
+  // stored configuration, so an existing deployment keeps behaving exactly as
+  // it did, and the dashboard renders read-only rather than offering an edit
+  // that would be ignored.
+  bool managed_by_flags = 6;
+
+  // Whether UpdateSmtpSubmission would be accepted. False also when no
+  // encryption key is configured, because a TLS private key must never be
+  // stored in the clear.
+  bool editable = 7;
+
+  // Why editable is false, in words meant for an administrator. Empty when
+  // editable is true.
+  string not_editable_reason = 8;
+
+  SmtpBindScope bind_scope = 9;
+
+  // The stored keypair, absent when none is stored.
+  TlsCertificateInfo certificate = 10;
+
+  // Why the listener is not running despite being enabled — a port already in
+  // use, or a bind refused. Empty when the desired and actual states agree.
+  //
+  // This exists because enabling now happens at runtime: at startup a listener
+  // that would not bind was fatal, so the two could not disagree. A toggle in a
+  // form cannot take the process down, so the failure has to be reportable.
+  string last_error = 11;
+}
+
+// SmtpSubmissionConfig is the desired state of the listener.
+//
+// The TLS fields are write-only: they are accepted here and never returned by
+// any read. Omitting both leaves whatever is already stored in place, so an
+// administrator can change the port without re-pasting a private key.
+message SmtpSubmissionConfig {
+  bool enabled = 1;
+
+  SmtpBindScope bind_scope = 2;
+
+  // The listen port. Submission ports are 587 (STARTTLS) and 2525; 25 is
+  // refused, because it is the port a mail exchanger answers on and this
+  // gateway is not one — binding it invites relay expectations it will not
+  // meet.
+  int32 port = 3;
+
+  // PEM, including any intermediates. Both TLS fields must be sent together.
+  string tls_certificate_pem = 4;
+
+  // PEM. Encrypted with the gateway's data key before it is stored, and never
+  // read back.
+  string tls_private_key_pem = 5;
+
+  // Permit AUTH over an unencrypted connection. Honoured only when bind_scope
+  // is LOOPBACK; on any other scope the request is refused rather than
+  // downgraded, because the SMTP password is an API key and this field decides
+  // whether it crosses a network in the clear.
+  bool allow_insecure_auth = 6;
+
+  // Discard the stored keypair. Separate from sending empty PEM fields, which
+  // means "leave it alone" — the two are opposite instructions and an empty
+  // string cannot express both.
+  bool clear_tls = 7;
+}
+
+message UpdateSmtpSubmissionRequest {
+  SmtpSubmissionConfig config = 1;
+}
+
+message UpdateSmtpSubmissionResponse {
+  // The listener as it now stands, read back from the supervisor rather than
+  // echoed from the request, so a change that was stored but could not be
+  // bound reports last_error instead of a success the caller cannot see.
+  SmtpSubmission smtp_submission = 1;
 }
 
 // SystemSettings holds the global, admin-editable configuration.

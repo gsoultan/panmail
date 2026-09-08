@@ -39,12 +39,17 @@ const (
 	// SystemSettingsServiceUpdateSettingsProcedure is the fully-qualified name of the
 	// SystemSettingsService's UpdateSettings RPC.
 	SystemSettingsServiceUpdateSettingsProcedure = "/panmail.v1.SystemSettingsService/UpdateSettings"
+	// SystemSettingsServiceUpdateSmtpSubmissionProcedure is the fully-qualified name of the
+	// SystemSettingsService's UpdateSmtpSubmission RPC.
+	SystemSettingsServiceUpdateSmtpSubmissionProcedure = "/panmail.v1.SystemSettingsService/UpdateSmtpSubmission"
 )
 
 // SystemSettingsServiceClient is a client for the panmail.v1.SystemSettingsService service.
 type SystemSettingsServiceClient interface {
 	GetSettings(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error)
 	UpdateSettings(context.Context, *connect.Request[v1.UpdateSettingsRequest]) (*connect.Response[v1.UpdateSettingsResponse], error)
+	// Opens or closes the SMTP submission listener at runtime. Admin only.
+	UpdateSmtpSubmission(context.Context, *connect.Request[v1.UpdateSmtpSubmissionRequest]) (*connect.Response[v1.UpdateSmtpSubmissionResponse], error)
 }
 
 // NewSystemSettingsServiceClient constructs a client for the panmail.v1.SystemSettingsService
@@ -70,13 +75,20 @@ func NewSystemSettingsServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(systemSettingsServiceMethods.ByName("UpdateSettings")),
 			connect.WithClientOptions(opts...),
 		),
+		updateSmtpSubmission: connect.NewClient[v1.UpdateSmtpSubmissionRequest, v1.UpdateSmtpSubmissionResponse](
+			httpClient,
+			baseURL+SystemSettingsServiceUpdateSmtpSubmissionProcedure,
+			connect.WithSchema(systemSettingsServiceMethods.ByName("UpdateSmtpSubmission")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // systemSettingsServiceClient implements SystemSettingsServiceClient.
 type systemSettingsServiceClient struct {
-	getSettings    *connect.Client[v1.GetSettingsRequest, v1.GetSettingsResponse]
-	updateSettings *connect.Client[v1.UpdateSettingsRequest, v1.UpdateSettingsResponse]
+	getSettings          *connect.Client[v1.GetSettingsRequest, v1.GetSettingsResponse]
+	updateSettings       *connect.Client[v1.UpdateSettingsRequest, v1.UpdateSettingsResponse]
+	updateSmtpSubmission *connect.Client[v1.UpdateSmtpSubmissionRequest, v1.UpdateSmtpSubmissionResponse]
 }
 
 // GetSettings calls panmail.v1.SystemSettingsService.GetSettings.
@@ -89,11 +101,18 @@ func (c *systemSettingsServiceClient) UpdateSettings(ctx context.Context, req *c
 	return c.updateSettings.CallUnary(ctx, req)
 }
 
+// UpdateSmtpSubmission calls panmail.v1.SystemSettingsService.UpdateSmtpSubmission.
+func (c *systemSettingsServiceClient) UpdateSmtpSubmission(ctx context.Context, req *connect.Request[v1.UpdateSmtpSubmissionRequest]) (*connect.Response[v1.UpdateSmtpSubmissionResponse], error) {
+	return c.updateSmtpSubmission.CallUnary(ctx, req)
+}
+
 // SystemSettingsServiceHandler is an implementation of the panmail.v1.SystemSettingsService
 // service.
 type SystemSettingsServiceHandler interface {
 	GetSettings(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error)
 	UpdateSettings(context.Context, *connect.Request[v1.UpdateSettingsRequest]) (*connect.Response[v1.UpdateSettingsResponse], error)
+	// Opens or closes the SMTP submission listener at runtime. Admin only.
+	UpdateSmtpSubmission(context.Context, *connect.Request[v1.UpdateSmtpSubmissionRequest]) (*connect.Response[v1.UpdateSmtpSubmissionResponse], error)
 }
 
 // NewSystemSettingsServiceHandler builds an HTTP handler from the service implementation. It
@@ -115,12 +134,20 @@ func NewSystemSettingsServiceHandler(svc SystemSettingsServiceHandler, opts ...c
 		connect.WithSchema(systemSettingsServiceMethods.ByName("UpdateSettings")),
 		connect.WithHandlerOptions(opts...),
 	)
+	systemSettingsServiceUpdateSmtpSubmissionHandler := connect.NewUnaryHandler(
+		SystemSettingsServiceUpdateSmtpSubmissionProcedure,
+		svc.UpdateSmtpSubmission,
+		connect.WithSchema(systemSettingsServiceMethods.ByName("UpdateSmtpSubmission")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/panmail.v1.SystemSettingsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SystemSettingsServiceGetSettingsProcedure:
 			systemSettingsServiceGetSettingsHandler.ServeHTTP(w, r)
 		case SystemSettingsServiceUpdateSettingsProcedure:
 			systemSettingsServiceUpdateSettingsHandler.ServeHTTP(w, r)
+		case SystemSettingsServiceUpdateSmtpSubmissionProcedure:
+			systemSettingsServiceUpdateSmtpSubmissionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -136,4 +163,8 @@ func (UnimplementedSystemSettingsServiceHandler) GetSettings(context.Context, *c
 
 func (UnimplementedSystemSettingsServiceHandler) UpdateSettings(context.Context, *connect.Request[v1.UpdateSettingsRequest]) (*connect.Response[v1.UpdateSettingsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.SystemSettingsService.UpdateSettings is not implemented"))
+}
+
+func (UnimplementedSystemSettingsServiceHandler) UpdateSmtpSubmission(context.Context, *connect.Request[v1.UpdateSmtpSubmissionRequest]) (*connect.Response[v1.UpdateSmtpSubmissionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.SystemSettingsService.UpdateSmtpSubmission is not implemented"))
 }

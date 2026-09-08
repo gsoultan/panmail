@@ -1,25 +1,25 @@
 import React, { useState } from 'react';
 import { TextInput, Textarea, TagsInput, Button, Stack, Group, Select, Text, JsonInput, Tabs, Paper, rem, ThemeIcon, Code, ActionIcon, CopyButton, Tooltip, SimpleGrid, Badge, FileButton, Box, ScrollArea, Alert } from '@mantine/core';
 import { settingsService } from '../../../services/settings';
-import { describeConnection } from '../../settings/components/smtpConnection';
-import { buildSmtpSnippet } from '../../settings/components/smtpSnippet';
+import { describeConnection } from '../../settings/components/smtp/smtpConnection';
+import { buildSmtpSnippet } from '../../settings/components/smtp/smtpSnippet';
 import {
   goApiSnippet,
   phpApiSnippet,
   javaApiSnippet,
   nodeApiSnippet,
-} from '../../settings/components/snippets/api';
+} from '../../settings/components/smtp/snippets/api';
 import {
   goSdkSnippet,
   phpSdkSnippet,
   nodeSdkSnippet,
-} from '../../settings/components/snippets/sdk';
+} from '../../settings/components/smtp/snippets/sdk';
 import {
   goSmtpSnippet,
   phpSmtpSnippet,
   javaSmtpSnippet,
   nodeSmtpSnippet,
-} from '../../settings/components/snippets/smtp';
+} from '../../settings/components/smtp/snippets/smtp';
 import { useAdaptedForm } from '../../../lib/form/useAdaptedForm';
 import { useQuery } from '@tanstack/react-query';
 import { templateService } from '../../templates/services/template';
