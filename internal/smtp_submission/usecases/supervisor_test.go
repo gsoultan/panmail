@@ -40,6 +40,40 @@ func newTestSupervisor(t *testing.T) *Supervisor {
 	return s
 }
 
+// syncBuffer collects log output from the accept-loop goroutine as well as the
+// caller, so it has to be safe for concurrent writes.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) count(substr string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return strings.Count(b.buf.String(), substr)
+}
+
+// newObservedSupervisor returns a supervisor whose log can be counted.
+//
+// Counting "listener started" is the only way to tell a listener that was left
+// alone from one that was stopped and rebuilt: the rebuild is fast, and a
+// client holding an idle connection survives it, so the socket alone cannot
+// distinguish the two.
+func newObservedSupervisor(t *testing.T) (*Supervisor, *syncBuffer) {
+	t.Helper()
+	logs := &syncBuffer{}
+	logger := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	s := NewSupervisor(stubVerifier{}, stubSender{}, logger)
+	t.Cleanup(func() { s.Close(context.Background()) })
+	return s, logs
+}
+
 // freePort returns a port nothing is listening on.
 func freePort(t *testing.T) int {
 	t.Helper()
@@ -362,5 +396,90 @@ func TestDisablingImmediatelyAfterEnablingReleasesThePort(t *testing.T) {
 		if state := supervisor.State(); state.Config != nil {
 			t.Fatalf("State().Config = %+v on pass %d, want nil", state.Config, i)
 		}
+	}
+}
+
+// Regression. A change to an address that cannot be bound must leave the
+// working listener strictly alone — not stop it and start it again.
+//
+// Reconcile retries every 30 seconds, so stopping first meant a healthy
+// listener being torn down and rebuilt on a timer for as long as the desired
+// port stayed unavailable, dropping whatever sessions were in flight each time.
+// A live gateway was observed doing exactly that.
+//
+// The assertion counts listener starts rather than probing the socket. An idle
+// client connection survives the rebuild — Shutdown waits for it and then times
+// out — so the socket cannot tell the two apart, and a test that checked only
+// "is the old port still open" passed against the broken behaviour.
+func TestAFailedMoveDoesNotDisturbTheRunningListener(t *testing.T) {
+	supervisor, logs := newObservedSupervisor(t)
+	working := freePort(t)
+
+	if err := supervisor.Apply(context.Background(), loopbackConfig(working)); err != nil {
+		t.Fatalf("Apply() = %v, want nil", err)
+	}
+	if got := logs.count("listener started"); got != 1 {
+		t.Fatalf("listener started %d times, want 1 after the initial apply", got)
+	}
+
+	taken := freePort(t)
+	occupier, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(taken)))
+	if err != nil {
+		t.Fatalf("occupy the port: %v", err)
+	}
+	defer occupier.Close()
+
+	for i := 0; i < 3; i++ {
+		if err := supervisor.Apply(context.Background(), loopbackConfig(taken)); err == nil {
+			t.Fatalf("Apply(occupied) on pass %d = nil, want a bind failure", i)
+		}
+	}
+
+	if got := logs.count("listener started"); got != 1 {
+		t.Errorf("listener started %d times, want 1: the working listener was rebuilt by a change that could not bind", got)
+	}
+	if got := logs.count("listener stopped"); got != 0 {
+		t.Errorf("listener stopped %d times, want 0", got)
+	}
+
+	assertAccepting(t, working)
+	if state := supervisor.State(); state.Config == nil || state.Config.Port != working {
+		t.Fatalf("State().Config = %+v, want the untouched listener on %d", state.Config, working)
+	}
+	if state := supervisor.State(); state.LastError == "" {
+		t.Error("LastError is empty, want the rejected move reported")
+	}
+}
+
+// And once the port frees up, the next apply moves onto it. This is what the
+// reconcile loop does on its timer.
+func TestTheMoveSucceedsOnceThePortIsFree(t *testing.T) {
+	supervisor := newTestSupervisor(t)
+	working := freePort(t)
+
+	if err := supervisor.Apply(context.Background(), loopbackConfig(working)); err != nil {
+		t.Fatalf("Apply() = %v, want nil", err)
+	}
+
+	wanted := freePort(t)
+	occupier, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(wanted)))
+	if err != nil {
+		t.Fatalf("occupy the port: %v", err)
+	}
+	if err := supervisor.Apply(context.Background(), loopbackConfig(wanted)); err == nil {
+		t.Fatal("Apply(occupied) = nil, want a bind failure")
+	}
+	if err := occupier.Close(); err != nil {
+		t.Fatalf("release the port: %v", err)
+	}
+
+	if err := supervisor.Apply(context.Background(), loopbackConfig(wanted)); err != nil {
+		t.Fatalf("Apply() after the port was released = %v, want nil", err)
+	}
+	assertAccepting(t, wanted)
+	assertNotAccepting(t, working)
+
+	if state := supervisor.State(); state.LastError != "" {
+		t.Errorf("LastError = %q, want empty once the move succeeded", state.LastError)
 	}
 }

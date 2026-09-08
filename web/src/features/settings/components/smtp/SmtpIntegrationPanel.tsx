@@ -28,6 +28,8 @@ import {
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { settingsService } from '../../../../services/settings';
+import { useAuthStore } from '../../../../store/authStore';
+import { UserRole } from '../../../../api/panmail/v1/auth_pb';
 import { emailProviderService } from '../../../email-providers/services/emailProvider';
 import { describeConnection } from './smtpConnection';
 import { SmtpSubmissionForm } from './SmtpSubmissionForm';
@@ -111,7 +113,15 @@ export const SmtpIntegrationPanel: React.FC = () => {
 
   const selected = providerId ?? providerOptions[0]?.value ?? '';
 
-  const editable = submission?.editable ?? false;
+  // Two separate questions, and conflating them shows a button that 403s.
+  // `editable` is about this gateway — not managed by flags, and holding a data
+  // key to seal a certificate with. Whether *this* caller may change it is a
+  // role check, which the server enforces and the nav bar already mirrors the
+  // same way.
+  const { user } = useAuthStore();
+  const mayConfigure =
+    user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const editable = (submission?.editable ?? false) && mayConfigure;
 
   const header = (
     <Group justify="space-between" align="center">
@@ -141,14 +151,20 @@ export const SmtpIntegrationPanel: React.FC = () => {
     </Group>
   );
 
-  // Why the panel is read-only, when it is. Flags win over the stored
-  // configuration, and a gateway with no data key cannot store a private key at
-  // all — both are worth saying rather than showing a button that fails.
-  const readOnlyNotice = !editable && submission?.notEditableReason && (
+  // Why the panel is read-only, when it is. Three different reasons, and they
+  // want different words: the caller's role, flags winning over the stored
+  // configuration, or a gateway with no data key to seal a certificate with.
+  // Telling an administrator without permission to go and edit a systemd unit
+  // would be the wrong instruction entirely.
+  const readOnlyReason = !mayConfigure
+    ? 'changing it needs administrator access.'
+    : submission?.notEditableReason
+      ? submission.notEditableReason
+      : '';
+
+  const readOnlyNotice = !editable && readOnlyReason && (
     <Alert icon={<IconInfoCircle size={16} />} color="gray" variant="light">
-      <Text size="sm">
-        This panel is read-only: {submission.notEditableReason}
-      </Text>
+      <Text size="sm">This panel is read-only: {readOnlyReason}</Text>
     </Alert>
   );
 
@@ -201,12 +217,19 @@ export const SmtpIntegrationPanel: React.FC = () => {
                 Enable SMTP submission
               </Button>
             </Group>
-          ) : (
+          ) : mayConfigure ? (
             <Alert icon={<IconInfoCircle size={16} />} color="gray" variant="light">
               <Text size="sm">
                 This server is not accepting SMTP submissions. Start panmail with{' '}
                 <Code>--smtp-addr</Code> to enable it — for example{' '}
                 <Code>--smtp-addr :587 --smtp-tls-cert cert.pem --smtp-tls-key key.pem</Code>.
+              </Text>
+            </Alert>
+          ) : (
+            <Alert icon={<IconInfoCircle size={16} />} color="gray" variant="light">
+              <Text size="sm">
+                This server is not accepting SMTP submissions. An administrator can turn it
+                on here.
               </Text>
             </Alert>
           )}

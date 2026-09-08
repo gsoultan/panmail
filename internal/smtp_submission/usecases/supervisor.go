@@ -132,21 +132,44 @@ func (s *Supervisor) Apply(ctx context.Context, desired *entities.Config) error 
 		return nil
 	}
 
+	if !desired.Enabled {
+		s.stopLocked(ctx)
+		s.lastErr = ""
+		return nil
+	}
+
+	// Moving to a different address binds the new one first, and only gives up
+	// the old one once that has succeeded.
+	//
+	// The order is what keeps a working listener working. Reconcile retries
+	// every 30 seconds, so stopping first would tear down and rebuild a healthy
+	// listener on every attempt for as long as the desired port stayed
+	// unavailable — dropping live sessions each time, on a schedule, because of
+	// a port that was never reachable. Observed doing exactly that before this
+	// changed.
+	if s.running == nil || s.running.Addr() != desired.Addr() {
+		server, listener, err := s.bindLocked(desired)
+		if err != nil {
+			s.lastErr = err.Error()
+			return err
+		}
+		s.stopLocked(ctx)
+		s.installLocked(desired, server, listener)
+		s.lastErr = ""
+		return nil
+	}
+
+	// Same address, so the port cannot be held twice: the old listener has to
+	// go before the new one can bind, and a failure needs the restore path.
 	previous := s.running
 	s.stopLocked(ctx)
 
-	if !desired.Enabled {
-		s.lastErr = ""
-		return nil
-	}
-
-	if err := s.startLocked(desired); err == nil {
-		s.lastErr = ""
-		return nil
-	} else {
+	if err := s.startLocked(desired); err != nil {
 		s.lastErr = err.Error()
 		return s.restoreLocked(previous, err)
 	}
+	s.lastErr = ""
+	return nil
 }
 
 // restoreLocked puts the previous listener back after a failed change, so a bad
@@ -203,16 +226,33 @@ func (s *Supervisor) matchesRunningLocked(desired *entities.Config) bool {
 // put that error in a log line and return success to an administrator whose
 // listener is not running.
 func (s *Supervisor) startLocked(cfg *entities.Config) error {
-	server, err := s.buildLocked(cfg)
+	server, listener, err := s.bindLocked(cfg)
 	if err != nil {
 		return err
+	}
+	s.installLocked(cfg, server, listener)
+	return nil
+}
+
+// bindLocked builds the server and takes the port, without touching any state.
+//
+// Separate from installLocked so a caller can find out whether the new address
+// is available while the old listener is still serving the current one.
+func (s *Supervisor) bindLocked(cfg *entities.Config) (*emailsmtp.Server, net.Listener, error) {
+	server, err := s.buildLocked(cfg)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	listener, err := net.Listen("tcp", cfg.Addr())
 	if err != nil {
-		return fmt.Errorf("cannot listen on %s: %w", cfg.Addr(), err)
+		return nil, nil, fmt.Errorf("cannot listen on %s: %w", cfg.Addr(), err)
 	}
+	return server, listener, nil
+}
 
+// installLocked adopts an already-bound listener and starts serving it.
+func (s *Supervisor) installLocked(cfg *entities.Config, server *emailsmtp.Server, listener net.Listener) {
 	s.generation++
 	generation := s.generation
 	done := make(chan struct{})
@@ -228,7 +268,6 @@ func (s *Supervisor) startLocked(cfg *entities.Config) error {
 		"addr", cfg.Addr(),
 		"starttls", cfg.HasTLS(),
 		"insecure_auth", cfg.AllowInsecureAuth)
-	return nil
 }
 
 // serve runs the accept loop and records why it ended.
