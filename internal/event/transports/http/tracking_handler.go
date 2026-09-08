@@ -1,12 +1,14 @@
 package http
 
 import (
+	"context"
 	"encoding/base64"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	"github.com/gsoultan/panmail/internal/event/repositories/entities"
 	"github.com/gsoultan/panmail/internal/event/usecases"
 	"github.com/gsoultan/panmail/pkg/tracking"
 )
@@ -21,8 +23,56 @@ var transparentPixel = []byte{
 }
 
 type TrackingHandler struct {
-	usecase usecases.ProcessEventUsecase
-	signer  *tracking.Signer
+	usecase  usecases.ProcessEventUsecase
+	signer   *tracking.Signer
+	messages SentMessages
+}
+
+// SentMessages reads back the body a message was built from, before tracking
+// injection — which is to say, the exact set of destinations panmail was asked
+// to link to.
+type SentMessages interface {
+	GetMessage(ctx context.Context, tenantID, messageID string) (*entities.EmailMessage, error)
+}
+
+// WithSentMessages installs the lookup that lets a link outlive the key that
+// signed it. Optional: without it a link whose signature fails is simply
+// refused, which is what happened before.
+func (h *TrackingHandler) WithSentMessages(m SentMessages) *TrackingHandler {
+	h.messages = m
+	return h
+}
+
+// wasSentInThisMessage reports whether panmail actually put this destination in
+// this message.
+//
+// This is what makes it safe to follow a link whose signature no longer
+// verifies. The signature proves panmail minted the link; this proves the same
+// thing a different way, from the copy of the message panmail stored when it
+// sent it. A caller who forges a signature still cannot choose where the
+// redirect goes, because the destination has to be one this tenant already
+// emailed in the message whose id they named — so this is not an open redirect,
+// which is the whole reason the signature exists.
+//
+// It fails closed: no lookup wired, no such message, a message whose body
+// retention has already removed, or a destination that is not in it, and the
+// request is refused exactly as before.
+func (h *TrackingHandler) wasSentInThisMessage(ctx context.Context, req trackingRequest, target string) bool {
+	if h.messages == nil || req.tenantID == "" || req.messageID == "" {
+		return false
+	}
+
+	msg, err := h.messages.GetMessage(ctx, req.tenantID, req.messageID)
+	if err != nil || msg == nil {
+		return false
+	}
+
+	for _, sent := range tracking.LinkTargets(msg.BodyHTML) {
+		if sent == target {
+			return true
+		}
+	}
+	return false
 }
 
 func NewTrackingHandler(u usecases.ProcessEventUsecase, signer *tracking.Signer) *TrackingHandler {
@@ -125,11 +175,29 @@ func (h *TrackingHandler) HandleClick(w http.ResponseWriter, r *http.Request) {
 	// The signature covers the destination, so this endpoint can only forward
 	// to a URL this server put in a message. Without that check it is an open
 	// redirect on the domain recipients are taught to trust.
+	//
+	// A signature that does not verify is not always a forgery. It is also what
+	// every link in every message already delivered looks like once the key
+	// behind it changes — a rotation, a restore that brought the database but
+	// not the config, a second instance started from a different one. Those
+	// messages are in inboxes and cannot be reissued, so refusing them outright
+	// strands real recipients on a 403 for as long as the mail exists.
+	//
+	// So the stored copy of the message gets to answer the same question the
+	// signature does: did panmail put this destination in this message? If it
+	// did, the link is ours whatever happened to the key, and the redirect is
+	// still confined to a URL this tenant sent.
 	if err := h.signer.Verify(link, req.signature); err != nil {
-		slog.Warn("rejecting unsigned or altered click tracking request",
-			"tenant_id", req.tenantID, "message_id", req.messageID, "error", err)
-		http.Error(w, "Invalid tracking link", http.StatusForbidden)
-		return
+		if !h.wasSentInThisMessage(r.Context(), req, targetURL) {
+			slog.Warn("rejecting unsigned or altered click tracking request",
+				"tenant_id", req.tenantID, "message_id", req.messageID, "error", err)
+			http.Error(w, "Invalid tracking link", http.StatusForbidden)
+			return
+		}
+		slog.Warn("following a click link whose signature no longer verifies, because the stored message still contains this destination",
+			"tenant_id", req.tenantID, "message_id", req.messageID, "error", err,
+			"detail", "the key that signed this link is not the key in use now; links already delivered cannot be reissued",
+			"fix", "if this was not an intentional key rotation, check that every instance shares auth.symmetric_key")
 	}
 
 	// Defence in depth: a signature proves we generated the link, not that the
