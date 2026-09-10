@@ -382,6 +382,7 @@ func main() {
 	// 4. Setup Layered Architecture
 	providerRepo := postgres.NewStore(conn, keyring)
 	userRepo := authstores.NewStore(conn)
+	membershipRepo := authstores.NewMembershipStore(conn)
 	tenantRepo := tenantstores.NewStore(conn)
 	apiKeyRepo := authstores.NewApiKeyStore(conn)
 	templateRepo := templatestores.NewStore(conn)
@@ -870,18 +871,21 @@ func main() {
 		}()
 	}
 
-	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, swappableTokenMaker)
-	authService := authservices.NewAuthService(authUsecase)
+	membershipUsecase := authusecases.NewMembershipUsecase(membershipRepo, userRepo, tenantRepo)
 
-	userUsecase := authusecases.NewUserUsecase(userRepo)
-	userService := authservices.NewUserService(userUsecase)
+	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, membershipRepo, swappableTokenMaker)
+	authService := authservices.NewAuthService(authUsecase, membershipUsecase)
+
+	userUsecase := authusecases.NewUserUsecase(userRepo, membershipRepo)
+	userService := authservices.NewUserService(userUsecase, membershipUsecase)
 
 	apiKeyUsecase := authusecases.NewApiKeyUsecase(apiKeyRepo)
 	apiKeyService := authservices.NewApiKeyService(apiKeyUsecase)
 
 	tenantService := tenantservices.NewTenantService(tenantUsecase)
 
-	authMiddleware := authmiddlewares.NewAuthMiddleware(swappableTokenMaker, apiKeyUsecase)
+	authMiddleware := authmiddlewares.NewAuthMiddleware(swappableTokenMaker, apiKeyUsecase).
+		WithMemberships(membershipUsecase)
 
 	// SMTP submission, for applications that already speak SMTP. It is a
 	// second door onto the same pipeline, not a second pipeline: everything

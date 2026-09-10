@@ -57,6 +57,9 @@ func TestRunCreatesTheFullSchema(t *testing.T) {
 		// TLS private key, and system_settings is served to every authenticated
 		// caller.
 		"smtp_submission",
+		// Membership: which tenants a user may act in, beyond the one
+		// users.tenant_id gives them.
+		"user_tenants",
 	}
 	for _, table := range tables {
 		t.Run(table, func(t *testing.T) {

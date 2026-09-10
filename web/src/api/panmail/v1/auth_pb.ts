@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/auth.proto.
  */
 export const file_panmail_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("ChVwYW5tYWlsL3YxL2F1dGgucHJvdG8SCnBhbm1haWwudjEifwoGVGVuYW50EgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSEgoKY3JlYXRlZF9hdBgDIAEoCRIVCg1yZXRyeV9wYXR0ZXJuGAQgAygJEhwKFHNlbmRfcmF0ZV9wZXJfbWludXRlGAUgASgFEhIKCnNlbmRfYnVyc3QYBiABKAUibAoTQ3JlYXRlVGVuYW50UmVxdWVzdBIMCgRuYW1lGAEgASgJEhUKDXJldHJ5X3BhdHRlcm4YAiADKAkSHAoUc2VuZF9yYXRlX3Blcl9taW51dGUYAyABKAUSEgoKc2VuZF9idXJzdBgEIAEoBSI6ChRDcmVhdGVUZW5hbnRSZXNwb25zZRIiCgZ0ZW5hbnQYASABKAsyEi5wYW5tYWlsLnYxLlRlbmFudCJ4ChNVcGRhdGVUZW5hbnRSZXF1ZXN0EgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSFQoNcmV0cnlfcGF0dGVybhgDIAMoCRIcChRzZW5kX3JhdGVfcGVyX21pbnV0ZRgEIAEoBRISCgpzZW5kX2J1cnN0GAUgASgFIjoKFFVwZGF0ZVRlbmFudFJlc3BvbnNlEiIKBnRlbmFudBgBIAEoCzISLnBhbm1haWwudjEuVGVuYW50IjsKEkxpc3RUZW5hbnRzUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJTChNMaXN0VGVuYW50c1Jlc3BvbnNlEiMKB3RlbmFudHMYASADKAsyEi5wYW5tYWlsLnYxLlRlbmFudBIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiIQoTRGVsZXRlVGVuYW50UmVxdWVzdBIKCgJpZBgBIAEoCSIWChREZWxldGVUZW5hbnRSZXNwb25zZSJmChFDcmVhdGVVc2VyUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIQCghwYXNzd29yZBgCIAEoCRIMCgRuYW1lGAMgASgJEiIKBHJvbGUYBCABKA4yFC5wYW5tYWlsLnYxLlVzZXJSb2xlIjQKEkNyZWF0ZVVzZXJSZXNwb25zZRIeCgR1c2VyGAEgASgLMhAucGFubWFpbC52MS5Vc2VyIjkKEExpc3RVc2Vyc1JlcXVlc3QSEQoJcGFnZV9zaXplGAEgASgFEhIKCnBhZ2VfdG9rZW4YAiABKAkiTQoRTGlzdFVzZXJzUmVzcG9uc2USHwoFdXNlcnMYASADKAsyEC5wYW5tYWlsLnYxLlVzZXISFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIkcKFVVwZGF0ZVVzZXJSb2xlUmVxdWVzdBIKCgJpZBgBIAEoCRIiCgRyb2xlGAIgASgOMhQucGFubWFpbC52MS5Vc2VyUm9sZSIYChZVcGRhdGVVc2VyUm9sZVJlc3BvbnNlIh8KEURlbGV0ZVVzZXJSZXF1ZXN0EgoKAmlkGAEgASgJIhQKEkRlbGV0ZVVzZXJSZXNwb25zZSI5ChpVcGRhdGVVc2VyVHdvRmFjdG9yUmVxdWVzdBIKCgJpZBgBIAEoCRIPCgdlbmFibGVkGAIgASgIIh0KG1VwZGF0ZVVzZXJUd29GYWN0b3JSZXNwb25zZSKUAQoGQXBpS2V5EgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSDgoGcHJlZml4GAMgASgJEhIKCmNyZWF0ZWRfYXQYBCABKAkSFAoMbGFzdF91c2VkX2F0GAUgASgJEhIKCmV4cGlyZXNfYXQYBiABKAkSEgoKaXNfZW5hYmxlZBgHIAEoCBIOCgZzY29wZXMYCCADKAkiRwoTQ3JlYXRlQXBpS2V5UmVxdWVzdBIMCgRuYW1lGAEgASgJEhIKCmV4cGlyZXNfYXQYAiABKAkSDgoGc2NvcGVzGAMgAygJIlMKFENyZWF0ZUFwaUtleVJlc3BvbnNlEiMKB2FwaV9rZXkYASABKAsyEi5wYW5tYWlsLnYxLkFwaUtleRIWCg5wbGFpbl90ZXh0X2tleRgCIAEoCSI7ChJMaXN0QXBpS2V5c1JlcXVlc3QSEQoJcGFnZV9zaXplGAEgASgFEhIKCnBhZ2VfdG9rZW4YAiABKAkiVAoTTGlzdEFwaUtleXNSZXNwb25zZRIkCghhcGlfa2V5cxgBIAMoCzISLnBhbm1haWwudjEuQXBpS2V5EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIhChNEZWxldGVBcGlLZXlSZXF1ZXN0EgoKAmlkGAEgASgJIhYKFERlbGV0ZUFwaUtleVJlc3BvbnNlIiIKFERpc2FibGVBcGlLZXlSZXF1ZXN0EgoKAmlkGAEgASgJIhcKFURpc2FibGVBcGlLZXlSZXNwb25zZSIhChNFbmFibGVBcGlLZXlSZXF1ZXN0EgoKAmlkGAEgASgJIhYKFEVuYWJsZUFwaUtleVJlc3BvbnNlIjAKDVNpZ25JblJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAki0wEKDlNpZ25JblJlc3BvbnNlEg0KBXRva2VuGAEgASgJEh4KBHVzZXIYAiABKAsyEC5wYW5tYWlsLnYxLlVzZXISGwoTdHdvX2ZhY3Rvcl9yZXF1aXJlZBgDIAEoCBIhChl0d29fZmFjdG9yX3NldHVwX3JlcXVpcmVkGAQgASgIEhkKEXR3b19mYWN0b3Jfc2VjcmV0GAUgASgJEh4KFnR3b19mYWN0b3JfcXJfY29kZV91cmwYBiABKAkSFwoPY2hhbGxlbmdlX3Rva2VuGAcgASgJIhAKDlNpZ25PdXRSZXF1ZXN0IhEKD1NpZ25PdXRSZXNwb25zZSIXChVHZXRDdXJyZW50VXNlclJlcXVlc3QiOAoWR2V0Q3VycmVudFVzZXJSZXNwb25zZRIeCgR1c2VyGAEgASgLMhAucGFubWFpbC52MS5Vc2VyIoIBCgRVc2VyEgoKAmlkGAEgASgJEg0KBWVtYWlsGAIgASgJEgwKBG5hbWUYAyABKAkSEQoJdGVuYW50X2lkGAQgASgJEiIKBHJvbGUYBSABKA4yFC5wYW5tYWlsLnYxLlVzZXJSb2xlEhoKEnR3b19mYWN0b3JfZW5hYmxlZBgGIAEoCCIXChVTZXR1cFR3b0ZhY3RvclJlcXVlc3QiPQoWU2V0dXBUd29GYWN0b3JSZXNwb25zZRIOCgZzZWNyZXQYASABKAkSEwoLcXJfY29kZV91cmwYAiABKAkiWgoWVmVyaWZ5VHdvRmFjdG9yUmVxdWVzdBIMCgRjb2RlGAEgASgJEhcKD2NoYWxsZW5nZV90b2tlbhgEIAEoCUoECAIQA0oECAMQBFIGc2VjcmV0UgVlbWFpbCJaChdWZXJpZnlUd29GYWN0b3JSZXNwb25zZRIQCgh2ZXJpZmllZBgBIAEoCBINCgV0b2tlbhgCIAEoCRIeCgR1c2VyGAMgASgLMhAucGFubWFpbC52MS5Vc2VyIjQKFkVuYWJsZVR3b0ZhY3RvclJlcXVlc3QSDAoEY29kZRgBIAEoCUoECAIQA1IGc2VjcmV0IioKF0VuYWJsZVR3b0ZhY3RvclJlc3BvbnNlEg8KB3N1Y2Nlc3MYASABKAgiKgoXRGlzYWJsZVR3b0ZhY3RvclJlcXVlc3QSDwoHdXNlcl9pZBgBIAEoCSIrChhEaXNhYmxlVHdvRmFjdG9yUmVzcG9uc2USDwoHc3VjY2VzcxgBIAEoCCqBAQoIVXNlclJvbGUSGQoVVVNFUl9ST0xFX1VOU1BFQ0lGSUVEEAASGQoVVVNFUl9ST0xFX1NVUEVSX0FETUlOEAESEwoPVVNFUl9ST0xFX0FETUlOEAISFAoQVVNFUl9ST0xFX0VESVRPUhADEhQKEFVTRVJfUk9MRV9WSUVXRVIQBDLbBAoLQXV0aFNlcnZpY2USPwoGU2lnbkluEhkucGFubWFpbC52MS5TaWduSW5SZXF1ZXN0GhoucGFubWFpbC52MS5TaWduSW5SZXNwb25zZRJCCgdTaWduT3V0EhoucGFubWFpbC52MS5TaWduT3V0UmVxdWVzdBobLnBhbm1haWwudjEuU2lnbk91dFJlc3BvbnNlElcKDkdldEN1cnJlbnRVc2VyEiEucGFubWFpbC52MS5HZXRDdXJyZW50VXNlclJlcXVlc3QaIi5wYW5tYWlsLnYxLkdldEN1cnJlbnRVc2VyUmVzcG9uc2USVwoOU2V0dXBUd29GYWN0b3ISIS5wYW5tYWlsLnYxLlNldHVwVHdvRmFjdG9yUmVxdWVzdBoiLnBhbm1haWwudjEuU2V0dXBUd29GYWN0b3JSZXNwb25zZRJaCg9WZXJpZnlUd29GYWN0b3ISIi5wYW5tYWlsLnYxLlZlcmlmeVR3b0ZhY3RvclJlcXVlc3QaIy5wYW5tYWlsLnYxLlZlcmlmeVR3b0ZhY3RvclJlc3BvbnNlEloKD0VuYWJsZVR3b0ZhY3RvchIiLnBhbm1haWwudjEuRW5hYmxlVHdvRmFjdG9yUmVxdWVzdBojLnBhbm1haWwudjEuRW5hYmxlVHdvRmFjdG9yUmVzcG9uc2USXQoQRGlzYWJsZVR3b0ZhY3RvchIjLnBhbm1haWwudjEuRGlzYWJsZVR3b0ZhY3RvclJlcXVlc3QaJC5wYW5tYWlsLnYxLkRpc2FibGVUd29GYWN0b3JSZXNwb25zZTKuAwoNQXBpS2V5U2VydmljZRJRCgxDcmVhdGVBcGlLZXkSHy5wYW5tYWlsLnYxLkNyZWF0ZUFwaUtleVJlcXVlc3QaIC5wYW5tYWlsLnYxLkNyZWF0ZUFwaUtleVJlc3BvbnNlEk4KC0xpc3RBcGlLZXlzEh4ucGFubWFpbC52MS5MaXN0QXBpS2V5c1JlcXVlc3QaHy5wYW5tYWlsLnYxLkxpc3RBcGlLZXlzUmVzcG9uc2USUQoMRGVsZXRlQXBpS2V5Eh8ucGFubWFpbC52MS5EZWxldGVBcGlLZXlSZXF1ZXN0GiAucGFubWFpbC52MS5EZWxldGVBcGlLZXlSZXNwb25zZRJUCg1EaXNhYmxlQXBpS2V5EiAucGFubWFpbC52MS5EaXNhYmxlQXBpS2V5UmVxdWVzdBohLnBhbm1haWwudjEuRGlzYWJsZUFwaUtleVJlc3BvbnNlElEKDEVuYWJsZUFwaUtleRIfLnBhbm1haWwudjEuRW5hYmxlQXBpS2V5UmVxdWVzdBogLnBhbm1haWwudjEuRW5hYmxlQXBpS2V5UmVzcG9uc2UysgMKC1VzZXJTZXJ2aWNlEksKCkNyZWF0ZVVzZXISHS5wYW5tYWlsLnYxLkNyZWF0ZVVzZXJSZXF1ZXN0Gh4ucGFubWFpbC52MS5DcmVhdGVVc2VyUmVzcG9uc2USSAoJTGlzdFVzZXJzEhwucGFubWFpbC52MS5MaXN0VXNlcnNSZXF1ZXN0Gh0ucGFubWFpbC52MS5MaXN0VXNlcnNSZXNwb25zZRJXCg5VcGRhdGVVc2VyUm9sZRIhLnBhbm1haWwudjEuVXBkYXRlVXNlclJvbGVSZXF1ZXN0GiIucGFubWFpbC52MS5VcGRhdGVVc2VyUm9sZVJlc3BvbnNlEksKCkRlbGV0ZVVzZXISHS5wYW5tYWlsLnYxLkRlbGV0ZVVzZXJSZXF1ZXN0Gh4ucGFubWFpbC52MS5EZWxldGVVc2VyUmVzcG9uc2USZgoTVXBkYXRlVXNlclR3b0ZhY3RvchImLnBhbm1haWwudjEuVXBkYXRlVXNlclR3b0ZhY3RvclJlcXVlc3QaJy5wYW5tYWlsLnYxLlVwZGF0ZVVzZXJUd29GYWN0b3JSZXNwb25zZTLYAgoNVGVuYW50U2VydmljZRJRCgxDcmVhdGVUZW5hbnQSHy5wYW5tYWlsLnYxLkNyZWF0ZVRlbmFudFJlcXVlc3QaIC5wYW5tYWlsLnYxLkNyZWF0ZVRlbmFudFJlc3BvbnNlEk4KC0xpc3RUZW5hbnRzEh4ucGFubWFpbC52MS5MaXN0VGVuYW50c1JlcXVlc3QaHy5wYW5tYWlsLnYxLkxpc3RUZW5hbnRzUmVzcG9uc2USUQoMVXBkYXRlVGVuYW50Eh8ucGFubWFpbC52MS5VcGRhdGVUZW5hbnRSZXF1ZXN0GiAucGFubWFpbC52MS5VcGRhdGVUZW5hbnRSZXNwb25zZRJRCgxEZWxldGVUZW5hbnQSHy5wYW5tYWlsLnYxLkRlbGV0ZVRlbmFudFJlcXVlc3QaIC5wYW5tYWlsLnYxLkRlbGV0ZVRlbmFudFJlc3BvbnNlQpoBCg5jb20ucGFubWFpbC52MUIJQXV0aFByb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z");
+  fileDesc("ChVwYW5tYWlsL3YxL2F1dGgucHJvdG8SCnBhbm1haWwudjEifwoGVGVuYW50EgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSEgoKY3JlYXRlZF9hdBgDIAEoCRIVCg1yZXRyeV9wYXR0ZXJuGAQgAygJEhwKFHNlbmRfcmF0ZV9wZXJfbWludXRlGAUgASgFEhIKCnNlbmRfYnVyc3QYBiABKAUibAoTQ3JlYXRlVGVuYW50UmVxdWVzdBIMCgRuYW1lGAEgASgJEhUKDXJldHJ5X3BhdHRlcm4YAiADKAkSHAoUc2VuZF9yYXRlX3Blcl9taW51dGUYAyABKAUSEgoKc2VuZF9idXJzdBgEIAEoBSI6ChRDcmVhdGVUZW5hbnRSZXNwb25zZRIiCgZ0ZW5hbnQYASABKAsyEi5wYW5tYWlsLnYxLlRlbmFudCJ4ChNVcGRhdGVUZW5hbnRSZXF1ZXN0EgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSFQoNcmV0cnlfcGF0dGVybhgDIAMoCRIcChRzZW5kX3JhdGVfcGVyX21pbnV0ZRgEIAEoBRISCgpzZW5kX2J1cnN0GAUgASgFIjoKFFVwZGF0ZVRlbmFudFJlc3BvbnNlEiIKBnRlbmFudBgBIAEoCzISLnBhbm1haWwudjEuVGVuYW50IjsKEkxpc3RUZW5hbnRzUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJTChNMaXN0VGVuYW50c1Jlc3BvbnNlEiMKB3RlbmFudHMYASADKAsyEi5wYW5tYWlsLnYxLlRlbmFudBIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiIQoTRGVsZXRlVGVuYW50UmVxdWVzdBIKCgJpZBgBIAEoCSIWChREZWxldGVUZW5hbnRSZXNwb25zZSJmChFDcmVhdGVVc2VyUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIQCghwYXNzd29yZBgCIAEoCRIMCgRuYW1lGAMgASgJEiIKBHJvbGUYBCABKA4yFC5wYW5tYWlsLnYxLlVzZXJSb2xlIjQKEkNyZWF0ZVVzZXJSZXNwb25zZRIeCgR1c2VyGAEgASgLMhAucGFubWFpbC52MS5Vc2VyIjkKEExpc3RVc2Vyc1JlcXVlc3QSEQoJcGFnZV9zaXplGAEgASgFEhIKCnBhZ2VfdG9rZW4YAiABKAkiTQoRTGlzdFVzZXJzUmVzcG9uc2USHwoFdXNlcnMYASADKAsyEC5wYW5tYWlsLnYxLlVzZXISFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIkcKFVVwZGF0ZVVzZXJSb2xlUmVxdWVzdBIKCgJpZBgBIAEoCRIiCgRyb2xlGAIgASgOMhQucGFubWFpbC52MS5Vc2VyUm9sZSIYChZVcGRhdGVVc2VyUm9sZVJlc3BvbnNlIh8KEURlbGV0ZVVzZXJSZXF1ZXN0EgoKAmlkGAEgASgJIhQKEkRlbGV0ZVVzZXJSZXNwb25zZSI5ChpVcGRhdGVVc2VyVHdvRmFjdG9yUmVxdWVzdBIKCgJpZBgBIAEoCRIPCgdlbmFibGVkGAIgASgIIh0KG1VwZGF0ZVVzZXJUd29GYWN0b3JSZXNwb25zZSJ9CgpVc2VyVGVuYW50EhEKCXRlbmFudF9pZBgBIAEoCRITCgt0ZW5hbnRfbmFtZRgCIAEoCRIiCgRyb2xlGAMgASgOMhQucGFubWFpbC52MS5Vc2VyUm9sZRIPCgdpc19ob21lGAQgASgIEhIKCmNyZWF0ZWRfYXQYBSABKAkiYwoZQXNzaWduVXNlclRvVGVuYW50UmVxdWVzdBIPCgd1c2VyX2lkGAEgASgJEhEKCXRlbmFudF9pZBgCIAEoCRIiCgRyb2xlGAMgASgOMhQucGFubWFpbC52MS5Vc2VyUm9sZSJIChpBc3NpZ25Vc2VyVG9UZW5hbnRSZXNwb25zZRIqCgptZW1iZXJzaGlwGAEgASgLMhYucGFubWFpbC52MS5Vc2VyVGVuYW50IkEKG1JlbW92ZVVzZXJGcm9tVGVuYW50UmVxdWVzdBIPCgd1c2VyX2lkGAEgASgJEhEKCXRlbmFudF9pZBgCIAEoCSIeChxSZW1vdmVVc2VyRnJvbVRlbmFudFJlc3BvbnNlIikKFkxpc3RVc2VyVGVuYW50c1JlcXVlc3QSDwoHdXNlcl9pZBgBIAEoCSJCChdMaXN0VXNlclRlbmFudHNSZXNwb25zZRInCgd0ZW5hbnRzGAEgAygLMhYucGFubWFpbC52MS5Vc2VyVGVuYW50IpQBCgZBcGlLZXkSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIOCgZwcmVmaXgYAyABKAkSEgoKY3JlYXRlZF9hdBgEIAEoCRIUCgxsYXN0X3VzZWRfYXQYBSABKAkSEgoKZXhwaXJlc19hdBgGIAEoCRISCgppc19lbmFibGVkGAcgASgIEg4KBnNjb3BlcxgIIAMoCSJHChNDcmVhdGVBcGlLZXlSZXF1ZXN0EgwKBG5hbWUYASABKAkSEgoKZXhwaXJlc19hdBgCIAEoCRIOCgZzY29wZXMYAyADKAkiUwoUQ3JlYXRlQXBpS2V5UmVzcG9uc2USIwoHYXBpX2tleRgBIAEoCzISLnBhbm1haWwudjEuQXBpS2V5EhYKDnBsYWluX3RleHRfa2V5GAIgASgJIjsKEkxpc3RBcGlLZXlzUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJUChNMaXN0QXBpS2V5c1Jlc3BvbnNlEiQKCGFwaV9rZXlzGAEgAygLMhIucGFubWFpbC52MS5BcGlLZXkSFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIiEKE0RlbGV0ZUFwaUtleVJlcXVlc3QSCgoCaWQYASABKAkiFgoURGVsZXRlQXBpS2V5UmVzcG9uc2UiIgoURGlzYWJsZUFwaUtleVJlcXVlc3QSCgoCaWQYASABKAkiFwoVRGlzYWJsZUFwaUtleVJlc3BvbnNlIiEKE0VuYWJsZUFwaUtleVJlcXVlc3QSCgoCaWQYASABKAkiFgoURW5hYmxlQXBpS2V5UmVzcG9uc2UiMAoNU2lnbkluUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIQCghwYXNzd29yZBgCIAEoCSLTAQoOU2lnbkluUmVzcG9uc2USDQoFdG9rZW4YASABKAkSHgoEdXNlchgCIAEoCzIQLnBhbm1haWwudjEuVXNlchIbChN0d29fZmFjdG9yX3JlcXVpcmVkGAMgASgIEiEKGXR3b19mYWN0b3Jfc2V0dXBfcmVxdWlyZWQYBCABKAgSGQoRdHdvX2ZhY3Rvcl9zZWNyZXQYBSABKAkSHgoWdHdvX2ZhY3Rvcl9xcl9jb2RlX3VybBgGIAEoCRIXCg9jaGFsbGVuZ2VfdG9rZW4YByABKAkiEAoOU2lnbk91dFJlcXVlc3QiEQoPU2lnbk91dFJlc3BvbnNlIhcKFUdldEN1cnJlbnRVc2VyUmVxdWVzdCJhChZHZXRDdXJyZW50VXNlclJlc3BvbnNlEh4KBHVzZXIYASABKAsyEC5wYW5tYWlsLnYxLlVzZXISJwoHdGVuYW50cxgCIAMoCzIWLnBhbm1haWwudjEuVXNlclRlbmFudCKCAQoEVXNlchIKCgJpZBgBIAEoCRINCgVlbWFpbBgCIAEoCRIMCgRuYW1lGAMgASgJEhEKCXRlbmFudF9pZBgEIAEoCRIiCgRyb2xlGAUgASgOMhQucGFubWFpbC52MS5Vc2VyUm9sZRIaChJ0d29fZmFjdG9yX2VuYWJsZWQYBiABKAgiFwoVU2V0dXBUd29GYWN0b3JSZXF1ZXN0Ij0KFlNldHVwVHdvRmFjdG9yUmVzcG9uc2USDgoGc2VjcmV0GAEgASgJEhMKC3FyX2NvZGVfdXJsGAIgASgJIloKFlZlcmlmeVR3b0ZhY3RvclJlcXVlc3QSDAoEY29kZRgBIAEoCRIXCg9jaGFsbGVuZ2VfdG9rZW4YBCABKAlKBAgCEANKBAgDEARSBnNlY3JldFIFZW1haWwiWgoXVmVyaWZ5VHdvRmFjdG9yUmVzcG9uc2USEAoIdmVyaWZpZWQYASABKAgSDQoFdG9rZW4YAiABKAkSHgoEdXNlchgDIAEoCzIQLnBhbm1haWwudjEuVXNlciI0ChZFbmFibGVUd29GYWN0b3JSZXF1ZXN0EgwKBGNvZGUYASABKAlKBAgCEANSBnNlY3JldCIqChdFbmFibGVUd29GYWN0b3JSZXNwb25zZRIPCgdzdWNjZXNzGAEgASgIIioKF0Rpc2FibGVUd29GYWN0b3JSZXF1ZXN0Eg8KB3VzZXJfaWQYASABKAkiKwoYRGlzYWJsZVR3b0ZhY3RvclJlc3BvbnNlEg8KB3N1Y2Nlc3MYASABKAgqgQEKCFVzZXJSb2xlEhkKFVVTRVJfUk9MRV9VTlNQRUNJRklFRBAAEhkKFVVTRVJfUk9MRV9TVVBFUl9BRE1JThABEhMKD1VTRVJfUk9MRV9BRE1JThACEhQKEFVTRVJfUk9MRV9FRElUT1IQAxIUChBVU0VSX1JPTEVfVklFV0VSEAQy2wQKC0F1dGhTZXJ2aWNlEj8KBlNpZ25JbhIZLnBhbm1haWwudjEuU2lnbkluUmVxdWVzdBoaLnBhbm1haWwudjEuU2lnbkluUmVzcG9uc2USQgoHU2lnbk91dBIaLnBhbm1haWwudjEuU2lnbk91dFJlcXVlc3QaGy5wYW5tYWlsLnYxLlNpZ25PdXRSZXNwb25zZRJXCg5HZXRDdXJyZW50VXNlchIhLnBhbm1haWwudjEuR2V0Q3VycmVudFVzZXJSZXF1ZXN0GiIucGFubWFpbC52MS5HZXRDdXJyZW50VXNlclJlc3BvbnNlElcKDlNldHVwVHdvRmFjdG9yEiEucGFubWFpbC52MS5TZXR1cFR3b0ZhY3RvclJlcXVlc3QaIi5wYW5tYWlsLnYxLlNldHVwVHdvRmFjdG9yUmVzcG9uc2USWgoPVmVyaWZ5VHdvRmFjdG9yEiIucGFubWFpbC52MS5WZXJpZnlUd29GYWN0b3JSZXF1ZXN0GiMucGFubWFpbC52MS5WZXJpZnlUd29GYWN0b3JSZXNwb25zZRJaCg9FbmFibGVUd29GYWN0b3ISIi5wYW5tYWlsLnYxLkVuYWJsZVR3b0ZhY3RvclJlcXVlc3QaIy5wYW5tYWlsLnYxLkVuYWJsZVR3b0ZhY3RvclJlc3BvbnNlEl0KEERpc2FibGVUd29GYWN0b3ISIy5wYW5tYWlsLnYxLkRpc2FibGVUd29GYWN0b3JSZXF1ZXN0GiQucGFubWFpbC52MS5EaXNhYmxlVHdvRmFjdG9yUmVzcG9uc2UyrgMKDUFwaUtleVNlcnZpY2USUQoMQ3JlYXRlQXBpS2V5Eh8ucGFubWFpbC52MS5DcmVhdGVBcGlLZXlSZXF1ZXN0GiAucGFubWFpbC52MS5DcmVhdGVBcGlLZXlSZXNwb25zZRJOCgtMaXN0QXBpS2V5cxIeLnBhbm1haWwudjEuTGlzdEFwaUtleXNSZXF1ZXN0Gh8ucGFubWFpbC52MS5MaXN0QXBpS2V5c1Jlc3BvbnNlElEKDERlbGV0ZUFwaUtleRIfLnBhbm1haWwudjEuRGVsZXRlQXBpS2V5UmVxdWVzdBogLnBhbm1haWwudjEuRGVsZXRlQXBpS2V5UmVzcG9uc2USVAoNRGlzYWJsZUFwaUtleRIgLnBhbm1haWwudjEuRGlzYWJsZUFwaUtleVJlcXVlc3QaIS5wYW5tYWlsLnYxLkRpc2FibGVBcGlLZXlSZXNwb25zZRJRCgxFbmFibGVBcGlLZXkSHy5wYW5tYWlsLnYxLkVuYWJsZUFwaUtleVJlcXVlc3QaIC5wYW5tYWlsLnYxLkVuYWJsZUFwaUtleVJlc3BvbnNlMt4FCgtVc2VyU2VydmljZRJLCgpDcmVhdGVVc2VyEh0ucGFubWFpbC52MS5DcmVhdGVVc2VyUmVxdWVzdBoeLnBhbm1haWwudjEuQ3JlYXRlVXNlclJlc3BvbnNlEkgKCUxpc3RVc2VycxIcLnBhbm1haWwudjEuTGlzdFVzZXJzUmVxdWVzdBodLnBhbm1haWwudjEuTGlzdFVzZXJzUmVzcG9uc2USVwoOVXBkYXRlVXNlclJvbGUSIS5wYW5tYWlsLnYxLlVwZGF0ZVVzZXJSb2xlUmVxdWVzdBoiLnBhbm1haWwudjEuVXBkYXRlVXNlclJvbGVSZXNwb25zZRJLCgpEZWxldGVVc2VyEh0ucGFubWFpbC52MS5EZWxldGVVc2VyUmVxdWVzdBoeLnBhbm1haWwudjEuRGVsZXRlVXNlclJlc3BvbnNlEmYKE1VwZGF0ZVVzZXJUd29GYWN0b3ISJi5wYW5tYWlsLnYxLlVwZGF0ZVVzZXJUd29GYWN0b3JSZXF1ZXN0GicucGFubWFpbC52MS5VcGRhdGVVc2VyVHdvRmFjdG9yUmVzcG9uc2USYwoSQXNzaWduVXNlclRvVGVuYW50EiUucGFubWFpbC52MS5Bc3NpZ25Vc2VyVG9UZW5hbnRSZXF1ZXN0GiYucGFubWFpbC52MS5Bc3NpZ25Vc2VyVG9UZW5hbnRSZXNwb25zZRJpChRSZW1vdmVVc2VyRnJvbVRlbmFudBInLnBhbm1haWwudjEuUmVtb3ZlVXNlckZyb21UZW5hbnRSZXF1ZXN0GigucGFubWFpbC52MS5SZW1vdmVVc2VyRnJvbVRlbmFudFJlc3BvbnNlEloKD0xpc3RVc2VyVGVuYW50cxIiLnBhbm1haWwudjEuTGlzdFVzZXJUZW5hbnRzUmVxdWVzdBojLnBhbm1haWwudjEuTGlzdFVzZXJUZW5hbnRzUmVzcG9uc2Uy2AIKDVRlbmFudFNlcnZpY2USUQoMQ3JlYXRlVGVuYW50Eh8ucGFubWFpbC52MS5DcmVhdGVUZW5hbnRSZXF1ZXN0GiAucGFubWFpbC52MS5DcmVhdGVUZW5hbnRSZXNwb25zZRJOCgtMaXN0VGVuYW50cxIeLnBhbm1haWwudjEuTGlzdFRlbmFudHNSZXF1ZXN0Gh8ucGFubWFpbC52MS5MaXN0VGVuYW50c1Jlc3BvbnNlElEKDFVwZGF0ZVRlbmFudBIfLnBhbm1haWwudjEuVXBkYXRlVGVuYW50UmVxdWVzdBogLnBhbm1haWwudjEuVXBkYXRlVGVuYW50UmVzcG9uc2USUQoMRGVsZXRlVGVuYW50Eh8ucGFubWFpbC52MS5EZWxldGVUZW5hbnRSZXF1ZXN0GiAucGFubWFpbC52MS5EZWxldGVUZW5hbnRSZXNwb25zZUKaAQoOY29tLnBhbm1haWwudjFCCUF1dGhQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw");
 
 /**
  * @generated from message panmail.v1.Tenant
@@ -448,6 +448,172 @@ export const UpdateUserTwoFactorResponseSchema: GenMessage<UpdateUserTwoFactorRe
   messageDesc(file_panmail_v1_auth, 18);
 
 /**
+ * UserTenant is one tenant a user may act in, and the role they hold there.
+ *
+ * @generated from message panmail.v1.UserTenant
+ */
+export type UserTenant = Message<"panmail.v1.UserTenant"> & {
+  /**
+   * @generated from field: string tenant_id = 1;
+   */
+  tenantId: string;
+
+  /**
+   * @generated from field: string tenant_name = 2;
+   */
+  tenantName: string;
+
+  /**
+   * The role held in this tenant. Never USER_ROLE_SUPER_ADMIN as a stored
+   * membership: that role is global and lives on the user. It is reported here
+   * when the user holds it, because it is what they can actually do.
+   *
+   * @generated from field: panmail.v1.UserRole role = 3;
+   */
+  role: UserRole;
+
+  /**
+   * True for the tenant the user signs in to. Home membership cannot be
+   * removed; deleting the account is the operation that means that.
+   *
+   * @generated from field: bool is_home = 4;
+   */
+  isHome: boolean;
+
+  /**
+   * @generated from field: string created_at = 5;
+   */
+  createdAt: string;
+};
+
+/**
+ * Describes the message panmail.v1.UserTenant.
+ * Use `create(UserTenantSchema)` to create a new message.
+ */
+export const UserTenantSchema: GenMessage<UserTenant> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_auth, 19);
+
+/**
+ * @generated from message panmail.v1.AssignUserToTenantRequest
+ */
+export type AssignUserToTenantRequest = Message<"panmail.v1.AssignUserToTenantRequest"> & {
+  /**
+   * @generated from field: string user_id = 1;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string tenant_id = 2;
+   */
+  tenantId: string;
+
+  /**
+   * Role in the target tenant. Defaults to USER_ROLE_VIEWER when unspecified,
+   * because an account being lent to another tenant should arrive with the
+   * least authority that is useful, not with whatever it holds at home.
+   *
+   * @generated from field: panmail.v1.UserRole role = 3;
+   */
+  role: UserRole;
+};
+
+/**
+ * Describes the message panmail.v1.AssignUserToTenantRequest.
+ * Use `create(AssignUserToTenantRequestSchema)` to create a new message.
+ */
+export const AssignUserToTenantRequestSchema: GenMessage<AssignUserToTenantRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_auth, 20);
+
+/**
+ * @generated from message panmail.v1.AssignUserToTenantResponse
+ */
+export type AssignUserToTenantResponse = Message<"panmail.v1.AssignUserToTenantResponse"> & {
+  /**
+   * @generated from field: panmail.v1.UserTenant membership = 1;
+   */
+  membership?: UserTenant | undefined;
+};
+
+/**
+ * Describes the message panmail.v1.AssignUserToTenantResponse.
+ * Use `create(AssignUserToTenantResponseSchema)` to create a new message.
+ */
+export const AssignUserToTenantResponseSchema: GenMessage<AssignUserToTenantResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_auth, 21);
+
+/**
+ * @generated from message panmail.v1.RemoveUserFromTenantRequest
+ */
+export type RemoveUserFromTenantRequest = Message<"panmail.v1.RemoveUserFromTenantRequest"> & {
+  /**
+   * @generated from field: string user_id = 1;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string tenant_id = 2;
+   */
+  tenantId: string;
+};
+
+/**
+ * Describes the message panmail.v1.RemoveUserFromTenantRequest.
+ * Use `create(RemoveUserFromTenantRequestSchema)` to create a new message.
+ */
+export const RemoveUserFromTenantRequestSchema: GenMessage<RemoveUserFromTenantRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_auth, 22);
+
+/**
+ * @generated from message panmail.v1.RemoveUserFromTenantResponse
+ */
+export type RemoveUserFromTenantResponse = Message<"panmail.v1.RemoveUserFromTenantResponse"> & {
+};
+
+/**
+ * Describes the message panmail.v1.RemoveUserFromTenantResponse.
+ * Use `create(RemoveUserFromTenantResponseSchema)` to create a new message.
+ */
+export const RemoveUserFromTenantResponseSchema: GenMessage<RemoveUserFromTenantResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_auth, 23);
+
+/**
+ * @generated from message panmail.v1.ListUserTenantsRequest
+ */
+export type ListUserTenantsRequest = Message<"panmail.v1.ListUserTenantsRequest"> & {
+  /**
+   * Empty means the calling user, which is how the console populates its own
+   * tenant switcher without needing permission to read other accounts.
+   *
+   * @generated from field: string user_id = 1;
+   */
+  userId: string;
+};
+
+/**
+ * Describes the message panmail.v1.ListUserTenantsRequest.
+ * Use `create(ListUserTenantsRequestSchema)` to create a new message.
+ */
+export const ListUserTenantsRequestSchema: GenMessage<ListUserTenantsRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_auth, 24);
+
+/**
+ * @generated from message panmail.v1.ListUserTenantsResponse
+ */
+export type ListUserTenantsResponse = Message<"panmail.v1.ListUserTenantsResponse"> & {
+  /**
+   * @generated from field: repeated panmail.v1.UserTenant tenants = 1;
+   */
+  tenants: UserTenant[];
+};
+
+/**
+ * Describes the message panmail.v1.ListUserTenantsResponse.
+ * Use `create(ListUserTenantsResponseSchema)` to create a new message.
+ */
+export const ListUserTenantsResponseSchema: GenMessage<ListUserTenantsResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_auth, 25);
+
+/**
  * @generated from message panmail.v1.ApiKey
  */
 export type ApiKey = Message<"panmail.v1.ApiKey"> & {
@@ -499,7 +665,7 @@ export type ApiKey = Message<"panmail.v1.ApiKey"> & {
  * Use `create(ApiKeySchema)` to create a new message.
  */
 export const ApiKeySchema: GenMessage<ApiKey> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 19);
+  messageDesc(file_panmail_v1_auth, 26);
 
 /**
  * @generated from message panmail.v1.CreateApiKeyRequest
@@ -529,7 +695,7 @@ export type CreateApiKeyRequest = Message<"panmail.v1.CreateApiKeyRequest"> & {
  * Use `create(CreateApiKeyRequestSchema)` to create a new message.
  */
 export const CreateApiKeyRequestSchema: GenMessage<CreateApiKeyRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 20);
+  messageDesc(file_panmail_v1_auth, 27);
 
 /**
  * @generated from message panmail.v1.CreateApiKeyResponse
@@ -551,7 +717,7 @@ export type CreateApiKeyResponse = Message<"panmail.v1.CreateApiKeyResponse"> & 
  * Use `create(CreateApiKeyResponseSchema)` to create a new message.
  */
 export const CreateApiKeyResponseSchema: GenMessage<CreateApiKeyResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 21);
+  messageDesc(file_panmail_v1_auth, 28);
 
 /**
  * @generated from message panmail.v1.ListApiKeysRequest
@@ -573,7 +739,7 @@ export type ListApiKeysRequest = Message<"panmail.v1.ListApiKeysRequest"> & {
  * Use `create(ListApiKeysRequestSchema)` to create a new message.
  */
 export const ListApiKeysRequestSchema: GenMessage<ListApiKeysRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 22);
+  messageDesc(file_panmail_v1_auth, 29);
 
 /**
  * @generated from message panmail.v1.ListApiKeysResponse
@@ -595,7 +761,7 @@ export type ListApiKeysResponse = Message<"panmail.v1.ListApiKeysResponse"> & {
  * Use `create(ListApiKeysResponseSchema)` to create a new message.
  */
 export const ListApiKeysResponseSchema: GenMessage<ListApiKeysResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 23);
+  messageDesc(file_panmail_v1_auth, 30);
 
 /**
  * @generated from message panmail.v1.DeleteApiKeyRequest
@@ -612,7 +778,7 @@ export type DeleteApiKeyRequest = Message<"panmail.v1.DeleteApiKeyRequest"> & {
  * Use `create(DeleteApiKeyRequestSchema)` to create a new message.
  */
 export const DeleteApiKeyRequestSchema: GenMessage<DeleteApiKeyRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 24);
+  messageDesc(file_panmail_v1_auth, 31);
 
 /**
  * @generated from message panmail.v1.DeleteApiKeyResponse
@@ -625,7 +791,7 @@ export type DeleteApiKeyResponse = Message<"panmail.v1.DeleteApiKeyResponse"> & 
  * Use `create(DeleteApiKeyResponseSchema)` to create a new message.
  */
 export const DeleteApiKeyResponseSchema: GenMessage<DeleteApiKeyResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 25);
+  messageDesc(file_panmail_v1_auth, 32);
 
 /**
  * @generated from message panmail.v1.DisableApiKeyRequest
@@ -642,7 +808,7 @@ export type DisableApiKeyRequest = Message<"panmail.v1.DisableApiKeyRequest"> & 
  * Use `create(DisableApiKeyRequestSchema)` to create a new message.
  */
 export const DisableApiKeyRequestSchema: GenMessage<DisableApiKeyRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 26);
+  messageDesc(file_panmail_v1_auth, 33);
 
 /**
  * @generated from message panmail.v1.DisableApiKeyResponse
@@ -655,7 +821,7 @@ export type DisableApiKeyResponse = Message<"panmail.v1.DisableApiKeyResponse"> 
  * Use `create(DisableApiKeyResponseSchema)` to create a new message.
  */
 export const DisableApiKeyResponseSchema: GenMessage<DisableApiKeyResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 27);
+  messageDesc(file_panmail_v1_auth, 34);
 
 /**
  * @generated from message panmail.v1.EnableApiKeyRequest
@@ -672,7 +838,7 @@ export type EnableApiKeyRequest = Message<"panmail.v1.EnableApiKeyRequest"> & {
  * Use `create(EnableApiKeyRequestSchema)` to create a new message.
  */
 export const EnableApiKeyRequestSchema: GenMessage<EnableApiKeyRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 28);
+  messageDesc(file_panmail_v1_auth, 35);
 
 /**
  * @generated from message panmail.v1.EnableApiKeyResponse
@@ -685,7 +851,7 @@ export type EnableApiKeyResponse = Message<"panmail.v1.EnableApiKeyResponse"> & 
  * Use `create(EnableApiKeyResponseSchema)` to create a new message.
  */
 export const EnableApiKeyResponseSchema: GenMessage<EnableApiKeyResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 29);
+  messageDesc(file_panmail_v1_auth, 36);
 
 /**
  * @generated from message panmail.v1.SignInRequest
@@ -707,7 +873,7 @@ export type SignInRequest = Message<"panmail.v1.SignInRequest"> & {
  * Use `create(SignInRequestSchema)` to create a new message.
  */
 export const SignInRequestSchema: GenMessage<SignInRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 30);
+  messageDesc(file_panmail_v1_auth, 37);
 
 /**
  * @generated from message panmail.v1.SignInResponse
@@ -758,7 +924,7 @@ export type SignInResponse = Message<"panmail.v1.SignInResponse"> & {
  * Use `create(SignInResponseSchema)` to create a new message.
  */
 export const SignInResponseSchema: GenMessage<SignInResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 31);
+  messageDesc(file_panmail_v1_auth, 38);
 
 /**
  * @generated from message panmail.v1.SignOutRequest
@@ -771,7 +937,7 @@ export type SignOutRequest = Message<"panmail.v1.SignOutRequest"> & {
  * Use `create(SignOutRequestSchema)` to create a new message.
  */
 export const SignOutRequestSchema: GenMessage<SignOutRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 32);
+  messageDesc(file_panmail_v1_auth, 39);
 
 /**
  * @generated from message panmail.v1.SignOutResponse
@@ -784,7 +950,7 @@ export type SignOutResponse = Message<"panmail.v1.SignOutResponse"> & {
  * Use `create(SignOutResponseSchema)` to create a new message.
  */
 export const SignOutResponseSchema: GenMessage<SignOutResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 33);
+  messageDesc(file_panmail_v1_auth, 40);
 
 /**
  * @generated from message panmail.v1.GetCurrentUserRequest
@@ -797,7 +963,7 @@ export type GetCurrentUserRequest = Message<"panmail.v1.GetCurrentUserRequest"> 
  * Use `create(GetCurrentUserRequestSchema)` to create a new message.
  */
 export const GetCurrentUserRequestSchema: GenMessage<GetCurrentUserRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 34);
+  messageDesc(file_panmail_v1_auth, 41);
 
 /**
  * @generated from message panmail.v1.GetCurrentUserResponse
@@ -807,6 +973,14 @@ export type GetCurrentUserResponse = Message<"panmail.v1.GetCurrentUserResponse"
    * @generated from field: panmail.v1.User user = 1;
    */
   user?: User | undefined;
+
+  /**
+   * Every tenant this user may act in, so the console can offer a switcher
+   * without a second call. A user with one membership gets one entry.
+   *
+   * @generated from field: repeated panmail.v1.UserTenant tenants = 2;
+   */
+  tenants: UserTenant[];
 };
 
 /**
@@ -814,7 +988,7 @@ export type GetCurrentUserResponse = Message<"panmail.v1.GetCurrentUserResponse"
  * Use `create(GetCurrentUserResponseSchema)` to create a new message.
  */
 export const GetCurrentUserResponseSchema: GenMessage<GetCurrentUserResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 35);
+  messageDesc(file_panmail_v1_auth, 42);
 
 /**
  * @generated from message panmail.v1.User
@@ -856,7 +1030,7 @@ export type User = Message<"panmail.v1.User"> & {
  * Use `create(UserSchema)` to create a new message.
  */
 export const UserSchema: GenMessage<User> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 36);
+  messageDesc(file_panmail_v1_auth, 43);
 
 /**
  * @generated from message panmail.v1.SetupTwoFactorRequest
@@ -869,7 +1043,7 @@ export type SetupTwoFactorRequest = Message<"panmail.v1.SetupTwoFactorRequest"> 
  * Use `create(SetupTwoFactorRequestSchema)` to create a new message.
  */
 export const SetupTwoFactorRequestSchema: GenMessage<SetupTwoFactorRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 37);
+  messageDesc(file_panmail_v1_auth, 44);
 
 /**
  * @generated from message panmail.v1.SetupTwoFactorResponse
@@ -891,7 +1065,7 @@ export type SetupTwoFactorResponse = Message<"panmail.v1.SetupTwoFactorResponse"
  * Use `create(SetupTwoFactorResponseSchema)` to create a new message.
  */
 export const SetupTwoFactorResponseSchema: GenMessage<SetupTwoFactorResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 38);
+  messageDesc(file_panmail_v1_auth, 45);
 
 /**
  * @generated from message panmail.v1.VerifyTwoFactorRequest
@@ -913,7 +1087,7 @@ export type VerifyTwoFactorRequest = Message<"panmail.v1.VerifyTwoFactorRequest"
  * Use `create(VerifyTwoFactorRequestSchema)` to create a new message.
  */
 export const VerifyTwoFactorRequestSchema: GenMessage<VerifyTwoFactorRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 39);
+  messageDesc(file_panmail_v1_auth, 46);
 
 /**
  * @generated from message panmail.v1.VerifyTwoFactorResponse
@@ -944,7 +1118,7 @@ export type VerifyTwoFactorResponse = Message<"panmail.v1.VerifyTwoFactorRespons
  * Use `create(VerifyTwoFactorResponseSchema)` to create a new message.
  */
 export const VerifyTwoFactorResponseSchema: GenMessage<VerifyTwoFactorResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 40);
+  messageDesc(file_panmail_v1_auth, 47);
 
 /**
  * @generated from message panmail.v1.EnableTwoFactorRequest
@@ -961,7 +1135,7 @@ export type EnableTwoFactorRequest = Message<"panmail.v1.EnableTwoFactorRequest"
  * Use `create(EnableTwoFactorRequestSchema)` to create a new message.
  */
 export const EnableTwoFactorRequestSchema: GenMessage<EnableTwoFactorRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 41);
+  messageDesc(file_panmail_v1_auth, 48);
 
 /**
  * @generated from message panmail.v1.EnableTwoFactorResponse
@@ -978,7 +1152,7 @@ export type EnableTwoFactorResponse = Message<"panmail.v1.EnableTwoFactorRespons
  * Use `create(EnableTwoFactorResponseSchema)` to create a new message.
  */
 export const EnableTwoFactorResponseSchema: GenMessage<EnableTwoFactorResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 42);
+  messageDesc(file_panmail_v1_auth, 49);
 
 /**
  * @generated from message panmail.v1.DisableTwoFactorRequest
@@ -997,7 +1171,7 @@ export type DisableTwoFactorRequest = Message<"panmail.v1.DisableTwoFactorReques
  * Use `create(DisableTwoFactorRequestSchema)` to create a new message.
  */
 export const DisableTwoFactorRequestSchema: GenMessage<DisableTwoFactorRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 43);
+  messageDesc(file_panmail_v1_auth, 50);
 
 /**
  * @generated from message panmail.v1.DisableTwoFactorResponse
@@ -1014,7 +1188,7 @@ export type DisableTwoFactorResponse = Message<"panmail.v1.DisableTwoFactorRespo
  * Use `create(DisableTwoFactorResponseSchema)` to create a new message.
  */
 export const DisableTwoFactorResponseSchema: GenMessage<DisableTwoFactorResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_auth, 44);
+  messageDesc(file_panmail_v1_auth, 51);
 
 /**
  * @generated from enum panmail.v1.UserRole
@@ -1207,6 +1381,37 @@ export const UserService: GenService<{
     methodKind: "unary";
     input: typeof UpdateUserTwoFactorRequestSchema;
     output: typeof UpdateUserTwoFactorResponseSchema;
+  },
+  /**
+   * Membership: one account may act in several tenants.
+   *
+   * The alternative was a second account per tenant, which users.email UNIQUE
+   * refuses, so the same person needed an aliased address and another
+   * password. These three RPCs replace that with one account and a set of
+   * memberships.
+   *
+   * @generated from rpc panmail.v1.UserService.AssignUserToTenant
+   */
+  assignUserToTenant: {
+    methodKind: "unary";
+    input: typeof AssignUserToTenantRequestSchema;
+    output: typeof AssignUserToTenantResponseSchema;
+  },
+  /**
+   * @generated from rpc panmail.v1.UserService.RemoveUserFromTenant
+   */
+  removeUserFromTenant: {
+    methodKind: "unary";
+    input: typeof RemoveUserFromTenantRequestSchema;
+    output: typeof RemoveUserFromTenantResponseSchema;
+  },
+  /**
+   * @generated from rpc panmail.v1.UserService.ListUserTenants
+   */
+  listUserTenants: {
+    methodKind: "unary";
+    input: typeof ListUserTenantsRequestSchema;
+    output: typeof ListUserTenantsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_panmail_v1_auth, 2);

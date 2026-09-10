@@ -1,12 +1,16 @@
 package middlewares
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gsoultan/panmail/internal/auth/usecases"
 	"github.com/gsoultan/panmail/pkg/auth"
+	"github.com/gsoultan/panmail/pkg/cache"
 )
 
 const (
@@ -14,6 +18,25 @@ const (
 	tenantIDHeader = "X-Tenant-ID"
 	rpcPathPrefix  = "/panmail.v1."
 )
+
+// Bounds on the resolved-membership cache.
+//
+// Acting inside a tenant that is not the one in your token costs two queries
+// per request to answer "may you, and as what". The TTL is short for the same
+// reason the API-key cache's is: it is the window in which a revoked
+// membership still works.
+const (
+	membershipCacheTTL = 5 * time.Second
+
+	// Keyed by user id and tenant id, both of which come from authenticated
+	// material rather than from the request body, so the key space is bounded
+	// by the number of real memberships. The limit is a backstop.
+	membershipCacheMaxEntries = 4096
+)
+
+// ErrTenantNotPermitted is returned when a request names a tenant the caller
+// holds no standing in.
+var ErrTenantNotPermitted = errors.New("not a member of the requested tenant")
 
 // AuthMiddleware identifies the caller and attaches a Principal to the request
 // context.
@@ -26,13 +49,28 @@ const (
 type AuthMiddleware struct {
 	tokenMaker    auth.TokenMaker
 	apiKeyUsecase usecases.ApiKeyUsecase
+
+	// memberships answers whether a user may act in a tenant other than the
+	// one their token names. Nil means membership is not configured, and only
+	// a super admin can switch — the behaviour before memberships existed.
+	memberships   usecases.MembershipUsecase
+	resolvedRoles *cache.TTLCache[string]
 }
 
 func NewAuthMiddleware(tokenMaker auth.TokenMaker, apiKeyUsecase usecases.ApiKeyUsecase) *AuthMiddleware {
 	return &AuthMiddleware{
 		tokenMaker:    tokenMaker,
 		apiKeyUsecase: apiKeyUsecase,
+		resolvedRoles: cache.NewWithLimit[string](membershipCacheTTL, membershipCacheMaxEntries),
 	}
+}
+
+// WithMemberships enables switching into any tenant the user belongs to. It is
+// a separate step because the middleware is built before the database is
+// necessarily up, and an instance without it still authenticates correctly.
+func (m *AuthMiddleware) WithMemberships(memberships usecases.MembershipUsecase) *AuthMiddleware {
+	m.memberships = memberships
+	return m
 }
 
 func (m *AuthMiddleware) Handle(next http.Handler) http.Handler {
@@ -111,14 +149,69 @@ func (m *AuthMiddleware) identifyBearer(r *http.Request, authHeader string) (*Pr
 		Role:     payload.Role,
 	}
 
-	// A super admin may act inside another tenant for support and monitoring.
-	if payload.Role == RoleSuperAdmin {
-		if target := r.Header.Get(tenantIDHeader); target != "" {
-			principal.TenantID = target
-			slog.Info("super admin switched tenant context",
-				"user_id", payload.UserID, "tenant_id", target, "path", r.URL.Path)
-		}
+	// A request may name a tenant other than the one the token was minted for.
+	// The header is only consulted when it disagrees with the token, so the
+	// ordinary single-tenant request costs nothing to serve.
+	target := r.Header.Get(tenantIDHeader)
+	if target == "" || target == payload.TenantID {
+		return principal, nil
+	}
+	if err := m.switchTenant(r.Context(), principal, target, r.URL.Path); err != nil {
+		return nil, err
+	}
+	return principal, nil
+}
+
+// switchTenant moves the principal into another tenant, or refuses.
+//
+// The role moves with it. A user who administers their own tenant and is a
+// viewer in one they have been lent must be a viewer while acting there —
+// carrying the home role across would make every assignment a promotion.
+func (m *AuthMiddleware) switchTenant(ctx context.Context, principal *Principal, target, path string) error {
+	// Super admin is global: it reaches procedures that are not scoped to any
+	// tenant, so it needs no membership and is answered without a query.
+	if principal.Role == RoleSuperAdmin {
+		principal.TenantID = target
+		slog.Info("super admin switched tenant context",
+			"user_id", principal.UserID, "tenant_id", target, "path", path)
+		return nil
 	}
 
-	return principal, nil
+	if m.memberships == nil {
+		return ErrTenantNotPermitted
+	}
+
+	role, err := m.resolveRole(ctx, principal.UserID, target)
+	if err != nil {
+		return err
+	}
+	if role == "" {
+		slog.Warn("rejecting a request for a tenant the caller does not belong to",
+			"user_id", principal.UserID, "tenant_id", target, "path", path)
+		return ErrTenantNotPermitted
+	}
+
+	principal.TenantID = target
+	principal.Role = role
+	return nil
+}
+
+// resolveRole returns the role the user holds in the tenant, "" for none. A
+// negative answer is cached too: a client that keeps sending a stale tenant
+// header would otherwise query on every request it makes.
+func (m *AuthMiddleware) resolveRole(ctx context.Context, userID, tenantID string) (string, error) {
+	key := userID + "\x00" + tenantID
+	if role, ok := m.resolvedRoles.Get(key); ok {
+		return role, nil
+	}
+
+	role, err := m.memberships.RoleIn(ctx, userID, tenantID)
+	if err != nil {
+		// A user that cannot be read is not a user that may act. Do not cache
+		// it: the next request should ask again rather than inherit a failure.
+		return "", ErrTenantNotPermitted
+	}
+
+	m.resolvedRoles.Put(key, role)
+	return role, nil
 }

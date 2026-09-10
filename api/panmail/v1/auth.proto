@@ -30,6 +30,16 @@ service UserService {
   rpc UpdateUserRole(UpdateUserRoleRequest) returns (UpdateUserRoleResponse);
   rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
   rpc UpdateUserTwoFactor(UpdateUserTwoFactorRequest) returns (UpdateUserTwoFactorResponse);
+
+  // Membership: one account may act in several tenants.
+  //
+  // The alternative was a second account per tenant, which users.email UNIQUE
+  // refuses, so the same person needed an aliased address and another
+  // password. These three RPCs replace that with one account and a set of
+  // memberships.
+  rpc AssignUserToTenant(AssignUserToTenantRequest) returns (AssignUserToTenantResponse);
+  rpc RemoveUserFromTenant(RemoveUserFromTenantRequest) returns (RemoveUserFromTenantResponse);
+  rpc ListUserTenants(ListUserTenantsRequest) returns (ListUserTenantsResponse);
 }
 
 service TenantService {
@@ -149,6 +159,54 @@ message UpdateUserTwoFactorRequest {
 
 message UpdateUserTwoFactorResponse {}
 
+// UserTenant is one tenant a user may act in, and the role they hold there.
+message UserTenant {
+  string tenant_id = 1;
+  string tenant_name = 2;
+
+  // The role held in this tenant. Never USER_ROLE_SUPER_ADMIN as a stored
+  // membership: that role is global and lives on the user. It is reported here
+  // when the user holds it, because it is what they can actually do.
+  UserRole role = 3;
+
+  // True for the tenant the user signs in to. Home membership cannot be
+  // removed; deleting the account is the operation that means that.
+  bool is_home = 4;
+
+  string created_at = 5;
+}
+
+message AssignUserToTenantRequest {
+  string user_id = 1;
+  string tenant_id = 2;
+
+  // Role in the target tenant. Defaults to USER_ROLE_VIEWER when unspecified,
+  // because an account being lent to another tenant should arrive with the
+  // least authority that is useful, not with whatever it holds at home.
+  UserRole role = 3;
+}
+
+message AssignUserToTenantResponse {
+  UserTenant membership = 1;
+}
+
+message RemoveUserFromTenantRequest {
+  string user_id = 1;
+  string tenant_id = 2;
+}
+
+message RemoveUserFromTenantResponse {}
+
+message ListUserTenantsRequest {
+  // Empty means the calling user, which is how the console populates its own
+  // tenant switcher without needing permission to read other accounts.
+  string user_id = 1;
+}
+
+message ListUserTenantsResponse {
+  repeated UserTenant tenants = 1;
+}
+
 enum UserRole {
   USER_ROLE_UNSPECIFIED = 0;
   USER_ROLE_SUPER_ADMIN = 1;
@@ -236,6 +294,10 @@ message GetCurrentUserRequest {}
 
 message GetCurrentUserResponse {
   User user = 1;
+
+  // Every tenant this user may act in, so the console can offer a switcher
+  // without a second call. A user with one membership gets one entry.
+  repeated UserTenant tenants = 2;
 }
 
 message User {
