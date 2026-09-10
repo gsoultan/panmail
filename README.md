@@ -552,10 +552,27 @@ The application will detect that the UI is not embedded and log a message accord
 
 ## 🧪 Testing
 
-Run backend tests:
 ```bash
-rtk go test -v ./...
+make check
 ```
+
+Runs the gates CI enforces, in the order that fails cheapest: `gofmt`, `go build`,
+`go vet`, `go test -race`, then the frontend's lint, test and build. `make fmt` fixes
+whatever the formatting step reports.
+
+Formatting is a CI step of its own and it runs *after* the tests, so a green
+`go test` on its own does not mean a green build.
+
+One side at a time:
+
+```bash
+make check-backend
+make check-frontend
+```
+
+Two things stay in CI and are deliberately not in `make check`: the second test pass
+against PostgreSQL, which needs a server (`scripts/ci/services.sh up` starts one and
+exports `PANMAIL_TEST_POSTGRES`), and `govulncheck`, which needs the network.
 
 ## 📜 License
 
