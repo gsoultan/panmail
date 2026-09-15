@@ -15,6 +15,8 @@
  * With sample data supplied, the preview renders what a recipient sees.
  */
 
+import { formatPreviewDate } from './formatPreviewDate';
+
 export interface PreviewData {
   [key: string]: unknown;
 }
@@ -79,6 +81,90 @@ const RANGE_RE = /\{\{\s*range\s+\.?([\w.]+)\s*\}\}([\s\S]*?)\{\{\s*end\s*\}\}/;
 const IF_RE = /\{\{\s*#if\s+([\w.]+)\s*\}\}([\s\S]*?)\{\{\s*\/if\s*\}\}/;
 const GO_IF_RE = /\{\{\s*if\s+\.?([\w.]+)\s*\}\}([\s\S]*?)\{\{\s*end\s*\}\}/;
 const UNLESS_RE = /\{\{\s*#unless\s+([\w.]+)\s*\}\}([\s\S]*?)\{\{\s*\/unless\s*\}\}/;
+
+/** An action calling a date method, in every spelling the server takes. */
+const DATE_ACTION_RE = /\{\{([^{}]*\.(?:[Ff]ormat|In)[^{}]*)\}\}/g;
+
+/** The first quoted string at or after `from`, in any of the three quotes. */
+const quotedAfter = (text: string, from: number): { value: string; end: number } | null => {
+  const m = /"([^"]*)"|'([^']*)'|`([^`]*)`/.exec(text.slice(from));
+  if (!m) return null;
+  return { value: m[1] ?? m[2] ?? m[3], end: from + m.index + m[0].length };
+};
+
+/** The field the method is called on, which is the token just before it. */
+const pathBefore = (text: string, at: number): string | null => {
+  const m = /(\$?[\w.]+)$/.exec(text.slice(0, at));
+  return m ? m[1].replace(/^\./, '') : null;
+};
+
+interface DateCall {
+  path: string;
+  layout: string;
+  zone?: string;
+}
+
+/**
+ * Reads a date call out of an action.
+ *
+ * Small parser rather than one regex because the forms compose: `.In` may carry
+ * its zone bare or wrapped in Go's `(time.LoadLocation …)`, `.Format` may carry
+ * a zone as a second argument, and the two may be chained. Taking "the first
+ * quoted string after the method" handles the wrapper for free — it is the zone
+ * either way.
+ */
+const parseDateCall = (inner: string): DateCall | null => {
+  let path: string | null = null;
+  let zone: string | undefined;
+  let layout = '';
+
+  const inAt = inner.search(/\.In\s/);
+  if (inAt >= 0) {
+    path = pathBefore(inner, inAt);
+    zone = quotedAfter(inner, inAt)?.value;
+    if (!zone) return null;
+  }
+
+  const formatAt = inner.search(/\.[Ff]ormat\s/);
+  if (formatAt >= 0) {
+    path = path ?? pathBefore(inner, formatAt);
+    const first = quotedAfter(inner, formatAt);
+    if (!first) return null;
+    layout = first.value;
+    // A second argument to Format is a zone, unless .In already gave one.
+    zone = zone ?? quotedAfter(inner, first.end)?.value;
+  }
+
+  if (!path || (inAt < 0 && formatAt < 0)) return null;
+  return { path, layout, zone };
+};
+
+/**
+ * Renders the dates.
+ *
+ * Without this the author sees `{{ created_at.Format "2026-12-01" }}` verbatim,
+ * which answers neither question a preview is for: whether the date is right,
+ * and whether it fits. A field that is not a date, or a zone that is not a
+ * zone, is called out rather than named like a missing variable, because the
+ * server refuses to send that template at all — a preview that looked merely
+ * incomplete would hide a failed send.
+ */
+const renderDates = (
+  html: string,
+  scope: PreviewData | undefined,
+  root: PreviewData | undefined,
+): string =>
+  html.replace(DATE_ACTION_RE, (match, inner: string) => {
+    const call = parseDateCall(inner);
+    if (!call) return match;
+
+    const value = lookup(scope, call.path) ?? lookup(root, call.path);
+    if (value === undefined || value === null) return `[${call.path}]`;
+
+    const formatted = formatPreviewDate(value, call.layout, call.zone);
+    if (formatted === null) return `[${call.path} is not a date]`;
+    return escapeHtml(formatted);
+  });
 
 /**
  * Replaces the remaining {{value}} expressions.
@@ -186,6 +272,7 @@ const render = (
     if (out === before) break;
   }
 
+  out = renderDates(out, scope, root);
   out = renderScalars(out, scope, root);
   return stripUnclosedHelpers(out);
 };
@@ -216,7 +303,7 @@ export const renderTemplatePreview = (html: string, data?: PreviewData): string 
  * asked to guess what the template needs.
  */
 export const collectVariables = (html: string): string[] => {
-  const found = new Set<string>();
+  const found = new Set<string>(collectDateVariables(html));
   const re = /\{\{\s*([#/^]?)\s*\.?([\w.]+)\s*\}\}/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
@@ -228,13 +315,31 @@ export const collectVariables = (html: string): string[] => {
   return [...found].sort();
 };
 
+/**
+ * The variables a template formats as dates.
+ *
+ * They need sample data of their own: "Sample created at" is not a date, so
+ * offering it would make every suggested preview report a field that is not one.
+ */
+const collectDateVariables = (html: string): Set<string> => {
+  const found = new Set<string>();
+  for (const m of html.matchAll(DATE_ACTION_RE)) {
+    const call = parseDateCall(m[1]);
+    if (call) found.add(call.path);
+  }
+  return found;
+};
+
 /** Builds sample data covering every variable a template uses. */
 export const suggestSampleData = (html: string): PreviewData => {
+  const dates = collectDateVariables(html);
   const data: PreviewData = {};
   for (const name of collectVariables(html)) {
     // Only top-level names; a dotted path implies a shape this cannot guess.
     if (name.includes('.')) continue;
-    data[name] = `Sample ${name.replace(/_/g, ' ')}`;
+    data[name] = dates.has(name)
+      ? new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+      : `Sample ${name.replace(/_/g, ' ')}`;
   }
   return data;
 };

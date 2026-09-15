@@ -201,3 +201,98 @@ describe('a loop with an empty branch', () => {
     expect(html.trim()).toBe('');
   });
 });
+
+describe('dates render, rather than showing the author raw template syntax', () => {
+  const data = { created_at: '2026-12-01T09:30:00Z' };
+
+  test('a Go reference layout', () => {
+    expect(renderTemplatePreview('{{ .created_at.Format "2006-01-02" }}', data)).toBe('2026-12-01');
+  });
+
+  // Go's layout is its reference date, so writing the shape out with any other
+  // date renders nonsense there. The server reads it as an example, and a
+  // preview that disagreed would show a date the recipient never gets.
+  test('an example date', () => {
+    expect(renderTemplatePreview('{{ .created_at.Format "2026-12-01" }}', data)).toBe('2026-12-01');
+  });
+
+  test('single quotes, as Handlebars allows', () => {
+    expect(renderTemplatePreview("{{ created_at.Format '2026-12-01' }}", data)).toBe('2026-12-01');
+  });
+
+  test('the YYYY-MM-DD dialect', () => {
+    expect(renderTemplatePreview('{{ created_at.Format "DD/MM/YYYY" }}', data)).toBe('01/12/2026');
+    expect(renderTemplatePreview('{{ created_at.Format "MMM D, YYYY" }}', data)).toBe('Dec 1, 2026');
+  });
+
+  test('a named layout', () => {
+    expect(renderTemplatePreview('{{ created_at.Format "long" }}', data)).toBe('December 1, 2026');
+  });
+
+  test('a date inside a loop resolves against the item', () => {
+    const out = renderTemplatePreview('{{#each orders}}[{{ placed_at.Format "date" }}]{{/each}}', {
+      orders: [{ placed_at: '2026-12-01T09:30:00Z' }, { placed_at: '2026-12-24T18:00:00Z' }],
+    });
+    expect(out).toBe('[2026-12-01][2026-12-24]');
+  });
+
+  // The server refuses to send this template, so a preview that merely showed
+  // [created_at] — the way a missing variable looks — would hide a failed send.
+  test('a field that is not a date says so', () => {
+    expect(renderTemplatePreview('{{ created_at.Format "date" }}', { created_at: 'Ada' })).toBe(
+      '[created_at is not a date]',
+    );
+  });
+
+  test('a field with no value is named, as any other variable is', () => {
+    expect(renderTemplatePreview('{{ created_at.Format "date" }}', { other: 'x' })).toBe(
+      '[created_at]',
+    );
+  });
+
+  test('a formatted variable is offered sample data that is actually a date', () => {
+    const sample = suggestSampleData('{{ created_at.Format "date" }} {{name}}');
+    expect(collectVariables('{{ created_at.Format "date" }}')).toEqual(['created_at']);
+    expect(renderTemplatePreview('{{ created_at.Format "YYYY" }}', sample)).toMatch(/^\d{4}$/);
+    expect(sample.name).toBe('Sample name');
+  });
+});
+
+describe('a time zone is applied, since a recipient reads a wall clock', () => {
+  // 09:30 UTC is 16:30 in Jakarta.
+  const data = { StartAt: '2026-12-01T09:30:00Z' };
+
+  test("Go's own longhand", () => {
+    const out = renderTemplatePreview('{{ .StartAt.In (time.LoadLocation "Asia/Jakarta") }}', data);
+    expect(out).toBe('2026-12-01 16:30:00 +0700 GMT+7');
+  });
+
+  test('the short spelling, chained with a layout', () => {
+    const out = renderTemplatePreview('{{ (.StartAt.In "Asia/Jakarta").Format "2026-12-01 15:04" }}', data);
+    expect(out).toBe('2026-12-01 16:30');
+  });
+
+  test('a zone as the second argument to Format', () => {
+    const out = renderTemplatePreview('{{ StartAt.Format "DD MMM YYYY HH:mm" "Asia/Jakarta" }}', data);
+    expect(out).toBe('01 Dec 2026 16:30');
+  });
+
+  // Changing the zone can change the day, and an invitation naming the wrong
+  // day is worse than one naming the wrong hour.
+  test('a zone change that moves the date', () => {
+    const out = renderTemplatePreview('{{ (.StartAt.In "America/Los_Angeles").Format "DDD D MMM, HH:mm" }}', {
+      StartAt: '2026-12-01T02:00:00Z',
+    });
+    expect(out).toBe('Mon 30 Nov, 18:00');
+  });
+
+  // A silent fall back to UTC would show an hour nobody chose.
+  test('a zone that does not exist says so rather than showing UTC', () => {
+    const out = renderTemplatePreview('{{ .StartAt.In "Asia/Jakata" }}', data);
+    expect(out).toBe('[StartAt is not a date]');
+  });
+
+  test('a date method is still collected as a variable needing sample data', () => {
+    expect(collectVariables('{{ .StartAt.In "Asia/Jakarta" }}')).toEqual(['StartAt']);
+  });
+});
