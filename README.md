@@ -463,6 +463,77 @@ In your template:
 {{/if}}
 ```
 
+#### Formatting Dates
+
+A timestamp in `template_data` is a string — JSON has no date type — so call
+`.Format` on it to choose how it reads:
+
+```json
+{ "template_data": { "created_at": "2026-12-01T09:30:00Z" } }
+```
+
+```html
+Ordered {{ created_at.Format "2026-12-01" }}      <!-- 2026-12-01 -->
+Ordered {{ created_at.Format "DD/MM/YYYY" }}      <!-- 01/12/2026 -->
+Ordered {{ created_at.Format "MMMM D, YYYY" }}    <!-- December 1, 2026 -->
+Ordered {{ created_at.Format "long" }}            <!-- December 1, 2026 -->
+Ordered {{ .created_at.Format "2006-01-02" }}     <!-- 2026-12-01 -->
+```
+
+Write the layout whichever way you already know:
+
+| Style | Example | Renders |
+| :--- | :--- | :--- |
+| **An example date** | `"2026-12-01"`, `"December 1, 2026"`, `"12/01/2026"` | the same shape, with the real date |
+| **Tokens** | `YYYY` `MM` `DD` `HH` `mm` `ss` `MMM` `MMMM` `DDD` `hh` `A` | `"DD MMM YYYY HH:mm"` → `01 Dec 2026 09:30` |
+| **Named** | `date` `time` `datetime` `iso` `rfc3339` `rfc1123` `kitchen` `short` `long` `human` | `"human"` → `Dec 1, 2026 9:30 AM` |
+| **Go's own layout** | `"2006-01-02"`, `"Jan 2, 2006 3:04 PM"` | unchanged, so existing templates keep working |
+
+Both spellings of the call work — `{{ created_at.Format "…" }}` as Handlebars
+writes a field, and `{{ .created_at.Format "…" }}` as Go does — and the layout
+may be in single or double quotes.
+
+> **Why an example date works.** Go's own layout *is* a date: `2006-01-02` means
+> year-month-day because 2006 is the reference year. Write that shape with any
+> other date and stock Go does not complain — it renders `1016-121-12`. Panmail
+> reads an example as an example instead, because a silently wrong date in a
+> receipt or an expiry notice is the worst thing an email can contain.
+
+Panmail reads timestamps as RFC 3339 (`2026-12-01T09:30:00Z`), as
+`2026-12-01 09:30:00`, as `2026-12-01`, and as a Unix time in seconds or
+milliseconds. A field that holds none of these fails the send with an error
+naming it, rather than sending mail with the date missing.
+
+#### Time Zones
+
+A timestamp is an instant, but a recipient reads a wall clock — so an event mail
+has to name the hour in *their* zone. Call `.In` with an IANA zone name:
+
+```html
+{{ .StartAt.In "Asia/Jakarta" }}
+{{ (.StartAt.In "Asia/Jakarta").Format "DD MMM YYYY, HH:mm" }}
+{{ .StartAt.Format "DD MMM YYYY, HH:mm" "Asia/Jakarta" }}
+{{ .StartAt.In (time.LoadLocation "Asia/Jakarta") }}
+```
+
+For `2026-12-01T09:30:00Z` those render:
+
+```
+2026-12-01 16:30:00 +0700 WIB
+01 Dec 2026, 16:30
+01 Dec 2026, 16:30
+2026-12-01 16:30:00 +0700 WIB
+```
+
+The last form is Go's own longhand, accepted so that a template written as Go
+code works unchanged. Note that a zone can move the **date** as well as the
+hour: 02:00 UTC on 1 December is still 30 November in Los Angeles.
+
+The zone database is embedded in the binary, so a zone resolves the same in
+development and in production. A name panmail does not know fails the send and
+says which name it was, rather than quietly falling back to UTC and showing an
+hour nobody chose.
+
 #### Example: Send with Attachments
 
 Panmail allows you to include attachments in your emails. Attachments should be base64 encoded.
