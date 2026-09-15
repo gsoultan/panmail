@@ -43,6 +43,7 @@ import {
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, Link, useLocation } from '@tanstack/react-router';
 import { useAuthStore } from '../store/authStore';
+import { versionLabel } from '../version';
 import { Select } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { tenantService } from '../services/tenant';
@@ -381,7 +382,7 @@ export const AppLayout: React.FC = () => {
         <AppShell.Section p="md">
           <Box style={{ borderTop: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))`, paddingTop: rem(12) }}>
             <Text size="xs" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))" ta="center" fw={600}>
-              Panmail Gateway v{import.meta.env.VITE_APP_VERSION || '1.0.0'}
+              Panmail Gateway {versionLabel}
             </Text>
           </Box>
         </AppShell.Section>

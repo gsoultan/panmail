@@ -4,9 +4,19 @@ project_name: panmail
 before:
   hooks:
     - bun install --cwd web
-    - sh -c "VITE_APP_VERSION=${GORELEASER_CURRENT_TAG:-v0.0.0} bun run --cwd web build"
     - go mod tidy
-    - go generate ./...
+    # `go generate` is what builds the UI -- the only directive in the tree is
+    # cmd/api/main.go's `bun run --cwd ../../web build` -- so the version has to
+    # ride on this hook. A separate versioned build hook before it does not
+    # work: this one reruns the build without the variable and overwrites it,
+    # which is how releases came to ship a UI labelled v0.0.0.
+    #
+    # {{ .Version }} rather than $GORELEASER_CURRENT_TAG, which goreleaser does
+    # not export to before-hooks -- the old expansion always fell through to its
+    # :-v0.0.0 default. It is also exactly what the main.Version ldflag below
+    # gets, so the sidebar and `panmail --version` cannot drift apart, and it
+    # carries no leading "v": the UI adds that when it renders, as the CLI does.
+    - sh -c "VITE_APP_VERSION={{ .Version }} go generate ./..."
 
 builds:
   - id: panmail
