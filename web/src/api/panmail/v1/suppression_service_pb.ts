@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/suppression_service.proto.
  */
 export const file_panmail_v1_suppression_service: GenFile = /*@__PURE__*/
-  fileDesc("CiRwYW5tYWlsL3YxL3N1cHByZXNzaW9uX3NlcnZpY2UucHJvdG8SCnBhbm1haWwudjEiNgoVQWRkU3VwcHJlc3Npb25SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEg4KBnJlYXNvbhgCIAEoCSJGChZBZGRTdXBwcmVzc2lvblJlc3BvbnNlEiwKC3N1cHByZXNzaW9uGAEgASgLMhcucGFubWFpbC52MS5TdXBwcmVzc2lvbiIpChhSZW1vdmVTdXBwcmVzc2lvblJlcXVlc3QSDQoFZW1haWwYASABKAkiGwoZUmVtb3ZlU3VwcHJlc3Npb25SZXNwb25zZSJAChdMaXN0U3VwcHJlc3Npb25zUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJiChhMaXN0U3VwcHJlc3Npb25zUmVzcG9uc2USLQoMc3VwcHJlc3Npb25zGAEgAygLMhcucGFubWFpbC52MS5TdXBwcmVzc2lvbhIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiKAoXQ2hlY2tTdXBwcmVzc2lvblJlcXVlc3QSDQoFZW1haWwYASABKAkiQQoYQ2hlY2tTdXBwcmVzc2lvblJlc3BvbnNlEhUKDWlzX3N1cHByZXNzZWQYASABKAgSDgoGcmVhc29uGAIgASgJMo0DChJTdXBwcmVzc2lvblNlcnZpY2USVwoOQWRkU3VwcHJlc3Npb24SIS5wYW5tYWlsLnYxLkFkZFN1cHByZXNzaW9uUmVxdWVzdBoiLnBhbm1haWwudjEuQWRkU3VwcHJlc3Npb25SZXNwb25zZRJgChFSZW1vdmVTdXBwcmVzc2lvbhIkLnBhbm1haWwudjEuUmVtb3ZlU3VwcHJlc3Npb25SZXF1ZXN0GiUucGFubWFpbC52MS5SZW1vdmVTdXBwcmVzc2lvblJlc3BvbnNlEl0KEExpc3RTdXBwcmVzc2lvbnMSIy5wYW5tYWlsLnYxLkxpc3RTdXBwcmVzc2lvbnNSZXF1ZXN0GiQucGFubWFpbC52MS5MaXN0U3VwcHJlc3Npb25zUmVzcG9uc2USXQoQQ2hlY2tTdXBwcmVzc2lvbhIjLnBhbm1haWwudjEuQ2hlY2tTdXBwcmVzc2lvblJlcXVlc3QaJC5wYW5tYWlsLnYxLkNoZWNrU3VwcHJlc3Npb25SZXNwb25zZUKoAQoOY29tLnBhbm1haWwudjFCF1N1cHByZXNzaW9uU2VydmljZVByb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z", [file_panmail_v1_suppression]);
+  fileDesc("CiRwYW5tYWlsL3YxL3N1cHByZXNzaW9uX3NlcnZpY2UucHJvdG8SCnBhbm1haWwudjEiNgoVQWRkU3VwcHJlc3Npb25SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEg4KBnJlYXNvbhgCIAEoCSJGChZBZGRTdXBwcmVzc2lvblJlc3BvbnNlEiwKC3N1cHByZXNzaW9uGAEgASgLMhcucGFubWFpbC52MS5TdXBwcmVzc2lvbiIxChBTdXBwcmVzc2lvbkVudHJ5Eg0KBWVtYWlsGAEgASgJEg4KBnJlYXNvbhgCIAEoCSJKChlJbXBvcnRTdXBwcmVzc2lvbnNSZXF1ZXN0Ei0KB2VudHJpZXMYASADKAsyHC5wYW5tYWlsLnYxLlN1cHByZXNzaW9uRW50cnkidAoaSW1wb3J0U3VwcHJlc3Npb25zUmVzcG9uc2USEAoIaW1wb3J0ZWQYASABKAUSGgoSYWxyZWFkeV9zdXBwcmVzc2VkGAIgASgFEg8KB2ludmFsaWQYAyABKAUSFwoPaW52YWxpZF9zYW1wbGVzGAQgAygJIikKGFJlbW92ZVN1cHByZXNzaW9uUmVxdWVzdBINCgVlbWFpbBgBIAEoCSIbChlSZW1vdmVTdXBwcmVzc2lvblJlc3BvbnNlIkAKF0xpc3RTdXBwcmVzc2lvbnNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJImIKGExpc3RTdXBwcmVzc2lvbnNSZXNwb25zZRItCgxzdXBwcmVzc2lvbnMYASADKAsyFy5wYW5tYWlsLnYxLlN1cHByZXNzaW9uEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIoChdDaGVja1N1cHByZXNzaW9uUmVxdWVzdBINCgVlbWFpbBgBIAEoCSJBChhDaGVja1N1cHByZXNzaW9uUmVzcG9uc2USFQoNaXNfc3VwcHJlc3NlZBgBIAEoCBIOCgZyZWFzb24YAiABKAky8gMKElN1cHByZXNzaW9uU2VydmljZRJXCg5BZGRTdXBwcmVzc2lvbhIhLnBhbm1haWwudjEuQWRkU3VwcHJlc3Npb25SZXF1ZXN0GiIucGFubWFpbC52MS5BZGRTdXBwcmVzc2lvblJlc3BvbnNlEmMKEkltcG9ydFN1cHByZXNzaW9ucxIlLnBhbm1haWwudjEuSW1wb3J0U3VwcHJlc3Npb25zUmVxdWVzdBomLnBhbm1haWwudjEuSW1wb3J0U3VwcHJlc3Npb25zUmVzcG9uc2USYAoRUmVtb3ZlU3VwcHJlc3Npb24SJC5wYW5tYWlsLnYxLlJlbW92ZVN1cHByZXNzaW9uUmVxdWVzdBolLnBhbm1haWwudjEuUmVtb3ZlU3VwcHJlc3Npb25SZXNwb25zZRJdChBMaXN0U3VwcHJlc3Npb25zEiMucGFubWFpbC52MS5MaXN0U3VwcHJlc3Npb25zUmVxdWVzdBokLnBhbm1haWwudjEuTGlzdFN1cHByZXNzaW9uc1Jlc3BvbnNlEl0KEENoZWNrU3VwcHJlc3Npb24SIy5wYW5tYWlsLnYxLkNoZWNrU3VwcHJlc3Npb25SZXF1ZXN0GiQucGFubWFpbC52MS5DaGVja1N1cHByZXNzaW9uUmVzcG9uc2VCqAEKDmNvbS5wYW5tYWlsLnYxQhdTdXBwcmVzc2lvblNlcnZpY2VQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw", [file_panmail_v1_suppression]);
 
 /**
  * @generated from message panmail.v1.AddSuppressionRequest
@@ -54,6 +54,102 @@ export const AddSuppressionResponseSchema: GenMessage<AddSuppressionResponse> = 
   messageDesc(file_panmail_v1_suppression_service, 1);
 
 /**
+ * SuppressionEntry is one line of an imported list.
+ *
+ * @generated from message panmail.v1.SuppressionEntry
+ */
+export type SuppressionEntry = Message<"panmail.v1.SuppressionEntry"> & {
+  /**
+   * @generated from field: string email = 1;
+   */
+  email: string;
+
+  /**
+   * Free text carried from the source list. Blank is fine; the importer
+   * supplies a default that says where the entry came from.
+   *
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message panmail.v1.SuppressionEntry.
+ * Use `create(SuppressionEntrySchema)` to create a new message.
+ */
+export const SuppressionEntrySchema: GenMessage<SuppressionEntry> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_suppression_service, 2);
+
+/**
+ * ImportSuppressionsRequest carries a suppression list from another provider.
+ *
+ * Arriving at a new gateway with an empty suppression list means mailing every
+ * address the old one had already learned was dead, which is the fastest way
+ * to damage a sending reputation on day one.
+ *
+ * @generated from message panmail.v1.ImportSuppressionsRequest
+ */
+export type ImportSuppressionsRequest = Message<"panmail.v1.ImportSuppressionsRequest"> & {
+  /**
+   * @generated from field: repeated panmail.v1.SuppressionEntry entries = 1;
+   */
+  entries: SuppressionEntry[];
+};
+
+/**
+ * Describes the message panmail.v1.ImportSuppressionsRequest.
+ * Use `create(ImportSuppressionsRequestSchema)` to create a new message.
+ */
+export const ImportSuppressionsRequestSchema: GenMessage<ImportSuppressionsRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_suppression_service, 3);
+
+/**
+ * ImportSuppressionsResponse accounts for every entry that was sent: the three
+ * counts always sum to the number submitted, so a caller can tell "nothing to
+ * do" from "nothing worked".
+ *
+ * @generated from message panmail.v1.ImportSuppressionsResponse
+ */
+export type ImportSuppressionsResponse = Message<"panmail.v1.ImportSuppressionsResponse"> & {
+  /**
+   * Rows newly written.
+   *
+   * @generated from field: int32 imported = 1;
+   */
+  imported: number;
+
+  /**
+   * Addresses already on the list, including duplicates within the file
+   * itself. Re-importing the same list is a no-op rather than an error.
+   *
+   * @generated from field: int32 already_suppressed = 2;
+   */
+  alreadySuppressed: number;
+
+  /**
+   * Entries rejected as unparseable.
+   *
+   * @generated from field: int32 invalid = 3;
+   */
+  invalid: number;
+
+  /**
+   * A bounded sample of the rejected addresses, so an operator can see what
+   * went wrong without the response echoing an entire bad file back.
+   *
+   * @generated from field: repeated string invalid_samples = 4;
+   */
+  invalidSamples: string[];
+};
+
+/**
+ * Describes the message panmail.v1.ImportSuppressionsResponse.
+ * Use `create(ImportSuppressionsResponseSchema)` to create a new message.
+ */
+export const ImportSuppressionsResponseSchema: GenMessage<ImportSuppressionsResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_suppression_service, 4);
+
+/**
  * @generated from message panmail.v1.RemoveSuppressionRequest
  */
 export type RemoveSuppressionRequest = Message<"panmail.v1.RemoveSuppressionRequest"> & {
@@ -68,7 +164,7 @@ export type RemoveSuppressionRequest = Message<"panmail.v1.RemoveSuppressionRequ
  * Use `create(RemoveSuppressionRequestSchema)` to create a new message.
  */
 export const RemoveSuppressionRequestSchema: GenMessage<RemoveSuppressionRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_suppression_service, 2);
+  messageDesc(file_panmail_v1_suppression_service, 5);
 
 /**
  * @generated from message panmail.v1.RemoveSuppressionResponse
@@ -81,7 +177,7 @@ export type RemoveSuppressionResponse = Message<"panmail.v1.RemoveSuppressionRes
  * Use `create(RemoveSuppressionResponseSchema)` to create a new message.
  */
 export const RemoveSuppressionResponseSchema: GenMessage<RemoveSuppressionResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_suppression_service, 3);
+  messageDesc(file_panmail_v1_suppression_service, 6);
 
 /**
  * @generated from message panmail.v1.ListSuppressionsRequest
@@ -103,7 +199,7 @@ export type ListSuppressionsRequest = Message<"panmail.v1.ListSuppressionsReques
  * Use `create(ListSuppressionsRequestSchema)` to create a new message.
  */
 export const ListSuppressionsRequestSchema: GenMessage<ListSuppressionsRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_suppression_service, 4);
+  messageDesc(file_panmail_v1_suppression_service, 7);
 
 /**
  * @generated from message panmail.v1.ListSuppressionsResponse
@@ -125,7 +221,7 @@ export type ListSuppressionsResponse = Message<"panmail.v1.ListSuppressionsRespo
  * Use `create(ListSuppressionsResponseSchema)` to create a new message.
  */
 export const ListSuppressionsResponseSchema: GenMessage<ListSuppressionsResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_suppression_service, 5);
+  messageDesc(file_panmail_v1_suppression_service, 8);
 
 /**
  * @generated from message panmail.v1.CheckSuppressionRequest
@@ -142,7 +238,7 @@ export type CheckSuppressionRequest = Message<"panmail.v1.CheckSuppressionReques
  * Use `create(CheckSuppressionRequestSchema)` to create a new message.
  */
 export const CheckSuppressionRequestSchema: GenMessage<CheckSuppressionRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_suppression_service, 6);
+  messageDesc(file_panmail_v1_suppression_service, 9);
 
 /**
  * @generated from message panmail.v1.CheckSuppressionResponse
@@ -164,7 +260,7 @@ export type CheckSuppressionResponse = Message<"panmail.v1.CheckSuppressionRespo
  * Use `create(CheckSuppressionResponseSchema)` to create a new message.
  */
 export const CheckSuppressionResponseSchema: GenMessage<CheckSuppressionResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_suppression_service, 7);
+  messageDesc(file_panmail_v1_suppression_service, 10);
 
 /**
  * @generated from service panmail.v1.SuppressionService
@@ -177,6 +273,14 @@ export const SuppressionService: GenService<{
     methodKind: "unary";
     input: typeof AddSuppressionRequestSchema;
     output: typeof AddSuppressionResponseSchema;
+  },
+  /**
+   * @generated from rpc panmail.v1.SuppressionService.ImportSuppressions
+   */
+  importSuppressions: {
+    methodKind: "unary";
+    input: typeof ImportSuppressionsRequestSchema;
+    output: typeof ImportSuppressionsResponseSchema;
   },
   /**
    * @generated from rpc panmail.v1.SuppressionService.RemoveSuppression

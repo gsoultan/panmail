@@ -15,6 +15,7 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	eventhttp "github.com/gsoultan/panmail/internal/event/transports/http"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
+	suppressionusecases "github.com/gsoultan/panmail/internal/suppression/usecases"
 	"github.com/gsoultan/panmail/pkg/tracking"
 )
 
@@ -53,6 +54,10 @@ func (r *recordingSuppressions) Add(_ context.Context, tenantID string, req *pan
 	defer r.mu.Unlock()
 	r.added = append(r.added, tenantID+"|"+strings.ToLower(req.GetEmail()))
 	return &panmailv1.Suppression{Email: req.GetEmail()}, nil
+}
+
+func (r *recordingSuppressions) Import(context.Context, string, []*panmailv1.SuppressionEntry) (suppressionusecases.ImportResult, error) {
+	return suppressionusecases.ImportResult{}, nil
 }
 
 func (r *recordingSuppressions) Remove(context.Context, string, string) error { return nil }

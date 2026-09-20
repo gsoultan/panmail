@@ -289,3 +289,95 @@ func TestGetByEmailsWithNoAddressesAsksNothing(t *testing.T) {
 		t.Errorf("got %d suppressions for an empty list", len(found))
 	}
 }
+
+// An imported list overlapping the stored one is the normal case, so a
+// conflict must skip that row rather than abandon the thousand behind it.
+func TestCreateManySkipsWhatIsAlreadySuppressed(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	if err := repo.Create(ctx, suppression("s1", storetest.TenantA, "known@example.com")); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	inserted, err := repo.CreateMany(ctx, []*entities.Suppression{
+		suppression("s2", storetest.TenantA, "known@example.com"),
+		suppression("s3", storetest.TenantA, "fresh@example.com"),
+	})
+	if err != nil {
+		t.Fatalf("CreateMany() error = %v", err)
+	}
+	if inserted != 1 {
+		t.Fatalf("inserted = %d, want 1 (the duplicate is skipped)", inserted)
+	}
+
+	// The original row survives: its reason is the older, truer record of why
+	// the address was suppressed, and an import must not overwrite it.
+	got, err := repo.GetByEmail(ctx, storetest.TenantA, "known@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail() error = %v", err)
+	}
+	if got.ID != storetest.ID("s1") {
+		t.Errorf("id = %q, want the original row to survive", got.ID)
+	}
+
+	if _, err := repo.GetByEmail(ctx, storetest.TenantA, "fresh@example.com"); err != nil {
+		t.Errorf("the new address was not written: %v", err)
+	}
+}
+
+// One tenant's import must not collide with, or reveal, another's list.
+func TestCreateManyIsScopedToItsTenant(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	if err := repo.Create(ctx, suppression("s1", storetest.TenantA, "shared@example.com")); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	inserted, err := repo.CreateMany(ctx, []*entities.Suppression{
+		suppression("s2", storetest.TenantB, "shared@example.com"),
+	})
+	if err != nil {
+		t.Fatalf("CreateMany() error = %v", err)
+	}
+	if inserted != 1 {
+		t.Fatalf("inserted = %d, want 1 — the same address in another tenant is a different row", inserted)
+	}
+
+	if _, err := repo.GetByEmail(ctx, storetest.TenantB, "shared@example.com"); err != nil {
+		t.Errorf("tenant B's row is missing: %v", err)
+	}
+}
+
+// Past maxRowsPerInsert the write is split, and the count has to be the sum
+// rather than the last chunk.
+func TestCreateManySpansMoreThanOneChunk(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	const count = maxRowsPerInsert + 25
+	sups := make([]*entities.Suppression, 0, count)
+	for i := range count {
+		sups = append(sups, suppression(
+			fmt.Sprintf("s%d", i), storetest.TenantA, fmt.Sprintf("user%d@example.com", i)))
+	}
+
+	inserted, err := repo.CreateMany(ctx, sups)
+	if err != nil {
+		t.Fatalf("CreateMany() error = %v", err)
+	}
+	if inserted != count {
+		t.Fatalf("inserted = %d, want %d", inserted, count)
+	}
+}
+
+func TestCreateManyOnAnEmptyBatch(t *testing.T) {
+	inserted, err := newRepo(t).CreateMany(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("CreateMany() error = %v", err)
+	}
+	if inserted != 0 {
+		t.Fatalf("inserted = %d, want 0", inserted)
+	}
+}

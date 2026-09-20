@@ -117,6 +117,187 @@ func (x *AddSuppressionResponse) GetSuppression() *Suppression {
 	return nil
 }
 
+// SuppressionEntry is one line of an imported list.
+type SuppressionEntry struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Email string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	// Free text carried from the source list. Blank is fine; the importer
+	// supplies a default that says where the entry came from.
+	Reason        string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SuppressionEntry) Reset() {
+	*x = SuppressionEntry{}
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SuppressionEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SuppressionEntry) ProtoMessage() {}
+
+func (x *SuppressionEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SuppressionEntry.ProtoReflect.Descriptor instead.
+func (*SuppressionEntry) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SuppressionEntry) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *SuppressionEntry) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+// ImportSuppressionsRequest carries a suppression list from another provider.
+//
+// Arriving at a new gateway with an empty suppression list means mailing every
+// address the old one had already learned was dead, which is the fastest way
+// to damage a sending reputation on day one.
+type ImportSuppressionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*SuppressionEntry    `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportSuppressionsRequest) Reset() {
+	*x = ImportSuppressionsRequest{}
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportSuppressionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportSuppressionsRequest) ProtoMessage() {}
+
+func (x *ImportSuppressionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportSuppressionsRequest.ProtoReflect.Descriptor instead.
+func (*ImportSuppressionsRequest) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ImportSuppressionsRequest) GetEntries() []*SuppressionEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+// ImportSuppressionsResponse accounts for every entry that was sent: the three
+// counts always sum to the number submitted, so a caller can tell "nothing to
+// do" from "nothing worked".
+type ImportSuppressionsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Rows newly written.
+	Imported int32 `protobuf:"varint,1,opt,name=imported,proto3" json:"imported,omitempty"`
+	// Addresses already on the list, including duplicates within the file
+	// itself. Re-importing the same list is a no-op rather than an error.
+	AlreadySuppressed int32 `protobuf:"varint,2,opt,name=already_suppressed,json=alreadySuppressed,proto3" json:"already_suppressed,omitempty"`
+	// Entries rejected as unparseable.
+	Invalid int32 `protobuf:"varint,3,opt,name=invalid,proto3" json:"invalid,omitempty"`
+	// A bounded sample of the rejected addresses, so an operator can see what
+	// went wrong without the response echoing an entire bad file back.
+	InvalidSamples []string `protobuf:"bytes,4,rep,name=invalid_samples,json=invalidSamples,proto3" json:"invalid_samples,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ImportSuppressionsResponse) Reset() {
+	*x = ImportSuppressionsResponse{}
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportSuppressionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportSuppressionsResponse) ProtoMessage() {}
+
+func (x *ImportSuppressionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportSuppressionsResponse.ProtoReflect.Descriptor instead.
+func (*ImportSuppressionsResponse) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ImportSuppressionsResponse) GetImported() int32 {
+	if x != nil {
+		return x.Imported
+	}
+	return 0
+}
+
+func (x *ImportSuppressionsResponse) GetAlreadySuppressed() int32 {
+	if x != nil {
+		return x.AlreadySuppressed
+	}
+	return 0
+}
+
+func (x *ImportSuppressionsResponse) GetInvalid() int32 {
+	if x != nil {
+		return x.Invalid
+	}
+	return 0
+}
+
+func (x *ImportSuppressionsResponse) GetInvalidSamples() []string {
+	if x != nil {
+		return x.InvalidSamples
+	}
+	return nil
+}
+
 type RemoveSuppressionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
@@ -126,7 +307,7 @@ type RemoveSuppressionRequest struct {
 
 func (x *RemoveSuppressionRequest) Reset() {
 	*x = RemoveSuppressionRequest{}
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[2]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -138,7 +319,7 @@ func (x *RemoveSuppressionRequest) String() string {
 func (*RemoveSuppressionRequest) ProtoMessage() {}
 
 func (x *RemoveSuppressionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[2]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -151,7 +332,7 @@ func (x *RemoveSuppressionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveSuppressionRequest.ProtoReflect.Descriptor instead.
 func (*RemoveSuppressionRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{2}
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RemoveSuppressionRequest) GetEmail() string {
@@ -169,7 +350,7 @@ type RemoveSuppressionResponse struct {
 
 func (x *RemoveSuppressionResponse) Reset() {
 	*x = RemoveSuppressionResponse{}
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[3]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -181,7 +362,7 @@ func (x *RemoveSuppressionResponse) String() string {
 func (*RemoveSuppressionResponse) ProtoMessage() {}
 
 func (x *RemoveSuppressionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[3]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -194,7 +375,7 @@ func (x *RemoveSuppressionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveSuppressionResponse.ProtoReflect.Descriptor instead.
 func (*RemoveSuppressionResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{3}
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{6}
 }
 
 type ListSuppressionsRequest struct {
@@ -207,7 +388,7 @@ type ListSuppressionsRequest struct {
 
 func (x *ListSuppressionsRequest) Reset() {
 	*x = ListSuppressionsRequest{}
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[4]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -219,7 +400,7 @@ func (x *ListSuppressionsRequest) String() string {
 func (*ListSuppressionsRequest) ProtoMessage() {}
 
 func (x *ListSuppressionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[4]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -232,7 +413,7 @@ func (x *ListSuppressionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSuppressionsRequest.ProtoReflect.Descriptor instead.
 func (*ListSuppressionsRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{4}
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListSuppressionsRequest) GetPageSize() int32 {
@@ -259,7 +440,7 @@ type ListSuppressionsResponse struct {
 
 func (x *ListSuppressionsResponse) Reset() {
 	*x = ListSuppressionsResponse{}
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[5]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -271,7 +452,7 @@ func (x *ListSuppressionsResponse) String() string {
 func (*ListSuppressionsResponse) ProtoMessage() {}
 
 func (x *ListSuppressionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[5]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -284,7 +465,7 @@ func (x *ListSuppressionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSuppressionsResponse.ProtoReflect.Descriptor instead.
 func (*ListSuppressionsResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{5}
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListSuppressionsResponse) GetSuppressions() []*Suppression {
@@ -310,7 +491,7 @@ type CheckSuppressionRequest struct {
 
 func (x *CheckSuppressionRequest) Reset() {
 	*x = CheckSuppressionRequest{}
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[6]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -322,7 +503,7 @@ func (x *CheckSuppressionRequest) String() string {
 func (*CheckSuppressionRequest) ProtoMessage() {}
 
 func (x *CheckSuppressionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[6]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -335,7 +516,7 @@ func (x *CheckSuppressionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckSuppressionRequest.ProtoReflect.Descriptor instead.
 func (*CheckSuppressionRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{6}
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CheckSuppressionRequest) GetEmail() string {
@@ -355,7 +536,7 @@ type CheckSuppressionResponse struct {
 
 func (x *CheckSuppressionResponse) Reset() {
 	*x = CheckSuppressionResponse{}
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[7]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -367,7 +548,7 @@ func (x *CheckSuppressionResponse) String() string {
 func (*CheckSuppressionResponse) ProtoMessage() {}
 
 func (x *CheckSuppressionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_suppression_service_proto_msgTypes[7]
+	mi := &file_panmail_v1_suppression_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -380,7 +561,7 @@ func (x *CheckSuppressionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckSuppressionResponse.ProtoReflect.Descriptor instead.
 func (*CheckSuppressionResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{7}
+	return file_panmail_v1_suppression_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CheckSuppressionResponse) GetIsSuppressed() bool {
@@ -407,7 +588,17 @@ const file_panmail_v1_suppression_service_proto_rawDesc = "" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"S\n" +
 	"\x16AddSuppressionResponse\x129\n" +
-	"\vsuppression\x18\x01 \x01(\v2\x17.panmail.v1.SuppressionR\vsuppression\"0\n" +
+	"\vsuppression\x18\x01 \x01(\v2\x17.panmail.v1.SuppressionR\vsuppression\"@\n" +
+	"\x10SuppressionEntry\x12\x14\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"S\n" +
+	"\x19ImportSuppressionsRequest\x126\n" +
+	"\aentries\x18\x01 \x03(\v2\x1c.panmail.v1.SuppressionEntryR\aentries\"\xaa\x01\n" +
+	"\x1aImportSuppressionsResponse\x12\x1a\n" +
+	"\bimported\x18\x01 \x01(\x05R\bimported\x12-\n" +
+	"\x12already_suppressed\x18\x02 \x01(\x05R\x11alreadySuppressed\x12\x18\n" +
+	"\ainvalid\x18\x03 \x01(\x05R\ainvalid\x12'\n" +
+	"\x0finvalid_samples\x18\x04 \x03(\tR\x0einvalidSamples\"0\n" +
 	"\x18RemoveSuppressionRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\"\x1b\n" +
 	"\x19RemoveSuppressionResponse\"U\n" +
@@ -422,9 +613,10 @@ const file_panmail_v1_suppression_service_proto_rawDesc = "" +
 	"\x05email\x18\x01 \x01(\tR\x05email\"W\n" +
 	"\x18CheckSuppressionResponse\x12#\n" +
 	"\ris_suppressed\x18\x01 \x01(\bR\fisSuppressed\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason2\x8d\x03\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason2\xf2\x03\n" +
 	"\x12SuppressionService\x12W\n" +
-	"\x0eAddSuppression\x12!.panmail.v1.AddSuppressionRequest\x1a\".panmail.v1.AddSuppressionResponse\x12`\n" +
+	"\x0eAddSuppression\x12!.panmail.v1.AddSuppressionRequest\x1a\".panmail.v1.AddSuppressionResponse\x12c\n" +
+	"\x12ImportSuppressions\x12%.panmail.v1.ImportSuppressionsRequest\x1a&.panmail.v1.ImportSuppressionsResponse\x12`\n" +
 	"\x11RemoveSuppression\x12$.panmail.v1.RemoveSuppressionRequest\x1a%.panmail.v1.RemoveSuppressionResponse\x12]\n" +
 	"\x10ListSuppressions\x12#.panmail.v1.ListSuppressionsRequest\x1a$.panmail.v1.ListSuppressionsResponse\x12]\n" +
 	"\x10CheckSuppression\x12#.panmail.v1.CheckSuppressionRequest\x1a$.panmail.v1.CheckSuppressionResponseB\xa8\x01\n" +
@@ -444,34 +636,40 @@ func file_panmail_v1_suppression_service_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_suppression_service_proto_rawDescData
 }
 
-var file_panmail_v1_suppression_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_panmail_v1_suppression_service_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_panmail_v1_suppression_service_proto_goTypes = []any{
-	(*AddSuppressionRequest)(nil),     // 0: panmail.v1.AddSuppressionRequest
-	(*AddSuppressionResponse)(nil),    // 1: panmail.v1.AddSuppressionResponse
-	(*RemoveSuppressionRequest)(nil),  // 2: panmail.v1.RemoveSuppressionRequest
-	(*RemoveSuppressionResponse)(nil), // 3: panmail.v1.RemoveSuppressionResponse
-	(*ListSuppressionsRequest)(nil),   // 4: panmail.v1.ListSuppressionsRequest
-	(*ListSuppressionsResponse)(nil),  // 5: panmail.v1.ListSuppressionsResponse
-	(*CheckSuppressionRequest)(nil),   // 6: panmail.v1.CheckSuppressionRequest
-	(*CheckSuppressionResponse)(nil),  // 7: panmail.v1.CheckSuppressionResponse
-	(*Suppression)(nil),               // 8: panmail.v1.Suppression
+	(*AddSuppressionRequest)(nil),      // 0: panmail.v1.AddSuppressionRequest
+	(*AddSuppressionResponse)(nil),     // 1: panmail.v1.AddSuppressionResponse
+	(*SuppressionEntry)(nil),           // 2: panmail.v1.SuppressionEntry
+	(*ImportSuppressionsRequest)(nil),  // 3: panmail.v1.ImportSuppressionsRequest
+	(*ImportSuppressionsResponse)(nil), // 4: panmail.v1.ImportSuppressionsResponse
+	(*RemoveSuppressionRequest)(nil),   // 5: panmail.v1.RemoveSuppressionRequest
+	(*RemoveSuppressionResponse)(nil),  // 6: panmail.v1.RemoveSuppressionResponse
+	(*ListSuppressionsRequest)(nil),    // 7: panmail.v1.ListSuppressionsRequest
+	(*ListSuppressionsResponse)(nil),   // 8: panmail.v1.ListSuppressionsResponse
+	(*CheckSuppressionRequest)(nil),    // 9: panmail.v1.CheckSuppressionRequest
+	(*CheckSuppressionResponse)(nil),   // 10: panmail.v1.CheckSuppressionResponse
+	(*Suppression)(nil),                // 11: panmail.v1.Suppression
 }
 var file_panmail_v1_suppression_service_proto_depIdxs = []int32{
-	8, // 0: panmail.v1.AddSuppressionResponse.suppression:type_name -> panmail.v1.Suppression
-	8, // 1: panmail.v1.ListSuppressionsResponse.suppressions:type_name -> panmail.v1.Suppression
-	0, // 2: panmail.v1.SuppressionService.AddSuppression:input_type -> panmail.v1.AddSuppressionRequest
-	2, // 3: panmail.v1.SuppressionService.RemoveSuppression:input_type -> panmail.v1.RemoveSuppressionRequest
-	4, // 4: panmail.v1.SuppressionService.ListSuppressions:input_type -> panmail.v1.ListSuppressionsRequest
-	6, // 5: panmail.v1.SuppressionService.CheckSuppression:input_type -> panmail.v1.CheckSuppressionRequest
-	1, // 6: panmail.v1.SuppressionService.AddSuppression:output_type -> panmail.v1.AddSuppressionResponse
-	3, // 7: panmail.v1.SuppressionService.RemoveSuppression:output_type -> panmail.v1.RemoveSuppressionResponse
-	5, // 8: panmail.v1.SuppressionService.ListSuppressions:output_type -> panmail.v1.ListSuppressionsResponse
-	7, // 9: panmail.v1.SuppressionService.CheckSuppression:output_type -> panmail.v1.CheckSuppressionResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	11, // 0: panmail.v1.AddSuppressionResponse.suppression:type_name -> panmail.v1.Suppression
+	2,  // 1: panmail.v1.ImportSuppressionsRequest.entries:type_name -> panmail.v1.SuppressionEntry
+	11, // 2: panmail.v1.ListSuppressionsResponse.suppressions:type_name -> panmail.v1.Suppression
+	0,  // 3: panmail.v1.SuppressionService.AddSuppression:input_type -> panmail.v1.AddSuppressionRequest
+	3,  // 4: panmail.v1.SuppressionService.ImportSuppressions:input_type -> panmail.v1.ImportSuppressionsRequest
+	5,  // 5: panmail.v1.SuppressionService.RemoveSuppression:input_type -> panmail.v1.RemoveSuppressionRequest
+	7,  // 6: panmail.v1.SuppressionService.ListSuppressions:input_type -> panmail.v1.ListSuppressionsRequest
+	9,  // 7: panmail.v1.SuppressionService.CheckSuppression:input_type -> panmail.v1.CheckSuppressionRequest
+	1,  // 8: panmail.v1.SuppressionService.AddSuppression:output_type -> panmail.v1.AddSuppressionResponse
+	4,  // 9: panmail.v1.SuppressionService.ImportSuppressions:output_type -> panmail.v1.ImportSuppressionsResponse
+	6,  // 10: panmail.v1.SuppressionService.RemoveSuppression:output_type -> panmail.v1.RemoveSuppressionResponse
+	8,  // 11: panmail.v1.SuppressionService.ListSuppressions:output_type -> panmail.v1.ListSuppressionsResponse
+	10, // 12: panmail.v1.SuppressionService.CheckSuppression:output_type -> panmail.v1.CheckSuppressionResponse
+	8,  // [8:13] is the sub-list for method output_type
+	3,  // [3:8] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_suppression_service_proto_init() }
@@ -486,7 +684,7 @@ func file_panmail_v1_suppression_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_suppression_service_proto_rawDesc), len(file_panmail_v1_suppression_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

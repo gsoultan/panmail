@@ -120,11 +120,12 @@ var procedurePolicy = map[string]access{
 	panmailv1connect.EmailFilterServiceReleaseFilteredMessageProcedure: {minRole: RoleAdmin, scope: entities.ScopeFiltersRelease},
 	panmailv1connect.EmailFilterServiceRejectFilteredMessageProcedure:  {minRole: RoleAdmin, scope: entities.ScopeFiltersRelease},
 
-	panmailv1connect.SuppressionServiceAddSuppressionProcedure:    {minRole: RoleEditor, scope: entities.ScopeSuppressionsWrite},
-	panmailv1connect.SuppressionServiceRemoveSuppressionProcedure: {minRole: RoleEditor, scope: entities.ScopeSuppressionsWrite},
-	panmailv1connect.WebhookServiceCreateWebhookProcedure:         {minRole: RoleEditor, scope: entities.ScopeWebhooksWrite},
-	panmailv1connect.WebhookServiceUpdateWebhookProcedure:         {minRole: RoleEditor, scope: entities.ScopeWebhooksWrite},
-	panmailv1connect.WebhookServiceDeleteWebhookProcedure:         {minRole: RoleEditor, scope: entities.ScopeWebhooksWrite},
+	panmailv1connect.SuppressionServiceAddSuppressionProcedure:     {minRole: RoleEditor, scope: entities.ScopeSuppressionsWrite},
+	panmailv1connect.SuppressionServiceImportSuppressionsProcedure: {minRole: RoleEditor, scope: entities.ScopeSuppressionsWrite},
+	panmailv1connect.SuppressionServiceRemoveSuppressionProcedure:  {minRole: RoleEditor, scope: entities.ScopeSuppressionsWrite},
+	panmailv1connect.WebhookServiceCreateWebhookProcedure:          {minRole: RoleEditor, scope: entities.ScopeWebhooksWrite},
+	panmailv1connect.WebhookServiceUpdateWebhookProcedure:          {minRole: RoleEditor, scope: entities.ScopeWebhooksWrite},
+	panmailv1connect.WebhookServiceDeleteWebhookProcedure:          {minRole: RoleEditor, scope: entities.ScopeWebhooksWrite},
 
 	// Sending is the one action an API key is expected to perform.
 	panmailv1connect.EmailServiceSendEmailProcedure: {minRole: RoleEditor, scope: entities.ScopeEmailSend},

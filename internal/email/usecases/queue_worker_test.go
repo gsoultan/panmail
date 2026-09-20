@@ -9,6 +9,7 @@ import (
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
+	suppressionusecases "github.com/gsoultan/panmail/internal/suppression/usecases"
 	tenantentities "github.com/gsoultan/panmail/internal/tenant/entities"
 	tenantusecases "github.com/gsoultan/panmail/internal/tenant/usecases"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -85,6 +86,10 @@ func (m *mockEmailUsecase) RegisterQueueWorker(w QueueWorker) {}
 
 type mockSuppressionUsecase struct {
 	suppressedEmails []string
+}
+
+func (m *mockSuppressionUsecase) Import(context.Context, string, []*panmailv1.SuppressionEntry) (suppressionusecases.ImportResult, error) {
+	return suppressionusecases.ImportResult{}, nil
 }
 
 func (m *mockSuppressionUsecase) Add(ctx context.Context, tenantID string, req *panmailv1.AddSuppressionRequest) (*panmailv1.Suppression, error) {

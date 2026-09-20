@@ -8,6 +8,7 @@ option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
 
 service SuppressionService {
   rpc AddSuppression(AddSuppressionRequest) returns (AddSuppressionResponse);
+  rpc ImportSuppressions(ImportSuppressionsRequest) returns (ImportSuppressionsResponse);
   rpc RemoveSuppression(RemoveSuppressionRequest) returns (RemoveSuppressionResponse);
   rpc ListSuppressions(ListSuppressionsRequest) returns (ListSuppressionsResponse);
   rpc CheckSuppression(CheckSuppressionRequest) returns (CheckSuppressionResponse);
@@ -20,6 +21,39 @@ message AddSuppressionRequest {
 
 message AddSuppressionResponse {
   Suppression suppression = 1;
+}
+
+// SuppressionEntry is one line of an imported list.
+message SuppressionEntry {
+  string email = 1;
+  // Free text carried from the source list. Blank is fine; the importer
+  // supplies a default that says where the entry came from.
+  string reason = 2;
+}
+
+// ImportSuppressionsRequest carries a suppression list from another provider.
+//
+// Arriving at a new gateway with an empty suppression list means mailing every
+// address the old one had already learned was dead, which is the fastest way
+// to damage a sending reputation on day one.
+message ImportSuppressionsRequest {
+  repeated SuppressionEntry entries = 1;
+}
+
+// ImportSuppressionsResponse accounts for every entry that was sent: the three
+// counts always sum to the number submitted, so a caller can tell "nothing to
+// do" from "nothing worked".
+message ImportSuppressionsResponse {
+  // Rows newly written.
+  int32 imported = 1;
+  // Addresses already on the list, including duplicates within the file
+  // itself. Re-importing the same list is a no-op rather than an error.
+  int32 already_suppressed = 2;
+  // Entries rejected as unparseable.
+  int32 invalid = 3;
+  // A bounded sample of the rejected addresses, so an operator can see what
+  // went wrong without the response echoing an entire bad file back.
+  repeated string invalid_samples = 4;
 }
 
 message RemoveSuppressionRequest {

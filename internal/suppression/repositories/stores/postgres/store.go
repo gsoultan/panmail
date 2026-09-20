@@ -15,6 +15,8 @@ import (
 )
 
 var (
+	//go:embed sql/create_suppressions_batch.sql
+	createSuppressionsBatchQuery string
 	//go:embed sql/create_suppression.sql
 	createSuppressionQuery string
 	//go:embed sql/delete_suppression.sql
@@ -39,6 +41,15 @@ const emailPlaceholderToken = "__EMAIL_PLACEHOLDERS__"
 // two round trips rather than a thousand.
 const maxEmailsPerLookup = 500
 
+// rowPlaceholderToken is what the batch insert carries in place of its VALUES
+// list, which is built per call.
+const rowPlaceholderToken = "__ROW_PLACEHOLDERS__"
+
+// maxRowsPerInsert bounds one INSERT for the same reason maxEmailsPerLookup
+// bounds one SELECT: five parameters a row against PostgreSQL's 65535 ceiling,
+// with room to spare.
+const maxRowsPerInsert = 500
+
 type store struct {
 	conn db.Connection
 }
@@ -61,6 +72,78 @@ func (s *store) Create(ctx context.Context, sup *entities.Suppression) error {
 	}
 	_, err = db.ExecContext(ctx, createSuppressionQuery, sup.ID, sup.TenantID, sup.Email, sup.Reason, sup.CreatedAt)
 	return err
+}
+
+// CreateMany writes a batch of suppressions and reports how many rows were
+// new.
+//
+// Conflicts are skipped rather than failing the batch: an imported list
+// overlapping what is already stored is the normal case, not an error, and one
+// address already present must not abandon the thousand behind it.
+func (s *store) CreateMany(ctx context.Context, sups []*entities.Suppression) (int, error) {
+	if len(sups) == 0 {
+		return 0, nil
+	}
+
+	db, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+
+	// Exactly one occurrence, so a token that ever appears twice -- in a
+	// comment, say -- fails here rather than sending the database a statement
+	// with the placeholder still in it.
+	if strings.Count(createSuppressionsBatchQuery, rowPlaceholderToken) != 1 {
+		return 0, fmt.Errorf(
+			"suppression batch insert must contain %s exactly once",
+			rowPlaceholderToken,
+		)
+	}
+
+	inserted := 0
+	for start := 0; start < len(sups); start += maxRowsPerInsert {
+		end := min(start+maxRowsPerInsert, len(sups))
+		n, err := s.insertChunk(ctx, db, sups[start:end])
+		if err != nil {
+			return inserted, err
+		}
+		inserted += n
+	}
+	return inserted, nil
+}
+
+// insertChunk runs one bounded INSERT of the batch.
+func (s *store) insertChunk(ctx context.Context, db *sql.DB, sups []*entities.Suppression) (int, error) {
+	const columns = 5
+
+	rows := make([]string, len(sups))
+	args := make([]any, 0, len(sups)*columns)
+	for i, sup := range sups {
+		base := i*columns + 1
+		rows[i] = fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)",
+			base, base+1, base+2, base+3, base+4)
+		args = append(args, sup.ID, sup.TenantID, sup.Email, sup.Reason, sup.CreatedAt)
+	}
+
+	query := strings.Replace(
+		createSuppressionsBatchQuery,
+		rowPlaceholderToken,
+		strings.Join(rows, ", "),
+		1,
+	)
+
+	res, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		// Both engines report it, but a driver that does not must not turn a
+		// successful write into a failed import.
+		return 0, nil
+	}
+	return int(affected), nil
 }
 
 func (s *store) Delete(ctx context.Context, tenantID, email string) error {

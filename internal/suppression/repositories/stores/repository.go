@@ -8,6 +8,11 @@ import (
 
 type SuppressionRepository interface {
 	Create(ctx context.Context, s *entities.Suppression) error
+
+	// CreateMany writes a batch and reports how many rows were new. Addresses
+	// already suppressed are skipped rather than failing the batch: an
+	// imported list overlapping the stored one is the normal case.
+	CreateMany(ctx context.Context, sups []*entities.Suppression) (int, error)
 	Delete(ctx context.Context, tenantID, email string) error
 	GetByEmail(ctx context.Context, tenantID, email string) (*entities.Suppression, error)
 

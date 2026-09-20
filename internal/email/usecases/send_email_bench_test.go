@@ -44,6 +44,10 @@ func (m *countingSuppressionRepo) Create(context.Context, *suppressionentities.S
 	return nil
 }
 
+func (m *countingSuppressionRepo) CreateMany(context.Context, []*suppressionentities.Suppression) (int, error) {
+	return 0, nil
+}
+
 func (m *countingSuppressionRepo) Delete(context.Context, string, string) error { return nil }
 
 func (m *countingSuppressionRepo) GetByEmail(
