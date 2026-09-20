@@ -36,6 +36,9 @@ const (
 	// SuppressionServiceAddSuppressionProcedure is the fully-qualified name of the SuppressionService's
 	// AddSuppression RPC.
 	SuppressionServiceAddSuppressionProcedure = "/panmail.v1.SuppressionService/AddSuppression"
+	// SuppressionServiceImportSuppressionsProcedure is the fully-qualified name of the
+	// SuppressionService's ImportSuppressions RPC.
+	SuppressionServiceImportSuppressionsProcedure = "/panmail.v1.SuppressionService/ImportSuppressions"
 	// SuppressionServiceRemoveSuppressionProcedure is the fully-qualified name of the
 	// SuppressionService's RemoveSuppression RPC.
 	SuppressionServiceRemoveSuppressionProcedure = "/panmail.v1.SuppressionService/RemoveSuppression"
@@ -50,6 +53,7 @@ const (
 // SuppressionServiceClient is a client for the panmail.v1.SuppressionService service.
 type SuppressionServiceClient interface {
 	AddSuppression(context.Context, *connect.Request[v1.AddSuppressionRequest]) (*connect.Response[v1.AddSuppressionResponse], error)
+	ImportSuppressions(context.Context, *connect.Request[v1.ImportSuppressionsRequest]) (*connect.Response[v1.ImportSuppressionsResponse], error)
 	RemoveSuppression(context.Context, *connect.Request[v1.RemoveSuppressionRequest]) (*connect.Response[v1.RemoveSuppressionResponse], error)
 	ListSuppressions(context.Context, *connect.Request[v1.ListSuppressionsRequest]) (*connect.Response[v1.ListSuppressionsResponse], error)
 	CheckSuppression(context.Context, *connect.Request[v1.CheckSuppressionRequest]) (*connect.Response[v1.CheckSuppressionResponse], error)
@@ -70,6 +74,12 @@ func NewSuppressionServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			httpClient,
 			baseURL+SuppressionServiceAddSuppressionProcedure,
 			connect.WithSchema(suppressionServiceMethods.ByName("AddSuppression")),
+			connect.WithClientOptions(opts...),
+		),
+		importSuppressions: connect.NewClient[v1.ImportSuppressionsRequest, v1.ImportSuppressionsResponse](
+			httpClient,
+			baseURL+SuppressionServiceImportSuppressionsProcedure,
+			connect.WithSchema(suppressionServiceMethods.ByName("ImportSuppressions")),
 			connect.WithClientOptions(opts...),
 		),
 		removeSuppression: connect.NewClient[v1.RemoveSuppressionRequest, v1.RemoveSuppressionResponse](
@@ -95,15 +105,21 @@ func NewSuppressionServiceClient(httpClient connect.HTTPClient, baseURL string, 
 
 // suppressionServiceClient implements SuppressionServiceClient.
 type suppressionServiceClient struct {
-	addSuppression    *connect.Client[v1.AddSuppressionRequest, v1.AddSuppressionResponse]
-	removeSuppression *connect.Client[v1.RemoveSuppressionRequest, v1.RemoveSuppressionResponse]
-	listSuppressions  *connect.Client[v1.ListSuppressionsRequest, v1.ListSuppressionsResponse]
-	checkSuppression  *connect.Client[v1.CheckSuppressionRequest, v1.CheckSuppressionResponse]
+	addSuppression     *connect.Client[v1.AddSuppressionRequest, v1.AddSuppressionResponse]
+	importSuppressions *connect.Client[v1.ImportSuppressionsRequest, v1.ImportSuppressionsResponse]
+	removeSuppression  *connect.Client[v1.RemoveSuppressionRequest, v1.RemoveSuppressionResponse]
+	listSuppressions   *connect.Client[v1.ListSuppressionsRequest, v1.ListSuppressionsResponse]
+	checkSuppression   *connect.Client[v1.CheckSuppressionRequest, v1.CheckSuppressionResponse]
 }
 
 // AddSuppression calls panmail.v1.SuppressionService.AddSuppression.
 func (c *suppressionServiceClient) AddSuppression(ctx context.Context, req *connect.Request[v1.AddSuppressionRequest]) (*connect.Response[v1.AddSuppressionResponse], error) {
 	return c.addSuppression.CallUnary(ctx, req)
+}
+
+// ImportSuppressions calls panmail.v1.SuppressionService.ImportSuppressions.
+func (c *suppressionServiceClient) ImportSuppressions(ctx context.Context, req *connect.Request[v1.ImportSuppressionsRequest]) (*connect.Response[v1.ImportSuppressionsResponse], error) {
+	return c.importSuppressions.CallUnary(ctx, req)
 }
 
 // RemoveSuppression calls panmail.v1.SuppressionService.RemoveSuppression.
@@ -124,6 +140,7 @@ func (c *suppressionServiceClient) CheckSuppression(ctx context.Context, req *co
 // SuppressionServiceHandler is an implementation of the panmail.v1.SuppressionService service.
 type SuppressionServiceHandler interface {
 	AddSuppression(context.Context, *connect.Request[v1.AddSuppressionRequest]) (*connect.Response[v1.AddSuppressionResponse], error)
+	ImportSuppressions(context.Context, *connect.Request[v1.ImportSuppressionsRequest]) (*connect.Response[v1.ImportSuppressionsResponse], error)
 	RemoveSuppression(context.Context, *connect.Request[v1.RemoveSuppressionRequest]) (*connect.Response[v1.RemoveSuppressionResponse], error)
 	ListSuppressions(context.Context, *connect.Request[v1.ListSuppressionsRequest]) (*connect.Response[v1.ListSuppressionsResponse], error)
 	CheckSuppression(context.Context, *connect.Request[v1.CheckSuppressionRequest]) (*connect.Response[v1.CheckSuppressionResponse], error)
@@ -140,6 +157,12 @@ func NewSuppressionServiceHandler(svc SuppressionServiceHandler, opts ...connect
 		SuppressionServiceAddSuppressionProcedure,
 		svc.AddSuppression,
 		connect.WithSchema(suppressionServiceMethods.ByName("AddSuppression")),
+		connect.WithHandlerOptions(opts...),
+	)
+	suppressionServiceImportSuppressionsHandler := connect.NewUnaryHandler(
+		SuppressionServiceImportSuppressionsProcedure,
+		svc.ImportSuppressions,
+		connect.WithSchema(suppressionServiceMethods.ByName("ImportSuppressions")),
 		connect.WithHandlerOptions(opts...),
 	)
 	suppressionServiceRemoveSuppressionHandler := connect.NewUnaryHandler(
@@ -164,6 +187,8 @@ func NewSuppressionServiceHandler(svc SuppressionServiceHandler, opts ...connect
 		switch r.URL.Path {
 		case SuppressionServiceAddSuppressionProcedure:
 			suppressionServiceAddSuppressionHandler.ServeHTTP(w, r)
+		case SuppressionServiceImportSuppressionsProcedure:
+			suppressionServiceImportSuppressionsHandler.ServeHTTP(w, r)
 		case SuppressionServiceRemoveSuppressionProcedure:
 			suppressionServiceRemoveSuppressionHandler.ServeHTTP(w, r)
 		case SuppressionServiceListSuppressionsProcedure:
@@ -181,6 +206,10 @@ type UnimplementedSuppressionServiceHandler struct{}
 
 func (UnimplementedSuppressionServiceHandler) AddSuppression(context.Context, *connect.Request[v1.AddSuppressionRequest]) (*connect.Response[v1.AddSuppressionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.SuppressionService.AddSuppression is not implemented"))
+}
+
+func (UnimplementedSuppressionServiceHandler) ImportSuppressions(context.Context, *connect.Request[v1.ImportSuppressionsRequest]) (*connect.Response[v1.ImportSuppressionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.SuppressionService.ImportSuppressions is not implemented"))
 }
 
 func (UnimplementedSuppressionServiceHandler) RemoveSuppression(context.Context, *connect.Request[v1.RemoveSuppressionRequest]) (*connect.Response[v1.RemoveSuppressionResponse], error) {

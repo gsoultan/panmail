@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, Table, ActionIcon, TextInput, Textarea, Select } from '@mantine/core';
+import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, Table, ActionIcon, TextInput, Textarea, Select, FileButton, Alert, Code, List } from '@mantine/core';
+import { describeImport, parseSuppressionList, type ImportTotals, type ParsedEntry } from '../features/suppressions/suppressionImport';
 import { notifications } from '@mantine/notifications';
-import { IconShieldCancel, IconPlus, IconTrash, IconSearch, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { IconShieldCancel, IconPlus, IconTrash, IconSearch, IconChevronLeft, IconChevronRight, IconUpload } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { suppressionService } from '../features/suppressions/services/suppression';
@@ -39,6 +40,30 @@ export const SuppressionsPage: React.FC = () => {
     const prev = newHistory.pop();
     setHistory(newHistory);
     setPageToken(prev === '' ? undefined : prev);
+  };
+
+  // The parsed file, held between choosing it and confirming the import so the
+  // operator sees how many addresses they are about to add before adding them.
+  const [pending, setPending] = useState<{ entries: ParsedEntry[]; skipped: number[] } | null>(null);
+  const [importResult, setImportResult] = useState<ImportTotals | null>(null);
+
+  const importMutation = useMutation({
+    mutationFn: (entries: ParsedEntry[]) => suppressionService.importSuppressions(entries),
+    onSuccess: (totals) => {
+      setImportResult(totals);
+      setPending(null);
+      queryClient.invalidateQueries({ queryKey: ['suppressions'] });
+      notifications.show({ title: 'Import finished', message: describeImport(totals), color: 'green' });
+    },
+    onError: (error: any) => {
+      notifications.show({ title: 'Error', message: error.message || 'Failed to import the list', color: 'red' });
+    },
+  });
+
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    setImportResult(null);
+    setPending(parseSuppressionList(await file.text()));
   };
 
   const addMutation = useMutation({
@@ -101,6 +126,19 @@ export const SuppressionsPage: React.FC = () => {
               onChange={setPageSize}
               style={{ width: rem(80) }}
             />
+            <FileButton onChange={handleFile} accept=".csv,.txt,text/csv,text/plain">
+              {(props) => (
+                <Button
+                  {...props}
+                  variant="default"
+                  leftSection={<IconUpload size={18} />}
+                  radius="md"
+                  size="sm"
+                >
+                  Import list
+                </Button>
+              )}
+            </FileButton>
             <Button
               onClick={() => setIsModalOpen(true)}
               leftSection={<IconPlus size={18} />}
@@ -205,6 +243,79 @@ export const SuppressionsPage: React.FC = () => {
           </Group>
         )}
       </Stack>
+
+      <Modal
+        opened={pending !== null || importResult !== null}
+        onClose={() => {
+          setPending(null);
+          setImportResult(null);
+        }}
+        title={<Text fw={800} size="lg">Import a suppression list</Text>}
+        radius="md"
+        size="lg"
+      >
+        {importResult ? (
+          <Stack gap="md">
+            <Alert color="green" radius="md" title="Import finished">
+              {describeImport(importResult)}
+            </Alert>
+            {importResult.invalidSamples.length > 0 && (
+              <Box>
+                <Text size="sm" fw={600} mb={6}>
+                  Lines that could not be read:
+                </Text>
+                <List size="sm" spacing={2}>
+                  {importResult.invalidSamples.map((sample, i) => (
+                    <List.Item key={`${sample}-${i}`}>
+                      <Code>{sample}</Code>
+                    </List.Item>
+                  ))}
+                </List>
+              </Box>
+            )}
+            <Button onClick={() => setImportResult(null)} radius="md">
+              Done
+            </Button>
+          </Stack>
+        ) : (
+          pending && (
+            <Stack gap="md">
+              <Text size="sm">
+                Found <Text span fw={700}>{pending.entries.length}</Text>{' '}
+                {pending.entries.length === 1 ? 'address' : 'addresses'}. Addresses already on
+                the list are left as they are, so importing the same file twice changes
+                nothing.
+              </Text>
+
+              {pending.skipped.length > 0 && (
+                <Alert color="yellow" variant="light" radius="md">
+                  {pending.skipped.length} line(s) held no address and were skipped:{' '}
+                  {pending.skipped.slice(0, 10).join(', ')}
+                  {pending.skipped.length > 10 ? '…' : ''}
+                </Alert>
+              )}
+
+              <Text size="xs" c="dimmed">
+                One address per line, or <Code>email,reason</Code>. A header row is ignored.
+              </Text>
+
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setPending(null)} radius="md">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => importMutation.mutate(pending.entries)}
+                  loading={importMutation.isPending}
+                  disabled={pending.entries.length === 0}
+                  radius="md"
+                >
+                  Import {pending.entries.length} addresses
+                </Button>
+              </Group>
+            </Stack>
+          )
+        )}
+      </Modal>
 
       <Modal
         opened={isModalOpen}

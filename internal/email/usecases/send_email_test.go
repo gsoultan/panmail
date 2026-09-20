@@ -226,6 +226,10 @@ type mockSuppressionRepo struct {
 	suppression *suppressionentities.Suppression
 }
 
+func (m *mockSuppressionRepo) CreateMany(context.Context, []*suppressionentities.Suppression) (int, error) {
+	return 0, nil
+}
+
 func (m *mockSuppressionRepo) Create(ctx context.Context, s *suppressionentities.Suppression) error {
 	return nil
 }
@@ -819,6 +823,10 @@ func TestASuppressedRecipientStillRefusesTheMessage(t *testing.T) {
 // fixedSuppressionRepo suppresses exactly the addresses it is given.
 type fixedSuppressionRepo struct {
 	suppressed map[string]string
+}
+
+func (m *fixedSuppressionRepo) CreateMany(context.Context, []*suppressionentities.Suppression) (int, error) {
+	return 0, nil
 }
 
 func (m *fixedSuppressionRepo) Create(context.Context, *suppressionentities.Suppression) error {
