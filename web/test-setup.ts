@@ -93,6 +93,15 @@ if (!g.matchMedia) {
 }
 
 /**
+ * jsdom does not implement scrollIntoView. Mantine's Combobox calls it on the
+ * active option each time the list is navigated, so a test that opens a Select
+ * logs a TypeError from inside Mantine without this.
+ */
+if (!(g.Element as { prototype?: Record<string, unknown> })?.prototype?.scrollIntoView) {
+  (g.Element as { prototype: Record<string, unknown> }).prototype.scrollIntoView = () => {};
+}
+
+/**
  * jsdom has no FontFaceSet, and Mantine's floating components subscribe to it
  * so a popover can reposition once a webfont changes the text metrics. Without
  * the stub the subscription throws during render.
