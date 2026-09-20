@@ -300,8 +300,13 @@ curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
 | :--- | :--- | :--- |
 | `resource_exhausted` **with** `Retry-After` | Over the tenant's configured send rate. Not accepted. | Wait the stated delay and send again. Safe to repeat. |
 | `resource_exhausted` **without** `Retry-After` | The tenant's queue is already deeper than its rate can drain. Not accepted. | Stop sending. There is no delay to wait out, and retrying makes the wait longer for everything queued. |
+| `failed_precondition` | A recipient is on the tenant's suppression list. The **whole** message is refused, not just that recipient's copy. | Remove the address from the send, or lift the suppression. Retrying changes nothing until one of those happens. |
+| `invalid_argument` | The provider or template named does not exist, or the template will not render against the data sent. | Fix the request. Retrying never helps. |
 | `unauthenticated` | Key missing, unknown or revoked. | Fix the key. Retrying never helps. |
 | `permission_denied` | The key lacks the `email:send` scope. | Add the scope. |
+| `unknown` | Something failed rather than refused — storage, a provider connection. | Retry with backoff. |
+
+The split that matters is between a refusal and a failure. A refusal is a decision: the same request is answered the same way until somebody changes something, so retrying it spends attempts on an answer that cannot move. Only `unknown` means the gateway might succeed if asked again.
 
 The presence of `Retry-After` is what separates the two capacity refusals — they deliberately share a status code, because they are the same answer to the caller: you are asking for more than you may have. The Go client turns them into `panmail.RateLimitedError` and `panmail.BacklogFullError` so you do not have to read headers.
 

@@ -52,6 +52,30 @@ func (s *emailService) SendEmail(ctx context.Context, req *connect.Request[panma
 			connectErr.Meta().Set("Retry-After", strconv.Itoa(seconds))
 			return nil, connectErr
 		}
+		// The refusals below are decisions, not failures: the same request
+		// will be refused identically until somebody changes something. A
+		// bare error would reach the client as CodeUnknown and HTTP 500,
+		// which reads as "try again later" and is the one thing that cannot
+		// help.
+		var suppressed *usecases.SuppressedRecipientError
+		if errors.As(err, &suppressed) {
+			// FailedPrecondition rather than InvalidArgument: the request is
+			// well formed and the caller is allowed to make it, but the
+			// system is in a state where it cannot succeed until the
+			// suppression is lifted.
+			return nil, connect.NewError(connect.CodeFailedPrecondition, suppressed)
+		}
+
+		var noProvider *usecases.ProviderNotFoundError
+		if errors.As(err, &noProvider) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, noProvider)
+		}
+
+		var badTemplate *usecases.TemplateRefusedError
+		if errors.As(err, &badTemplate) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, badTemplate)
+		}
+
 		return nil, err
 	}
 	return connect.NewResponse(res), nil

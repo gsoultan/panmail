@@ -207,7 +207,7 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, fmt.Errorf("failed to get provider: %w", err)
 	}
 	if provider == nil {
-		return nil, fmt.Errorf("provider not found: %s", req.ProviderId)
+		return nil, &ProviderNotFoundError{ProviderID: req.ProviderId}
 	}
 
 	// Anti-spoofing is enforced by the provider's AllowedDomains list in
@@ -271,7 +271,7 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	for i, recipient := range recipients.addresses {
 		if reason, ok := suppressed[recipients.normalised[i]]; ok {
 			_ = u.RecordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, "", reason, nil)
-			return nil, fmt.Errorf("recipient %s is suppressed: %s", recipient, reason)
+			return nil, &SuppressedRecipientError{Recipient: recipient, Reason: reason}
 		}
 		// Record initial PENDING event (queued in outbox)
 		if err := u.RecordEvent(ctx, tenantID, req.ProviderId, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING, recipient, "", "", nil); err != nil {
@@ -794,7 +794,7 @@ func (u *sendEmailUsecase) renderTemplate(ctx context.Context, tenantID string, 
 			return "", "", "", fmt.Errorf("failed to get template: %w", err)
 		}
 		if tpl == nil {
-			return "", "", "", fmt.Errorf("template not found: %s", req.TemplateId)
+			return "", "", "", &TemplateRefusedError{TemplateID: req.TemplateId}
 		}
 
 		data := make(map[string]any)
@@ -808,13 +808,13 @@ func (u *sendEmailUsecase) renderTemplate(ctx context.Context, tenantID string, 
 		bodyText, errText = u.renderer.Render(tpl.BodyText, data, false)
 
 		if errSub != nil {
-			return "", "", "", fmt.Errorf("failed to render subject: %w", errSub)
+			return "", "", "", &TemplateRefusedError{TemplateID: req.TemplateId, Stage: "subject", Err: errSub}
 		}
 		if errHTML != nil {
-			return "", "", "", fmt.Errorf("failed to render body_html: %w", errHTML)
+			return "", "", "", &TemplateRefusedError{TemplateID: req.TemplateId, Stage: "body_html", Err: errHTML}
 		}
 		if errText != nil {
-			return "", "", "", fmt.Errorf("failed to render body_text: %w", errText)
+			return "", "", "", &TemplateRefusedError{TemplateID: req.TemplateId, Stage: "body_text", Err: errText}
 		}
 	} else {
 		if req.BodyHtml != "" || req.BodyText != "" {
