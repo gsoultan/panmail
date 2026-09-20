@@ -390,7 +390,14 @@ export const AppLayout: React.FC = () => {
 
       <AppShell.Main>
         <Box style={{ maxWidth: rem(1200), margin: '0 auto' }}>
-          <Outlet />
+          {/*
+            Keyed by tenant so switching remounts the page rather than reusing
+            it. A page's own state describes the tenant it was loaded for — a
+            page token is a cursor into that tenant's rows, a selected row is
+            one of its records — and none of it means anything in the next one.
+            The cached answers are dropped alongside it, in watchIdentity.
+          */}
+          <Outlet key={selectedTenantID ?? 'home'} />
         </Box>
       </AppShell.Main>
     </AppShell>

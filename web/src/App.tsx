@@ -1,6 +1,6 @@
 import { MantineProvider, createTheme } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter, createRoute, createRootRoute, Outlet, redirect } from '@tanstack/react-router';
 import { EmailProvidersPage } from './pages/EmailProvidersPage';
 import { SignInPage } from './pages/SignInPage';
@@ -24,12 +24,11 @@ import { FiltersPage } from './pages/FiltersPage';
 import { AppLayout } from './layouts/AppLayout';
 import { useAuthStore } from './store/authStore';
 import { setupClient } from './services/client';
+import { queryClient } from './services/queryClient';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/charts/styles.css';
 import '@mantine/dates/styles.css';
-
-const queryClient = new QueryClient();
 
 const rootRoute = createRootRoute({
   component: () => (

@@ -8,7 +8,9 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["bun", "node"],
+    // vite/client for the `*.module.css` declaration: the component tests render
+    // components, and AppLayout imports its styles as a module.
+    "types": ["bun", "node", "vite/client"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
