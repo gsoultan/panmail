@@ -24,6 +24,9 @@ func (m *mockApiKeyUsecase) CreateApiKey(ctx context.Context, req usecases.NewAp
 func (m *mockApiKeyUsecase) ListApiKeys(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.ApiKey, string, error) {
 	return nil, "", nil
 }
+func (m *mockApiKeyUsecase) UpdateApiKey(ctx context.Context, req usecases.EditApiKey) (*entities.ApiKey, error) {
+	return nil, nil
+}
 func (m *mockApiKeyUsecase) DeleteApiKey(ctx context.Context, id, tenantID string) error { return nil }
 func (m *mockApiKeyUsecase) DisableApiKey(ctx context.Context, id, tenantID string) error {
 	return nil

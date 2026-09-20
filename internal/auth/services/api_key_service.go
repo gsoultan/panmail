@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -11,6 +12,7 @@ import (
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
 	"github.com/gsoultan/panmail/internal/auth/entities"
 	"github.com/gsoultan/panmail/internal/auth/middlewares"
+	"github.com/gsoultan/panmail/internal/auth/repositories"
 	"github.com/gsoultan/panmail/internal/auth/usecases"
 )
 
@@ -52,6 +54,39 @@ func (s *apiKeyService) CreateApiKey(ctx context.Context, req *connect.Request[p
 		ApiKey:       toProtoApiKey(apiKey),
 		PlainTextKey: plainKey,
 	}), nil
+}
+
+// UpdateApiKey changes what an existing key may do, leaving the secret alone.
+//
+// The tenant comes from the context rather than the request, so an
+// administrator of one tenant cannot edit another's key by guessing an id.
+func (s *apiKeyService) UpdateApiKey(ctx context.Context, req *connect.Request[panmailv1.UpdateApiKeyRequest]) (*connect.Response[panmailv1.UpdateApiKeyResponse], error) {
+	tenantID, ok := ctx.Value(middlewares.TenantIDKey).(string)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
+	}
+
+	if req.Msg.Id == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("id is required"))
+	}
+	if strings.TrimSpace(req.Msg.Name) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("name is required"))
+	}
+
+	apiKey, err := s.usecase.UpdateApiKey(ctx, usecases.EditApiKey{
+		ID:       req.Msg.Id,
+		TenantID: tenantID,
+		Name:     req.Msg.Name,
+		Scopes:   toEntityScopes(req.Msg.Scopes),
+	})
+	if err != nil {
+		if errors.Is(err, repositories.ErrApiKeyNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	return connect.NewResponse(&panmailv1.UpdateApiKeyResponse{ApiKey: toProtoApiKey(apiKey)}), nil
 }
 
 func (s *apiKeyService) ListApiKeys(ctx context.Context, req *connect.Request[panmailv1.ListApiKeysRequest]) (*connect.Response[panmailv1.ListApiKeysResponse], error) {

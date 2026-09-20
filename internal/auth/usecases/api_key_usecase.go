@@ -33,6 +33,7 @@ type NewApiKey struct {
 type ApiKeyUsecase interface {
 	CreateApiKey(ctx context.Context, req NewApiKey) (*entities.ApiKey, string, error)
 	ListApiKeys(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.ApiKey, string, error)
+	UpdateApiKey(ctx context.Context, req EditApiKey) (*entities.ApiKey, error)
 	DeleteApiKey(ctx context.Context, id, tenantID string) error
 	DisableApiKey(ctx context.Context, id, tenantID string) error
 	EnableApiKey(ctx context.Context, id, tenantID string) error
@@ -107,6 +108,51 @@ func (u *apiKeyUsecase) CreateApiKey(ctx context.Context, req NewApiKey) (*entit
 	}
 
 	return apiKey, plainKey, nil
+}
+
+// EditApiKey is what may be changed after a key is minted. The secret is not
+// in it: rotating a key is issuing a new one, and folding that into an edit
+// would let a rename quietly invalidate every caller.
+type EditApiKey struct {
+	ID       string
+	TenantID string
+	Name     string
+	Scopes   []entities.Scope
+}
+
+// UpdateApiKey changes a key's name and grant in place.
+//
+// The point is that the secret survives. Before this existed, widening a grant
+// meant deleting the key and minting another, so every caller holding it had
+// to be updated for what is conceptually a permissions change — and keys
+// issued before scopes existed could never be given one at all.
+func (u *apiKeyUsecase) UpdateApiKey(ctx context.Context, req EditApiKey) (*entities.ApiKey, error) {
+	// Read first, so the eviction below uses the hash of a key that exists and
+	// so the caller gets the stored row back rather than an echo of its own
+	// request. The hash cannot change here, which is the whole feature.
+	existing, err := u.repo.GetByID(ctx, req.ID, req.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, repositories.ErrApiKeyNotFound
+	}
+
+	scopes := entities.NormalizeScopes(req.Scopes)
+	if err := u.repo.Update(ctx, req.ID, req.TenantID, req.Name, scopes); err != nil {
+		return nil, err
+	}
+
+	// The verified-key cache holds the old grant, and it answers every
+	// authenticated request. Without this eviction a narrowed key keeps its
+	// former authority until the TTL lapses -- which is exactly the window an
+	// administrator is trying to close when they remove a scope.
+	u.forget(existing.KeyHash)
+
+	existing.Name = req.Name
+	existing.Scopes = scopes
+	existing.UpdatedAt = time.Now()
+	return existing, nil
 }
 
 func (u *apiKeyUsecase) ListApiKeys(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.ApiKey, string, error) {

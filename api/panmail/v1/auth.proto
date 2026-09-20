@@ -19,6 +19,7 @@ service AuthService {
 service ApiKeyService {
   rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
   rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+  rpc UpdateApiKey(UpdateApiKeyRequest) returns (UpdateApiKeyResponse);
   rpc DeleteApiKey(DeleteApiKeyRequest) returns (DeleteApiKeyResponse);
   rpc DisableApiKey(DisableApiKeyRequest) returns (DisableApiKeyResponse);
   rpc EnableApiKey(EnableApiKeyRequest) returns (EnableApiKeyResponse);
@@ -238,6 +239,22 @@ message CreateApiKeyRequest {
 message CreateApiKeyResponse {
   ApiKey api_key = 1;
   string plain_text_key = 2;
+}
+
+// UpdateApiKeyRequest changes what an existing key may do, without minting a
+// new one. Widening a grant used to mean deleting the key and issuing another,
+// which rotates the secret and breaks every caller already using it.
+message UpdateApiKeyRequest {
+  string id = 1;
+  string name = 2;
+  // The complete grant, not a delta: what is sent replaces what is stored.
+  // Unknown values are dropped and an empty list yields the least-privilege
+  // default, exactly as on create.
+  repeated string scopes = 3;
+}
+
+message UpdateApiKeyResponse {
+  ApiKey api_key = 1;
 }
 
 message ListApiKeysRequest {
