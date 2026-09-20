@@ -8,6 +8,7 @@ import { DkimSection } from './DkimSection';
 import { ApiProviderFields } from './ApiProviderFields';
 import { OAuthSection } from './OAuthSection';
 import { DomainHealthPanel } from './DomainHealthPanel';
+import { InboundWebhookSection } from './InboundWebhookSection';
 import { DkimKeyMatch } from '../../../api/panmail/v1/email_provider_service_pb';
 import { emailProviderService } from '../services/emailProvider';
 
@@ -40,6 +41,9 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
     ses: { region: 'us-east-1', accessKey: '', secretKey: '', endpoint: '' },
     postmark: { serverToken: '', messageStream: '', baseUrl: '' },
     mailgun: { domain: '', apiKey: '', baseUrl: '' },
+    // Write-only. Reads redact it, so this is blank on every open and an
+    // empty value on submit means "keep what is stored".
+    webhookSecret: '',
   };
 
   const getInitialValues = () => {
@@ -64,6 +68,9 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
       ses: initialValues.config?.case === 'ses' ? initialValues.config.value : (initialValues.ses || defaultValues.ses),
       postmark: initialValues.config?.case === 'postmark' ? initialValues.config.value : (initialValues.postmark || defaultValues.postmark),
       mailgun: initialValues.config?.case === 'mailgun' ? initialValues.config.value : (initialValues.mailgun || defaultValues.mailgun),
+      // Never seeded from the provider: reads redact it, so the only honest
+      // starting value is blank.
+      webhookSecret: '',
     };
   };
 
@@ -291,6 +298,12 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
             <Stack gap="md">
               <Text fw={700} size="sm" tt="uppercase" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))">Server Configuration</Text>
               {renderConfigFields()}
+              <InboundWebhookSection
+                providerType={form.values.type}
+                providerId={initialValues?.id}
+                value={form.values.webhookSecret ?? ''}
+                onChange={(next) => form.setFieldValue('webhookSecret', next)}
+              />
             </Stack>
           </Paper>
 

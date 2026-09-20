@@ -52,6 +52,9 @@ export const emailProviderService = {
       name: values.name,
       type: values.type,
       config: configFor(values),
+      // Verifies the delivery events this provider posts back. Empty means
+      // none is configured, and the handler then refuses every event.
+      webhookSecret: values.webhookSecret ?? '',
     });
     return res.provider;
   },
@@ -61,6 +64,10 @@ export const emailProviderService = {
       id,
       name: values.name,
       config: configFor(values),
+      // Empty is meaningful on update: the server keeps the stored secret
+      // rather than clearing it, which is what lets the form show a blank
+      // field for a value it is never allowed to read back.
+      webhookSecret: values.webhookSecret ?? '',
     });
     return res.provider;
   },
