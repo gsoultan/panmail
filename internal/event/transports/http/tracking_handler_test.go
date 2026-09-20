@@ -24,7 +24,10 @@ type recordedEvent struct {
 	messageID string
 	eventType panmailv1.EmailEventType
 	recipient string
-	metadata  map[string]any
+	// errorMessage is the diagnostic text a provider sent with the event. It
+	// is what separates a hard bounce from a soft one after classification.
+	errorMessage string
+	metadata     map[string]any
 }
 
 // recordingUsecase captures RecordEvent calls. The interface is embedded so
@@ -42,11 +45,12 @@ func (m *recordingUsecase) RecordEvent(
 	metadata map[string]any,
 ) error {
 	m.events = append(m.events, recordedEvent{
-		tenantID:  tenantID,
-		messageID: messageID,
-		eventType: eventType,
-		recipient: recipient,
-		metadata:  metadata,
+		tenantID:     tenantID,
+		messageID:    messageID,
+		eventType:    eventType,
+		recipient:    recipient,
+		errorMessage: errorMessage,
+		metadata:     metadata,
 	})
 	return nil
 }

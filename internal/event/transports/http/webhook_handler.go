@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 	"github.com/gsoultan/panmail/internal/event/usecases"
@@ -21,12 +22,21 @@ const maxWebhookBody = 1 << 20 // 1 MiB
 type WebhookHandler struct {
 	processEventUsecase usecases.ProcessEventUsecase
 	providerRepo        providerStores.Repository
+
+	// snsVerifier is shared across providers on purpose: it caches the SNS
+	// signing certificates it fetches, and a verifier built per request would
+	// go back to AWS for the certificate on every webhook.
+	snsVerifier *gsmail.SNSVerifier
+
+	// snsHTTP overrides the client used to confirm a subscription, for tests.
+	snsHTTP *http.Client
 }
 
 func NewWebhookHandler(processEventUsecase usecases.ProcessEventUsecase, providerRepo providerStores.Repository) *WebhookHandler {
 	return &WebhookHandler{
 		processEventUsecase: processEventUsecase,
 		providerRepo:        providerRepo,
+		snsVerifier:         &gsmail.SNSVerifier{},
 	}
 }
 
@@ -66,6 +76,10 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleSendGrid(w, r, tenantID, providerID, body)
 	case "mailgun":
 		h.handleMailgun(w, r, tenantID, providerID, body)
+	case "postmark":
+		h.handlePostmark(w, r, tenantID, providerID, body)
+	case "ses":
+		h.handleSES(w, r, tenantID, providerID, body)
 	default:
 		h.handleGeneric(w, r, tenantID, providerID, body)
 	}
@@ -86,6 +100,14 @@ func (h *WebhookHandler) verify(r *http.Request, tenantID, providerID, webhookTy
 			body)
 	case "mailgun":
 		return h.verifyMailgunPayload(secret, body)
+	case "postmark":
+		return verifyPostmark(secret, r.Header)
+	case "ses":
+		// The secret holds the topic ARN rather than a shared key -- SNS
+		// authenticates with a signature, so there is nothing to share. An
+		// empty secret is already refused above, which is what stops a
+		// stranger's topic from posting fabricated bounces.
+		return h.verifySNS(r.Context(), secret, body)
 	default:
 		return verifyGeneric(secret, r.Header.Get("X-Panmail-Signature"), body)
 	}
