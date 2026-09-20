@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { EXAMPLE_FROM, EXAMPLE_SUBJECT, EXAMPLE_TO } from './snippets/types';
 import { buildSmtpSnippet, type SmtpSnippetValues } from './smtpSnippet';
 import type { SmtpConnection } from './smtpConnection';
 
@@ -138,8 +139,14 @@ describe('buildSmtpSnippet', () => {
       connection(),
     );
     expect(got.swaks).toContain('YOUR_PROVIDER_ID');
-    expect(got.swaks).toContain('sender@example.com');
-    expect(got.swaks).toContain('recipient@example.com');
-    expect(got.message).toContain('Subject: (no subject)');
+    // The empty-form fallback is a concrete errand, so the shape of a real send
+    // is legible before anything is filled in.
+    expect(got.swaks).toContain(EXAMPLE_FROM);
+    expect(got.swaks).toContain(EXAMPLE_TO);
+    expect(got.message).toContain(`Subject: ${EXAMPLE_SUBJECT}`);
+    // RFC 2606 reserves example.com: a snippet pasted before the addresses are
+    // edited must not be able to mail a domain somebody owns.
+    expect(EXAMPLE_FROM.endsWith('@example.com')).toBe(true);
+    expect(EXAMPLE_TO.endsWith('@example.com')).toBe(true);
   });
 });
