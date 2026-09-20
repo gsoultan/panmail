@@ -34,6 +34,7 @@ type processEventUsecase struct {
 	providerRepo   providerstores.Repository
 	webhookTrigger WebhookTrigger
 	redaction      RedactionSource
+	suppressions   Suppressor
 
 	sentCounter atomic.Uint64
 	sentPerSec  atomic.Pointer[float64]
@@ -54,6 +55,13 @@ type processEventUsecase struct {
 // and refreshes on its own timer.
 type RedactionSource interface {
 	ContentRedaction() redact.Level
+}
+
+// Suppressor records that an address must not be mailed again. Narrower than
+// the suppression usecase on purpose: recording an event is not a reason to
+// hand this package the ability to list or remove one.
+type Suppressor interface {
+	Add(ctx context.Context, tenantID string, req *panmailv1.AddSuppressionRequest) (*panmailv1.Suppression, error)
 }
 
 func NewProcessEventUsecase(
@@ -294,6 +302,12 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 		}
 	}
 
+	// After the recipient recovery above, so a bounce that arrived without one
+	// still suppresses the address the stored message names.
+	if err == nil {
+		u.suppressForEvent(ctx, tenantID, eventType, recipient, errorMessage)
+	}
+
 	return err
 }
 
@@ -518,6 +532,66 @@ func (u *processEventUsecase) GetArchive(ctx context.Context, tenantID, id strin
 // wiring, before the gateway serves anything.
 func (u *processEventUsecase) SetRedactionSource(src RedactionSource) {
 	u.redaction = src
+}
+
+func (u *processEventUsecase) SetSuppressor(s Suppressor) {
+	u.suppressions = s
+}
+
+// suppressForEvent adds the recipient to the suppression list when the event
+// says the address itself is finished.
+//
+// Only two outcomes qualify. A **hard bounce** is the provider saying the
+// mailbox does not exist; a **spam complaint** is the recipient saying they do
+// not want this. Everything else is excluded, and the exclusions are the
+// interesting part:
+//
+//   - A soft bounce is a full mailbox or a busy server. Suppressing on one
+//     silently destroys a tenant's ability to reach a customer who is still
+//     reachable -- the same conflation that once let a single wrong SMTP
+//     password suppress every recipient of a send.
+//   - A generic BOUNCED never reaches here as itself: RecordEvent has already
+//     run it through ClassifyError, and an error it cannot recognise stays
+//     BOUNCED and retryable rather than condemning the address.
+//   - UNSUBSCRIBED is deliberately absent. The unsubscribe handler suppresses
+//     with its own wording before recording the event, and adding it here
+//     would only make every one-click unsubscribe attempt a duplicate insert.
+//
+// A missing suppressor is not an error: the usecase is constructed before the
+// suppression usecase exists in some wirings, and a nil one simply restores
+// the previous behaviour of recording the event alone.
+func (u *processEventUsecase) suppressForEvent(
+	ctx context.Context,
+	tenantID string,
+	eventType panmailv1.EmailEventType,
+	recipient, errorMessage string,
+) {
+	if u.suppressions == nil || recipient == "" || tenantID == "" {
+		return
+	}
+
+	var reason string
+	switch eventType {
+	case panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE:
+		reason = "Automatic suppression after a hard bounce"
+	case panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SPAM_REPORT:
+		reason = "Automatic suppression after a spam complaint"
+	default:
+		return
+	}
+	if errorMessage != "" {
+		reason += ": " + errorMessage
+	}
+
+	if _, err := u.suppressions.Add(ctx, tenantID, &panmailv1.AddSuppressionRequest{
+		Email:  recipient,
+		Reason: reason,
+	}); err != nil {
+		// Already suppressed is the common case and is not a failure: the
+		// address ends up suppressed either way, which is the whole point.
+		slog.Warn("could not suppress after a terminal event",
+			"error", err, "tenant_id", tenantID, "type", eventType.String())
+	}
 }
 
 // redactionLevel is the level in force. A missing source means redaction rather

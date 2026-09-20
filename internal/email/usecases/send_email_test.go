@@ -198,6 +198,7 @@ func (m *mockEventUsecase) ListArchives(ctx context.Context, tenantID string, pa
 	return nil, "", nil
 }
 func (m *mockEventUsecase) SetRedactionSource(eventusecases.RedactionSource) {}
+func (m *mockEventUsecase) SetSuppressor(eventusecases.Suppressor)           {}
 
 func (m *mockEventUsecase) GetArchive(ctx context.Context, tenantID, id string) ([]byte, string, error) {
 	return nil, "", nil

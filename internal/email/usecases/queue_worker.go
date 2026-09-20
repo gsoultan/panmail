@@ -290,7 +290,14 @@ func (w *queueWorker) handleFailure(ctx context.Context, e *entities.OutboxEmail
 	// itself. A connection, credential or policy failure applies to the send,
 	// not to the people being written to, and suppressing them on that basis
 	// silently destroys a tenant's ability to reach their own customers.
-	if classification.RecipientAtFault {
+	//
+	// RecipientAtFault holds for exactly two classifications, HARD_BOUNCE and
+	// UNSUBSCRIBED, and the hard bounce is now suppressed centrally in
+	// RecordEvent -- alongside the spam complaints that only ever arrive by
+	// webhook. Narrowing to the unsubscribe leaves each address suppressed
+	// once instead of twice; the recordForEach above has already handed the
+	// bounce to the pipeline that acts on it.
+	if classification.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSUBSCRIBED {
 		w.suppress(bookCtx, e, recipients, classification)
 	}
 
