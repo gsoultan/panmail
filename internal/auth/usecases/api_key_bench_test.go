@@ -39,7 +39,10 @@ func (r *benchAPIKeyRepo) ListByTenantID(
 ) ([]*entities.ApiKey, string, error) {
 	return nil, "", nil
 }
-func (r *benchAPIKeyRepo) Delete(context.Context, string, string) error             { return nil }
+func (r *benchAPIKeyRepo) Delete(context.Context, string, string) error { return nil }
+func (r *benchAPIKeyRepo) Update(context.Context, string, string, string, []entities.Scope) error {
+	return nil
+}
 func (r *benchAPIKeyRepo) UpdateStatus(context.Context, string, string, bool) error { return nil }
 func (r *benchAPIKeyRepo) UpdateLastUsed(context.Context, string) error             { return nil }
 

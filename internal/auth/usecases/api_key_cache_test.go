@@ -43,6 +43,12 @@ func (r *cacheTestRepo) Delete(context.Context, string, string) error {
 	return nil
 }
 
+func (r *cacheTestRepo) Update(_ context.Context, _, _ string, name string, scopes []entities.Scope) error {
+	r.key.Name = name
+	r.key.Scopes = scopes
+	return nil
+}
+
 func (r *cacheTestRepo) UpdateStatus(_ context.Context, _, _ string, enabled bool) error {
 	r.disabled = !enabled
 	return nil
@@ -195,5 +201,68 @@ func TestADisabledKeyIsNotServedFromTheCache(t *testing.T) {
 	}
 	if got := repo.lookups.Load(); got != 2 {
 		t.Errorf("two rejected attempts cost %d lookups, want 2", got)
+	}
+}
+
+// A narrowed grant has to bind on the next request, not when the TTL lapses.
+//
+// The cache holds the whole verified key, scopes included, and it answers
+// every authenticated request. Removing a scope is usually the reaction to
+// something going wrong, so leaving the old authority live for the rest of the
+// TTL is the one window an administrator is explicitly trying to close.
+func TestNarrowingAKeyTakesEffectImmediately(t *testing.T) {
+	repo := newCacheTestRepo()
+	repo.key.Scopes = []entities.Scope{entities.ScopeEmailSend, entities.ScopeFiltersRelease}
+	usecase := NewApiKeyUsecase(repo)
+	ctx := context.Background()
+
+	before, err := usecase.VerifyApiKey(ctx, cacheTestKey)
+	if err != nil {
+		t.Fatalf("VerifyApiKey() error = %v", err)
+	}
+	if len(before.Scopes) != 2 {
+		t.Fatalf("scopes = %v, want the key to start with both", before.Scopes)
+	}
+
+	if _, err := usecase.UpdateApiKey(ctx, EditApiKey{
+		ID: "key-1", TenantID: "tenant-1", Name: "narrowed",
+		Scopes: []entities.Scope{entities.ScopeEmailSend},
+	}); err != nil {
+		t.Fatalf("UpdateApiKey() error = %v", err)
+	}
+
+	// No sleep: the point is that this does not wait for the TTL.
+	after, err := usecase.VerifyApiKey(ctx, cacheTestKey)
+	if err != nil {
+		t.Fatalf("VerifyApiKey() after update error = %v", err)
+	}
+	for _, scope := range after.Scopes {
+		if scope == entities.ScopeFiltersRelease {
+			t.Fatal("the removed scope was still served from the cache")
+		}
+	}
+}
+
+// Editing is the alternative to deleting and re-minting, so the secret has to
+// survive it. If the hash changed, every caller holding the key would break —
+// which is the thing this feature exists to avoid.
+func TestUpdatingAKeyLeavesItUsable(t *testing.T) {
+	repo := newCacheTestRepo()
+	usecase := NewApiKeyUsecase(repo)
+	ctx := context.Background()
+
+	updated, err := usecase.UpdateApiKey(ctx, EditApiKey{
+		ID: "key-1", TenantID: "tenant-1", Name: "renamed",
+		Scopes: []entities.Scope{entities.ScopeTemplatesRead},
+	})
+	if err != nil {
+		t.Fatalf("UpdateApiKey() error = %v", err)
+	}
+	if updated.Name != "renamed" {
+		t.Errorf("name = %q, want renamed", updated.Name)
+	}
+
+	if _, err := usecase.VerifyApiKey(ctx, cacheTestKey); err != nil {
+		t.Fatalf("the key stopped working after an edit: %v", err)
 	}
 }

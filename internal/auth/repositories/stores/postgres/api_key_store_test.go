@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -291,5 +292,113 @@ func TestExpiryRoundTrips(t *testing.T) {
 	}
 	if !got.ExpiresAt.UTC().Equal(expires) {
 		t.Errorf("expiry changed: got %s, want %s", got.ExpiresAt.UTC(), expires)
+	}
+}
+
+// Editing a grant must not let one tenant reach another's key by guessing an
+// id. Tenant isolation here is a WHERE clause, and a WHERE clause is exactly
+// the kind of thing that survives a refactor by accident.
+func TestUpdateWillNotCrossTenants(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	original := []entities.Scope{entities.ScopeEmailSend}
+	if err := repo.Create(ctx, apiKey("k1", storetest.TenantA, "hash-1", original)); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	err := repo.Update(ctx, storetest.ID("k1"), storetest.TenantB, "stolen",
+		[]entities.Scope{entities.ScopeFiltersRelease})
+	if !errors.Is(err, repositories.ErrApiKeyNotFound) {
+		t.Fatalf("Update() across tenants error = %v, want ErrApiKeyNotFound", err)
+	}
+
+	got, err := repo.GetByID(ctx, storetest.ID("k1"), storetest.TenantA)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if len(got.Scopes) != 1 || got.Scopes[0] != entities.ScopeEmailSend {
+		t.Errorf("scopes = %v, want the original grant untouched", got.Scopes)
+	}
+	if got.Name == "stolen" {
+		t.Error("the other tenant's rename landed")
+	}
+}
+
+func TestUpdateReplacesNameAndScopes(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	if err := repo.Create(ctx, apiKey("k1", storetest.TenantA, "hash-1",
+		[]entities.Scope{entities.ScopeEmailSend})); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	want := []entities.Scope{entities.ScopeEmailSend, entities.ScopeTemplatesRead}
+	if err := repo.Update(ctx, storetest.ID("k1"), storetest.TenantA, "renamed", want); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	got, err := repo.GetByID(ctx, storetest.ID("k1"), storetest.TenantA)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if got.Name != "renamed" {
+		t.Errorf("name = %q, want renamed", got.Name)
+	}
+	if len(got.Scopes) != len(want) {
+		t.Fatalf("scopes = %v, want %v", got.Scopes, want)
+	}
+	// The secret is the whole point of editing rather than re-minting.
+	if got.KeyHash != "hash-1" {
+		t.Errorf("key hash = %q, want it untouched by an edit", got.KeyHash)
+	}
+}
+
+// The storage layer decides what a stored grant may contain, on update as on
+// create — otherwise an edit is a way round the rules a mint obeys.
+func TestUpdateAppliesTheSameScopeRulesAsCreate(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+
+	if err := repo.Create(ctx, apiKey("k1", storetest.TenantA, "hash-1",
+		[]entities.Scope{entities.ScopeTemplatesRead})); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	t.Run("unknown scopes are dropped", func(t *testing.T) {
+		if err := repo.Update(ctx, storetest.ID("k1"), storetest.TenantA, "k",
+			[]entities.Scope{entities.ScopeEmailSend, "not:a:scope"}); err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+		got, err := repo.GetByID(ctx, storetest.ID("k1"), storetest.TenantA)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if len(got.Scopes) != 1 || got.Scopes[0] != entities.ScopeEmailSend {
+			t.Errorf("scopes = %v, want only the recognised one", got.Scopes)
+		}
+	})
+
+	t.Run("an empty grant becomes the narrow default", func(t *testing.T) {
+		if err := repo.Update(ctx, storetest.ID("k1"), storetest.TenantA, "k", nil); err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+		got, err := repo.GetByID(ctx, storetest.ID("k1"), storetest.TenantA)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if len(got.Scopes) != 1 || got.Scopes[0] != entities.ScopeEmailSend {
+			t.Errorf("scopes = %v, want the least-privilege default", got.Scopes)
+		}
+	})
+}
+
+func TestUpdateReportsAMissingKey(t *testing.T) {
+	repo := newRepo(t)
+
+	err := repo.Update(context.Background(), storetest.ID("nope"), storetest.TenantA, "n", nil)
+	if !errors.Is(err, repositories.ErrApiKeyNotFound) {
+		t.Fatalf("Update() error = %v, want ErrApiKeyNotFound", err)
 	}
 }

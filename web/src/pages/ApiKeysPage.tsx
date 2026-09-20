@@ -21,13 +21,13 @@ import {
   Tooltip,
   Divider
 } from '@mantine/core';
-import { IconKey, IconPlus, IconTrash, IconCopy, IconCheck, IconAlertCircle, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { IconKey, IconPlus, IconTrash, IconPencil, IconCopy, IconCheck, IconAlertCircle, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiKeyService } from '../features/auth/services/apiKey';
 import { notifications } from '@mantine/notifications';
 import { SmtpIntegrationPanel } from '../features/settings/components/smtp/SmtpIntegrationPanel';
 import { ScopePicker } from '../features/auth/components/ScopePicker';
-import { DEFAULT_SCOPE_IDS, resolveScopes, summarize, type ScopeId } from '../features/auth/scopes';
+import { DEFAULT_SCOPE_IDS, resolveScopes, sanitize, summarize, type ScopeId } from '../features/auth/scopes';
 
 /**
  * A key's grant, as one badge per resource.
@@ -79,6 +79,11 @@ const ScopeSummary: React.FC<{ scopes: string[] }> = ({ scopes }) => {
 export const ApiKeysPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [createModalOpened, setCreateModalOpened] = useState(false);
+  // The key being edited. Null closes the modal, so there is one source of
+  // truth for "is the editor open" rather than a flag that can disagree with
+  // the row it is meant to be editing.
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [editScopes, setEditScopes] = useState<Set<ScopeId>>(() => new Set());
   const [keyName, setKeyName] = useState('');
   const [newKey, setNewKey] = useState<{ name: string; key: string; scopes: string[] } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -125,6 +130,27 @@ export const ApiKeysPage: React.FC = () => {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: (vars: { id: string; name: string; scopes: string[] }) =>
+      apiKeyService.updateApiKey(vars.id, vars.name, vars.scopes),
+    onSuccess: () => {
+      notifications.show({
+        title: 'Saved',
+        message: 'The key keeps working; only what it may do has changed.',
+        color: 'green',
+      });
+      setEditing(null);
+      queryClient.invalidateQueries({ queryKey: ['apiKeys'] });
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to update the API key',
+        color: 'red',
+      });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiKeyService.deleteApiKey(id),
     onSuccess: () => {
@@ -140,6 +166,27 @@ export const ApiKeysPage: React.FC = () => {
   const handleCreate = () => {
     if (!keyName.trim()) return;
     createMutation.mutate({ name: keyName, scopes: resolveScopes(scopes) });
+  };
+
+  /**
+   * Opens the editor seeded with what the key currently holds.
+   *
+   * `sanitize` drops any scope this build does not recognise, so a console
+   * older than the gateway cannot silently strip a grant it merely failed to
+   * display -- the picker then shows exactly what saving would send.
+   */
+  const handleEdit = (key: { id: string; name: string; scopes: string[] }) => {
+    setEditing({ id: key.id, name: key.name });
+    setEditScopes(sanitize(key.scopes));
+  };
+
+  const handleSaveEdit = () => {
+    if (!editing || !editing.name.trim()) return;
+    updateMutation.mutate({
+      id: editing.id,
+      name: editing.name,
+      scopes: resolveScopes(editScopes),
+    });
   };
 
   const handleCopy = () => {
@@ -258,7 +305,16 @@ export const ApiKeysPage: React.FC = () => {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <Group justify="flex-end">
+                      <Group justify="flex-end" gap="xs">
+                        <Tooltip label="Change name and scopes" withArrow>
+                          <ActionIcon
+                            variant="light"
+                            aria-label={`Edit ${key.name}`}
+                            onClick={() => handleEdit({ id: key.id, name: key.name, scopes: key.scopes ?? [] })}
+                          >
+                            <IconPencil size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                         <ActionIcon variant="light" color="red" onClick={() => deleteMutation.mutate(key.id)}>
                           <IconTrash size={16} />
                         </ActionIcon>
@@ -301,6 +357,44 @@ export const ApiKeysPage: React.FC = () => {
           </Group>
         )}
       </Stack>
+
+      <Modal
+        opened={editing !== null}
+        onClose={() => setEditing(null)}
+        title={<Text fw={800} size="lg">Edit API Key</Text>}
+        radius="md"
+        size="lg"
+      >
+        {editing && (
+          <Stack gap="md">
+            <Alert icon={<IconAlertCircle size={16} />} color="blue" variant="light" radius="md">
+              The key itself does not change. Callers holding it keep working &mdash; only what
+              it is allowed to do changes, and it changes within seconds.
+            </Alert>
+
+            <TextInput
+              label="Key Name"
+              description="Name it after the system that will hold it, so a key can be revoked without guessing what breaks."
+              value={editing.name}
+              onChange={(e) => setEditing({ ...editing, name: e.currentTarget.value })}
+              required
+            />
+
+            <Divider label="Access" labelPosition="left" />
+
+            <ScopePicker value={editScopes} onChange={setEditScopes} />
+
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setEditing(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveEdit} loading={updateMutation.isPending}>
+                Save changes
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
 
       <Modal
         opened={createModalOpened}

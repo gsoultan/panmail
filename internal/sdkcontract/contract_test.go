@@ -67,6 +67,9 @@ func (s *keyStore) ListApiKeys(context.Context, string, int, string) ([]*authent
 	return nil, "", nil
 }
 
+func (s *keyStore) UpdateApiKey(context.Context, authusecases.EditApiKey) (*authentities.ApiKey, error) {
+	return nil, nil
+}
 func (s *keyStore) DeleteApiKey(context.Context, string, string) error  { return nil }
 func (s *keyStore) DisableApiKey(context.Context, string, string) error { return nil }
 func (s *keyStore) EnableApiKey(context.Context, string, string) error  { return nil }

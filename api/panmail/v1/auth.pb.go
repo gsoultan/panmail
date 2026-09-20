@@ -1648,6 +1648,116 @@ func (x *CreateApiKeyResponse) GetPlainTextKey() string {
 	return ""
 }
 
+// UpdateApiKeyRequest changes what an existing key may do, without minting a
+// new one. Widening a grant used to mean deleting the key and issuing another,
+// which rotates the secret and breaks every caller already using it.
+type UpdateApiKeyRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// The complete grant, not a delta: what is sent replaces what is stored.
+	// Unknown values are dropped and an empty list yields the least-privilege
+	// default, exactly as on create.
+	Scopes        []string `protobuf:"bytes,3,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateApiKeyRequest) Reset() {
+	*x = UpdateApiKeyRequest{}
+	mi := &file_panmail_v1_auth_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateApiKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateApiKeyRequest) ProtoMessage() {}
+
+func (x *UpdateApiKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_auth_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateApiKeyRequest.ProtoReflect.Descriptor instead.
+func (*UpdateApiKeyRequest) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *UpdateApiKeyRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateApiKeyRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateApiKeyRequest) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+type UpdateApiKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApiKey        *ApiKey                `protobuf:"bytes,1,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateApiKeyResponse) Reset() {
+	*x = UpdateApiKeyResponse{}
+	mi := &file_panmail_v1_auth_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateApiKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateApiKeyResponse) ProtoMessage() {}
+
+func (x *UpdateApiKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_auth_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateApiKeyResponse.ProtoReflect.Descriptor instead.
+func (*UpdateApiKeyResponse) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *UpdateApiKeyResponse) GetApiKey() *ApiKey {
+	if x != nil {
+		return x.ApiKey
+	}
+	return nil
+}
+
 type ListApiKeysRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
@@ -1658,7 +1768,7 @@ type ListApiKeysRequest struct {
 
 func (x *ListApiKeysRequest) Reset() {
 	*x = ListApiKeysRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[29]
+	mi := &file_panmail_v1_auth_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1670,7 +1780,7 @@ func (x *ListApiKeysRequest) String() string {
 func (*ListApiKeysRequest) ProtoMessage() {}
 
 func (x *ListApiKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[29]
+	mi := &file_panmail_v1_auth_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1683,7 +1793,7 @@ func (x *ListApiKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListApiKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListApiKeysRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{29}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ListApiKeysRequest) GetPageSize() int32 {
@@ -1710,7 +1820,7 @@ type ListApiKeysResponse struct {
 
 func (x *ListApiKeysResponse) Reset() {
 	*x = ListApiKeysResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[30]
+	mi := &file_panmail_v1_auth_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1722,7 +1832,7 @@ func (x *ListApiKeysResponse) String() string {
 func (*ListApiKeysResponse) ProtoMessage() {}
 
 func (x *ListApiKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[30]
+	mi := &file_panmail_v1_auth_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1735,7 +1845,7 @@ func (x *ListApiKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListApiKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListApiKeysResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{30}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ListApiKeysResponse) GetApiKeys() []*ApiKey {
@@ -1761,7 +1871,7 @@ type DeleteApiKeyRequest struct {
 
 func (x *DeleteApiKeyRequest) Reset() {
 	*x = DeleteApiKeyRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[31]
+	mi := &file_panmail_v1_auth_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1773,7 +1883,7 @@ func (x *DeleteApiKeyRequest) String() string {
 func (*DeleteApiKeyRequest) ProtoMessage() {}
 
 func (x *DeleteApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[31]
+	mi := &file_panmail_v1_auth_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1786,7 +1896,7 @@ func (x *DeleteApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*DeleteApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{31}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *DeleteApiKeyRequest) GetId() string {
@@ -1804,7 +1914,7 @@ type DeleteApiKeyResponse struct {
 
 func (x *DeleteApiKeyResponse) Reset() {
 	*x = DeleteApiKeyResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[32]
+	mi := &file_panmail_v1_auth_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1816,7 +1926,7 @@ func (x *DeleteApiKeyResponse) String() string {
 func (*DeleteApiKeyResponse) ProtoMessage() {}
 
 func (x *DeleteApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[32]
+	mi := &file_panmail_v1_auth_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1829,7 +1939,7 @@ func (x *DeleteApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*DeleteApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{32}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{34}
 }
 
 type DisableApiKeyRequest struct {
@@ -1841,7 +1951,7 @@ type DisableApiKeyRequest struct {
 
 func (x *DisableApiKeyRequest) Reset() {
 	*x = DisableApiKeyRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[33]
+	mi := &file_panmail_v1_auth_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1853,7 +1963,7 @@ func (x *DisableApiKeyRequest) String() string {
 func (*DisableApiKeyRequest) ProtoMessage() {}
 
 func (x *DisableApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[33]
+	mi := &file_panmail_v1_auth_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1866,7 +1976,7 @@ func (x *DisableApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*DisableApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{33}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *DisableApiKeyRequest) GetId() string {
@@ -1884,7 +1994,7 @@ type DisableApiKeyResponse struct {
 
 func (x *DisableApiKeyResponse) Reset() {
 	*x = DisableApiKeyResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[34]
+	mi := &file_panmail_v1_auth_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1896,7 +2006,7 @@ func (x *DisableApiKeyResponse) String() string {
 func (*DisableApiKeyResponse) ProtoMessage() {}
 
 func (x *DisableApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[34]
+	mi := &file_panmail_v1_auth_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1909,7 +2019,7 @@ func (x *DisableApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*DisableApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{34}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{36}
 }
 
 type EnableApiKeyRequest struct {
@@ -1921,7 +2031,7 @@ type EnableApiKeyRequest struct {
 
 func (x *EnableApiKeyRequest) Reset() {
 	*x = EnableApiKeyRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[35]
+	mi := &file_panmail_v1_auth_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1933,7 +2043,7 @@ func (x *EnableApiKeyRequest) String() string {
 func (*EnableApiKeyRequest) ProtoMessage() {}
 
 func (x *EnableApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[35]
+	mi := &file_panmail_v1_auth_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1946,7 +2056,7 @@ func (x *EnableApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*EnableApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{35}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *EnableApiKeyRequest) GetId() string {
@@ -1964,7 +2074,7 @@ type EnableApiKeyResponse struct {
 
 func (x *EnableApiKeyResponse) Reset() {
 	*x = EnableApiKeyResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[36]
+	mi := &file_panmail_v1_auth_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1976,7 +2086,7 @@ func (x *EnableApiKeyResponse) String() string {
 func (*EnableApiKeyResponse) ProtoMessage() {}
 
 func (x *EnableApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[36]
+	mi := &file_panmail_v1_auth_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2099,7 @@ func (x *EnableApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*EnableApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{36}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{38}
 }
 
 type SignInRequest struct {
@@ -2002,7 +2112,7 @@ type SignInRequest struct {
 
 func (x *SignInRequest) Reset() {
 	*x = SignInRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[37]
+	mi := &file_panmail_v1_auth_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2014,7 +2124,7 @@ func (x *SignInRequest) String() string {
 func (*SignInRequest) ProtoMessage() {}
 
 func (x *SignInRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[37]
+	mi := &file_panmail_v1_auth_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2027,7 +2137,7 @@ func (x *SignInRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignInRequest.ProtoReflect.Descriptor instead.
 func (*SignInRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{37}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *SignInRequest) GetEmail() string {
@@ -2062,7 +2172,7 @@ type SignInResponse struct {
 
 func (x *SignInResponse) Reset() {
 	*x = SignInResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[38]
+	mi := &file_panmail_v1_auth_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2074,7 +2184,7 @@ func (x *SignInResponse) String() string {
 func (*SignInResponse) ProtoMessage() {}
 
 func (x *SignInResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[38]
+	mi := &file_panmail_v1_auth_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2087,7 +2197,7 @@ func (x *SignInResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignInResponse.ProtoReflect.Descriptor instead.
 func (*SignInResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{38}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *SignInResponse) GetToken() string {
@@ -2147,7 +2257,7 @@ type SignOutRequest struct {
 
 func (x *SignOutRequest) Reset() {
 	*x = SignOutRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[39]
+	mi := &file_panmail_v1_auth_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2159,7 +2269,7 @@ func (x *SignOutRequest) String() string {
 func (*SignOutRequest) ProtoMessage() {}
 
 func (x *SignOutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[39]
+	mi := &file_panmail_v1_auth_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2172,7 +2282,7 @@ func (x *SignOutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignOutRequest.ProtoReflect.Descriptor instead.
 func (*SignOutRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{39}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{41}
 }
 
 type SignOutResponse struct {
@@ -2183,7 +2293,7 @@ type SignOutResponse struct {
 
 func (x *SignOutResponse) Reset() {
 	*x = SignOutResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[40]
+	mi := &file_panmail_v1_auth_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2195,7 +2305,7 @@ func (x *SignOutResponse) String() string {
 func (*SignOutResponse) ProtoMessage() {}
 
 func (x *SignOutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[40]
+	mi := &file_panmail_v1_auth_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2208,7 +2318,7 @@ func (x *SignOutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignOutResponse.ProtoReflect.Descriptor instead.
 func (*SignOutResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{40}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{42}
 }
 
 type GetCurrentUserRequest struct {
@@ -2219,7 +2329,7 @@ type GetCurrentUserRequest struct {
 
 func (x *GetCurrentUserRequest) Reset() {
 	*x = GetCurrentUserRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[41]
+	mi := &file_panmail_v1_auth_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2231,7 +2341,7 @@ func (x *GetCurrentUserRequest) String() string {
 func (*GetCurrentUserRequest) ProtoMessage() {}
 
 func (x *GetCurrentUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[41]
+	mi := &file_panmail_v1_auth_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2244,7 +2354,7 @@ func (x *GetCurrentUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCurrentUserRequest.ProtoReflect.Descriptor instead.
 func (*GetCurrentUserRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{41}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{43}
 }
 
 type GetCurrentUserResponse struct {
@@ -2259,7 +2369,7 @@ type GetCurrentUserResponse struct {
 
 func (x *GetCurrentUserResponse) Reset() {
 	*x = GetCurrentUserResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[42]
+	mi := &file_panmail_v1_auth_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2271,7 +2381,7 @@ func (x *GetCurrentUserResponse) String() string {
 func (*GetCurrentUserResponse) ProtoMessage() {}
 
 func (x *GetCurrentUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[42]
+	mi := &file_panmail_v1_auth_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2284,7 +2394,7 @@ func (x *GetCurrentUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCurrentUserResponse.ProtoReflect.Descriptor instead.
 func (*GetCurrentUserResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{42}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetCurrentUserResponse) GetUser() *User {
@@ -2315,7 +2425,7 @@ type User struct {
 
 func (x *User) Reset() {
 	*x = User{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[43]
+	mi := &file_panmail_v1_auth_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2327,7 +2437,7 @@ func (x *User) String() string {
 func (*User) ProtoMessage() {}
 
 func (x *User) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[43]
+	mi := &file_panmail_v1_auth_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2340,7 +2450,7 @@ func (x *User) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use User.ProtoReflect.Descriptor instead.
 func (*User) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{43}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *User) GetId() string {
@@ -2393,7 +2503,7 @@ type SetupTwoFactorRequest struct {
 
 func (x *SetupTwoFactorRequest) Reset() {
 	*x = SetupTwoFactorRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[44]
+	mi := &file_panmail_v1_auth_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2405,7 +2515,7 @@ func (x *SetupTwoFactorRequest) String() string {
 func (*SetupTwoFactorRequest) ProtoMessage() {}
 
 func (x *SetupTwoFactorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[44]
+	mi := &file_panmail_v1_auth_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2418,7 +2528,7 @@ func (x *SetupTwoFactorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupTwoFactorRequest.ProtoReflect.Descriptor instead.
 func (*SetupTwoFactorRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{44}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{46}
 }
 
 type SetupTwoFactorResponse struct {
@@ -2431,7 +2541,7 @@ type SetupTwoFactorResponse struct {
 
 func (x *SetupTwoFactorResponse) Reset() {
 	*x = SetupTwoFactorResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[45]
+	mi := &file_panmail_v1_auth_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2443,7 +2553,7 @@ func (x *SetupTwoFactorResponse) String() string {
 func (*SetupTwoFactorResponse) ProtoMessage() {}
 
 func (x *SetupTwoFactorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[45]
+	mi := &file_panmail_v1_auth_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2456,7 +2566,7 @@ func (x *SetupTwoFactorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupTwoFactorResponse.ProtoReflect.Descriptor instead.
 func (*SetupTwoFactorResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{45}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *SetupTwoFactorResponse) GetSecret() string {
@@ -2483,7 +2593,7 @@ type VerifyTwoFactorRequest struct {
 
 func (x *VerifyTwoFactorRequest) Reset() {
 	*x = VerifyTwoFactorRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[46]
+	mi := &file_panmail_v1_auth_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2495,7 +2605,7 @@ func (x *VerifyTwoFactorRequest) String() string {
 func (*VerifyTwoFactorRequest) ProtoMessage() {}
 
 func (x *VerifyTwoFactorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[46]
+	mi := &file_panmail_v1_auth_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2508,7 +2618,7 @@ func (x *VerifyTwoFactorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyTwoFactorRequest.ProtoReflect.Descriptor instead.
 func (*VerifyTwoFactorRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{46}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *VerifyTwoFactorRequest) GetCode() string {
@@ -2536,7 +2646,7 @@ type VerifyTwoFactorResponse struct {
 
 func (x *VerifyTwoFactorResponse) Reset() {
 	*x = VerifyTwoFactorResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[47]
+	mi := &file_panmail_v1_auth_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2548,7 +2658,7 @@ func (x *VerifyTwoFactorResponse) String() string {
 func (*VerifyTwoFactorResponse) ProtoMessage() {}
 
 func (x *VerifyTwoFactorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[47]
+	mi := &file_panmail_v1_auth_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2561,7 +2671,7 @@ func (x *VerifyTwoFactorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyTwoFactorResponse.ProtoReflect.Descriptor instead.
 func (*VerifyTwoFactorResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{47}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *VerifyTwoFactorResponse) GetVerified() bool {
@@ -2594,7 +2704,7 @@ type EnableTwoFactorRequest struct {
 
 func (x *EnableTwoFactorRequest) Reset() {
 	*x = EnableTwoFactorRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[48]
+	mi := &file_panmail_v1_auth_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2606,7 +2716,7 @@ func (x *EnableTwoFactorRequest) String() string {
 func (*EnableTwoFactorRequest) ProtoMessage() {}
 
 func (x *EnableTwoFactorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[48]
+	mi := &file_panmail_v1_auth_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2619,7 +2729,7 @@ func (x *EnableTwoFactorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableTwoFactorRequest.ProtoReflect.Descriptor instead.
 func (*EnableTwoFactorRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{48}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *EnableTwoFactorRequest) GetCode() string {
@@ -2638,7 +2748,7 @@ type EnableTwoFactorResponse struct {
 
 func (x *EnableTwoFactorResponse) Reset() {
 	*x = EnableTwoFactorResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[49]
+	mi := &file_panmail_v1_auth_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2650,7 +2760,7 @@ func (x *EnableTwoFactorResponse) String() string {
 func (*EnableTwoFactorResponse) ProtoMessage() {}
 
 func (x *EnableTwoFactorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[49]
+	mi := &file_panmail_v1_auth_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2663,7 +2773,7 @@ func (x *EnableTwoFactorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableTwoFactorResponse.ProtoReflect.Descriptor instead.
 func (*EnableTwoFactorResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{49}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *EnableTwoFactorResponse) GetSuccess() bool {
@@ -2682,7 +2792,7 @@ type DisableTwoFactorRequest struct {
 
 func (x *DisableTwoFactorRequest) Reset() {
 	*x = DisableTwoFactorRequest{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[50]
+	mi := &file_panmail_v1_auth_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2694,7 +2804,7 @@ func (x *DisableTwoFactorRequest) String() string {
 func (*DisableTwoFactorRequest) ProtoMessage() {}
 
 func (x *DisableTwoFactorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[50]
+	mi := &file_panmail_v1_auth_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2707,7 +2817,7 @@ func (x *DisableTwoFactorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableTwoFactorRequest.ProtoReflect.Descriptor instead.
 func (*DisableTwoFactorRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{50}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *DisableTwoFactorRequest) GetUserId() string {
@@ -2726,7 +2836,7 @@ type DisableTwoFactorResponse struct {
 
 func (x *DisableTwoFactorResponse) Reset() {
 	*x = DisableTwoFactorResponse{}
-	mi := &file_panmail_v1_auth_proto_msgTypes[51]
+	mi := &file_panmail_v1_auth_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2738,7 +2848,7 @@ func (x *DisableTwoFactorResponse) String() string {
 func (*DisableTwoFactorResponse) ProtoMessage() {}
 
 func (x *DisableTwoFactorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_auth_proto_msgTypes[51]
+	mi := &file_panmail_v1_auth_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2751,7 +2861,7 @@ func (x *DisableTwoFactorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableTwoFactorResponse.ProtoReflect.Descriptor instead.
 func (*DisableTwoFactorResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{51}
+	return file_panmail_v1_auth_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *DisableTwoFactorResponse) GetSuccess() bool {
@@ -2873,7 +2983,13 @@ const file_panmail_v1_auth_proto_rawDesc = "" +
 	"\x06scopes\x18\x03 \x03(\tR\x06scopes\"i\n" +
 	"\x14CreateApiKeyResponse\x12+\n" +
 	"\aapi_key\x18\x01 \x01(\v2\x12.panmail.v1.ApiKeyR\x06apiKey\x12$\n" +
-	"\x0eplain_text_key\x18\x02 \x01(\tR\fplainTextKey\"P\n" +
+	"\x0eplain_text_key\x18\x02 \x01(\tR\fplainTextKey\"Q\n" +
+	"\x13UpdateApiKeyRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
+	"\x06scopes\x18\x03 \x03(\tR\x06scopes\"C\n" +
+	"\x14UpdateApiKeyResponse\x12+\n" +
+	"\aapi_key\x18\x01 \x01(\v2\x12.panmail.v1.ApiKeyR\x06apiKey\"P\n" +
 	"\x12ListApiKeysRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -2946,10 +3062,11 @@ const file_panmail_v1_auth_proto_rawDesc = "" +
 	"\x0eSetupTwoFactor\x12!.panmail.v1.SetupTwoFactorRequest\x1a\".panmail.v1.SetupTwoFactorResponse\x12Z\n" +
 	"\x0fVerifyTwoFactor\x12\".panmail.v1.VerifyTwoFactorRequest\x1a#.panmail.v1.VerifyTwoFactorResponse\x12Z\n" +
 	"\x0fEnableTwoFactor\x12\".panmail.v1.EnableTwoFactorRequest\x1a#.panmail.v1.EnableTwoFactorResponse\x12]\n" +
-	"\x10DisableTwoFactor\x12#.panmail.v1.DisableTwoFactorRequest\x1a$.panmail.v1.DisableTwoFactorResponse2\xae\x03\n" +
+	"\x10DisableTwoFactor\x12#.panmail.v1.DisableTwoFactorRequest\x1a$.panmail.v1.DisableTwoFactorResponse2\x81\x04\n" +
 	"\rApiKeyService\x12Q\n" +
 	"\fCreateApiKey\x12\x1f.panmail.v1.CreateApiKeyRequest\x1a .panmail.v1.CreateApiKeyResponse\x12N\n" +
 	"\vListApiKeys\x12\x1e.panmail.v1.ListApiKeysRequest\x1a\x1f.panmail.v1.ListApiKeysResponse\x12Q\n" +
+	"\fUpdateApiKey\x12\x1f.panmail.v1.UpdateApiKeyRequest\x1a .panmail.v1.UpdateApiKeyResponse\x12Q\n" +
 	"\fDeleteApiKey\x12\x1f.panmail.v1.DeleteApiKeyRequest\x1a .panmail.v1.DeleteApiKeyResponse\x12T\n" +
 	"\rDisableApiKey\x12 .panmail.v1.DisableApiKeyRequest\x1a!.panmail.v1.DisableApiKeyResponse\x12Q\n" +
 	"\fEnableApiKey\x12\x1f.panmail.v1.EnableApiKeyRequest\x1a .panmail.v1.EnableApiKeyResponse2\xde\x05\n" +
@@ -2986,7 +3103,7 @@ func file_panmail_v1_auth_proto_rawDescGZIP() []byte {
 }
 
 var file_panmail_v1_auth_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_panmail_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
+var file_panmail_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
 var file_panmail_v1_auth_proto_goTypes = []any{
 	(UserRole)(0),                        // 0: panmail.v1.UserRole
 	(*Tenant)(nil),                       // 1: panmail.v1.Tenant
@@ -3018,102 +3135,107 @@ var file_panmail_v1_auth_proto_goTypes = []any{
 	(*ApiKey)(nil),                       // 27: panmail.v1.ApiKey
 	(*CreateApiKeyRequest)(nil),          // 28: panmail.v1.CreateApiKeyRequest
 	(*CreateApiKeyResponse)(nil),         // 29: panmail.v1.CreateApiKeyResponse
-	(*ListApiKeysRequest)(nil),           // 30: panmail.v1.ListApiKeysRequest
-	(*ListApiKeysResponse)(nil),          // 31: panmail.v1.ListApiKeysResponse
-	(*DeleteApiKeyRequest)(nil),          // 32: panmail.v1.DeleteApiKeyRequest
-	(*DeleteApiKeyResponse)(nil),         // 33: panmail.v1.DeleteApiKeyResponse
-	(*DisableApiKeyRequest)(nil),         // 34: panmail.v1.DisableApiKeyRequest
-	(*DisableApiKeyResponse)(nil),        // 35: panmail.v1.DisableApiKeyResponse
-	(*EnableApiKeyRequest)(nil),          // 36: panmail.v1.EnableApiKeyRequest
-	(*EnableApiKeyResponse)(nil),         // 37: panmail.v1.EnableApiKeyResponse
-	(*SignInRequest)(nil),                // 38: panmail.v1.SignInRequest
-	(*SignInResponse)(nil),               // 39: panmail.v1.SignInResponse
-	(*SignOutRequest)(nil),               // 40: panmail.v1.SignOutRequest
-	(*SignOutResponse)(nil),              // 41: panmail.v1.SignOutResponse
-	(*GetCurrentUserRequest)(nil),        // 42: panmail.v1.GetCurrentUserRequest
-	(*GetCurrentUserResponse)(nil),       // 43: panmail.v1.GetCurrentUserResponse
-	(*User)(nil),                         // 44: panmail.v1.User
-	(*SetupTwoFactorRequest)(nil),        // 45: panmail.v1.SetupTwoFactorRequest
-	(*SetupTwoFactorResponse)(nil),       // 46: panmail.v1.SetupTwoFactorResponse
-	(*VerifyTwoFactorRequest)(nil),       // 47: panmail.v1.VerifyTwoFactorRequest
-	(*VerifyTwoFactorResponse)(nil),      // 48: panmail.v1.VerifyTwoFactorResponse
-	(*EnableTwoFactorRequest)(nil),       // 49: panmail.v1.EnableTwoFactorRequest
-	(*EnableTwoFactorResponse)(nil),      // 50: panmail.v1.EnableTwoFactorResponse
-	(*DisableTwoFactorRequest)(nil),      // 51: panmail.v1.DisableTwoFactorRequest
-	(*DisableTwoFactorResponse)(nil),     // 52: panmail.v1.DisableTwoFactorResponse
+	(*UpdateApiKeyRequest)(nil),          // 30: panmail.v1.UpdateApiKeyRequest
+	(*UpdateApiKeyResponse)(nil),         // 31: panmail.v1.UpdateApiKeyResponse
+	(*ListApiKeysRequest)(nil),           // 32: panmail.v1.ListApiKeysRequest
+	(*ListApiKeysResponse)(nil),          // 33: panmail.v1.ListApiKeysResponse
+	(*DeleteApiKeyRequest)(nil),          // 34: panmail.v1.DeleteApiKeyRequest
+	(*DeleteApiKeyResponse)(nil),         // 35: panmail.v1.DeleteApiKeyResponse
+	(*DisableApiKeyRequest)(nil),         // 36: panmail.v1.DisableApiKeyRequest
+	(*DisableApiKeyResponse)(nil),        // 37: panmail.v1.DisableApiKeyResponse
+	(*EnableApiKeyRequest)(nil),          // 38: panmail.v1.EnableApiKeyRequest
+	(*EnableApiKeyResponse)(nil),         // 39: panmail.v1.EnableApiKeyResponse
+	(*SignInRequest)(nil),                // 40: panmail.v1.SignInRequest
+	(*SignInResponse)(nil),               // 41: panmail.v1.SignInResponse
+	(*SignOutRequest)(nil),               // 42: panmail.v1.SignOutRequest
+	(*SignOutResponse)(nil),              // 43: panmail.v1.SignOutResponse
+	(*GetCurrentUserRequest)(nil),        // 44: panmail.v1.GetCurrentUserRequest
+	(*GetCurrentUserResponse)(nil),       // 45: panmail.v1.GetCurrentUserResponse
+	(*User)(nil),                         // 46: panmail.v1.User
+	(*SetupTwoFactorRequest)(nil),        // 47: panmail.v1.SetupTwoFactorRequest
+	(*SetupTwoFactorResponse)(nil),       // 48: panmail.v1.SetupTwoFactorResponse
+	(*VerifyTwoFactorRequest)(nil),       // 49: panmail.v1.VerifyTwoFactorRequest
+	(*VerifyTwoFactorResponse)(nil),      // 50: panmail.v1.VerifyTwoFactorResponse
+	(*EnableTwoFactorRequest)(nil),       // 51: panmail.v1.EnableTwoFactorRequest
+	(*EnableTwoFactorResponse)(nil),      // 52: panmail.v1.EnableTwoFactorResponse
+	(*DisableTwoFactorRequest)(nil),      // 53: panmail.v1.DisableTwoFactorRequest
+	(*DisableTwoFactorResponse)(nil),     // 54: panmail.v1.DisableTwoFactorResponse
 }
 var file_panmail_v1_auth_proto_depIdxs = []int32{
 	1,  // 0: panmail.v1.CreateTenantResponse.tenant:type_name -> panmail.v1.Tenant
 	1,  // 1: panmail.v1.UpdateTenantResponse.tenant:type_name -> panmail.v1.Tenant
 	1,  // 2: panmail.v1.ListTenantsResponse.tenants:type_name -> panmail.v1.Tenant
 	0,  // 3: panmail.v1.CreateUserRequest.role:type_name -> panmail.v1.UserRole
-	44, // 4: panmail.v1.CreateUserResponse.user:type_name -> panmail.v1.User
-	44, // 5: panmail.v1.ListUsersResponse.users:type_name -> panmail.v1.User
+	46, // 4: panmail.v1.CreateUserResponse.user:type_name -> panmail.v1.User
+	46, // 5: panmail.v1.ListUsersResponse.users:type_name -> panmail.v1.User
 	0,  // 6: panmail.v1.UpdateUserRoleRequest.role:type_name -> panmail.v1.UserRole
 	0,  // 7: panmail.v1.UserTenant.role:type_name -> panmail.v1.UserRole
 	0,  // 8: panmail.v1.AssignUserToTenantRequest.role:type_name -> panmail.v1.UserRole
 	20, // 9: panmail.v1.AssignUserToTenantResponse.membership:type_name -> panmail.v1.UserTenant
 	20, // 10: panmail.v1.ListUserTenantsResponse.tenants:type_name -> panmail.v1.UserTenant
 	27, // 11: panmail.v1.CreateApiKeyResponse.api_key:type_name -> panmail.v1.ApiKey
-	27, // 12: panmail.v1.ListApiKeysResponse.api_keys:type_name -> panmail.v1.ApiKey
-	44, // 13: panmail.v1.SignInResponse.user:type_name -> panmail.v1.User
-	44, // 14: panmail.v1.GetCurrentUserResponse.user:type_name -> panmail.v1.User
-	20, // 15: panmail.v1.GetCurrentUserResponse.tenants:type_name -> panmail.v1.UserTenant
-	0,  // 16: panmail.v1.User.role:type_name -> panmail.v1.UserRole
-	44, // 17: panmail.v1.VerifyTwoFactorResponse.user:type_name -> panmail.v1.User
-	38, // 18: panmail.v1.AuthService.SignIn:input_type -> panmail.v1.SignInRequest
-	40, // 19: panmail.v1.AuthService.SignOut:input_type -> panmail.v1.SignOutRequest
-	42, // 20: panmail.v1.AuthService.GetCurrentUser:input_type -> panmail.v1.GetCurrentUserRequest
-	45, // 21: panmail.v1.AuthService.SetupTwoFactor:input_type -> panmail.v1.SetupTwoFactorRequest
-	47, // 22: panmail.v1.AuthService.VerifyTwoFactor:input_type -> panmail.v1.VerifyTwoFactorRequest
-	49, // 23: panmail.v1.AuthService.EnableTwoFactor:input_type -> panmail.v1.EnableTwoFactorRequest
-	51, // 24: panmail.v1.AuthService.DisableTwoFactor:input_type -> panmail.v1.DisableTwoFactorRequest
-	28, // 25: panmail.v1.ApiKeyService.CreateApiKey:input_type -> panmail.v1.CreateApiKeyRequest
-	30, // 26: panmail.v1.ApiKeyService.ListApiKeys:input_type -> panmail.v1.ListApiKeysRequest
-	32, // 27: panmail.v1.ApiKeyService.DeleteApiKey:input_type -> panmail.v1.DeleteApiKeyRequest
-	34, // 28: panmail.v1.ApiKeyService.DisableApiKey:input_type -> panmail.v1.DisableApiKeyRequest
-	36, // 29: panmail.v1.ApiKeyService.EnableApiKey:input_type -> panmail.v1.EnableApiKeyRequest
-	10, // 30: panmail.v1.UserService.CreateUser:input_type -> panmail.v1.CreateUserRequest
-	12, // 31: panmail.v1.UserService.ListUsers:input_type -> panmail.v1.ListUsersRequest
-	14, // 32: panmail.v1.UserService.UpdateUserRole:input_type -> panmail.v1.UpdateUserRoleRequest
-	16, // 33: panmail.v1.UserService.DeleteUser:input_type -> panmail.v1.DeleteUserRequest
-	18, // 34: panmail.v1.UserService.UpdateUserTwoFactor:input_type -> panmail.v1.UpdateUserTwoFactorRequest
-	21, // 35: panmail.v1.UserService.AssignUserToTenant:input_type -> panmail.v1.AssignUserToTenantRequest
-	23, // 36: panmail.v1.UserService.RemoveUserFromTenant:input_type -> panmail.v1.RemoveUserFromTenantRequest
-	25, // 37: panmail.v1.UserService.ListUserTenants:input_type -> panmail.v1.ListUserTenantsRequest
-	2,  // 38: panmail.v1.TenantService.CreateTenant:input_type -> panmail.v1.CreateTenantRequest
-	6,  // 39: panmail.v1.TenantService.ListTenants:input_type -> panmail.v1.ListTenantsRequest
-	4,  // 40: panmail.v1.TenantService.UpdateTenant:input_type -> panmail.v1.UpdateTenantRequest
-	8,  // 41: panmail.v1.TenantService.DeleteTenant:input_type -> panmail.v1.DeleteTenantRequest
-	39, // 42: panmail.v1.AuthService.SignIn:output_type -> panmail.v1.SignInResponse
-	41, // 43: panmail.v1.AuthService.SignOut:output_type -> panmail.v1.SignOutResponse
-	43, // 44: panmail.v1.AuthService.GetCurrentUser:output_type -> panmail.v1.GetCurrentUserResponse
-	46, // 45: panmail.v1.AuthService.SetupTwoFactor:output_type -> panmail.v1.SetupTwoFactorResponse
-	48, // 46: panmail.v1.AuthService.VerifyTwoFactor:output_type -> panmail.v1.VerifyTwoFactorResponse
-	50, // 47: panmail.v1.AuthService.EnableTwoFactor:output_type -> panmail.v1.EnableTwoFactorResponse
-	52, // 48: panmail.v1.AuthService.DisableTwoFactor:output_type -> panmail.v1.DisableTwoFactorResponse
-	29, // 49: panmail.v1.ApiKeyService.CreateApiKey:output_type -> panmail.v1.CreateApiKeyResponse
-	31, // 50: panmail.v1.ApiKeyService.ListApiKeys:output_type -> panmail.v1.ListApiKeysResponse
-	33, // 51: panmail.v1.ApiKeyService.DeleteApiKey:output_type -> panmail.v1.DeleteApiKeyResponse
-	35, // 52: panmail.v1.ApiKeyService.DisableApiKey:output_type -> panmail.v1.DisableApiKeyResponse
-	37, // 53: panmail.v1.ApiKeyService.EnableApiKey:output_type -> panmail.v1.EnableApiKeyResponse
-	11, // 54: panmail.v1.UserService.CreateUser:output_type -> panmail.v1.CreateUserResponse
-	13, // 55: panmail.v1.UserService.ListUsers:output_type -> panmail.v1.ListUsersResponse
-	15, // 56: panmail.v1.UserService.UpdateUserRole:output_type -> panmail.v1.UpdateUserRoleResponse
-	17, // 57: panmail.v1.UserService.DeleteUser:output_type -> panmail.v1.DeleteUserResponse
-	19, // 58: panmail.v1.UserService.UpdateUserTwoFactor:output_type -> panmail.v1.UpdateUserTwoFactorResponse
-	22, // 59: panmail.v1.UserService.AssignUserToTenant:output_type -> panmail.v1.AssignUserToTenantResponse
-	24, // 60: panmail.v1.UserService.RemoveUserFromTenant:output_type -> panmail.v1.RemoveUserFromTenantResponse
-	26, // 61: panmail.v1.UserService.ListUserTenants:output_type -> panmail.v1.ListUserTenantsResponse
-	3,  // 62: panmail.v1.TenantService.CreateTenant:output_type -> panmail.v1.CreateTenantResponse
-	7,  // 63: panmail.v1.TenantService.ListTenants:output_type -> panmail.v1.ListTenantsResponse
-	5,  // 64: panmail.v1.TenantService.UpdateTenant:output_type -> panmail.v1.UpdateTenantResponse
-	9,  // 65: panmail.v1.TenantService.DeleteTenant:output_type -> panmail.v1.DeleteTenantResponse
-	42, // [42:66] is the sub-list for method output_type
-	18, // [18:42] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	27, // 12: panmail.v1.UpdateApiKeyResponse.api_key:type_name -> panmail.v1.ApiKey
+	27, // 13: panmail.v1.ListApiKeysResponse.api_keys:type_name -> panmail.v1.ApiKey
+	46, // 14: panmail.v1.SignInResponse.user:type_name -> panmail.v1.User
+	46, // 15: panmail.v1.GetCurrentUserResponse.user:type_name -> panmail.v1.User
+	20, // 16: panmail.v1.GetCurrentUserResponse.tenants:type_name -> panmail.v1.UserTenant
+	0,  // 17: panmail.v1.User.role:type_name -> panmail.v1.UserRole
+	46, // 18: panmail.v1.VerifyTwoFactorResponse.user:type_name -> panmail.v1.User
+	40, // 19: panmail.v1.AuthService.SignIn:input_type -> panmail.v1.SignInRequest
+	42, // 20: panmail.v1.AuthService.SignOut:input_type -> panmail.v1.SignOutRequest
+	44, // 21: panmail.v1.AuthService.GetCurrentUser:input_type -> panmail.v1.GetCurrentUserRequest
+	47, // 22: panmail.v1.AuthService.SetupTwoFactor:input_type -> panmail.v1.SetupTwoFactorRequest
+	49, // 23: panmail.v1.AuthService.VerifyTwoFactor:input_type -> panmail.v1.VerifyTwoFactorRequest
+	51, // 24: panmail.v1.AuthService.EnableTwoFactor:input_type -> panmail.v1.EnableTwoFactorRequest
+	53, // 25: panmail.v1.AuthService.DisableTwoFactor:input_type -> panmail.v1.DisableTwoFactorRequest
+	28, // 26: panmail.v1.ApiKeyService.CreateApiKey:input_type -> panmail.v1.CreateApiKeyRequest
+	32, // 27: panmail.v1.ApiKeyService.ListApiKeys:input_type -> panmail.v1.ListApiKeysRequest
+	30, // 28: panmail.v1.ApiKeyService.UpdateApiKey:input_type -> panmail.v1.UpdateApiKeyRequest
+	34, // 29: panmail.v1.ApiKeyService.DeleteApiKey:input_type -> panmail.v1.DeleteApiKeyRequest
+	36, // 30: panmail.v1.ApiKeyService.DisableApiKey:input_type -> panmail.v1.DisableApiKeyRequest
+	38, // 31: panmail.v1.ApiKeyService.EnableApiKey:input_type -> panmail.v1.EnableApiKeyRequest
+	10, // 32: panmail.v1.UserService.CreateUser:input_type -> panmail.v1.CreateUserRequest
+	12, // 33: panmail.v1.UserService.ListUsers:input_type -> panmail.v1.ListUsersRequest
+	14, // 34: panmail.v1.UserService.UpdateUserRole:input_type -> panmail.v1.UpdateUserRoleRequest
+	16, // 35: panmail.v1.UserService.DeleteUser:input_type -> panmail.v1.DeleteUserRequest
+	18, // 36: panmail.v1.UserService.UpdateUserTwoFactor:input_type -> panmail.v1.UpdateUserTwoFactorRequest
+	21, // 37: panmail.v1.UserService.AssignUserToTenant:input_type -> panmail.v1.AssignUserToTenantRequest
+	23, // 38: panmail.v1.UserService.RemoveUserFromTenant:input_type -> panmail.v1.RemoveUserFromTenantRequest
+	25, // 39: panmail.v1.UserService.ListUserTenants:input_type -> panmail.v1.ListUserTenantsRequest
+	2,  // 40: panmail.v1.TenantService.CreateTenant:input_type -> panmail.v1.CreateTenantRequest
+	6,  // 41: panmail.v1.TenantService.ListTenants:input_type -> panmail.v1.ListTenantsRequest
+	4,  // 42: panmail.v1.TenantService.UpdateTenant:input_type -> panmail.v1.UpdateTenantRequest
+	8,  // 43: panmail.v1.TenantService.DeleteTenant:input_type -> panmail.v1.DeleteTenantRequest
+	41, // 44: panmail.v1.AuthService.SignIn:output_type -> panmail.v1.SignInResponse
+	43, // 45: panmail.v1.AuthService.SignOut:output_type -> panmail.v1.SignOutResponse
+	45, // 46: panmail.v1.AuthService.GetCurrentUser:output_type -> panmail.v1.GetCurrentUserResponse
+	48, // 47: panmail.v1.AuthService.SetupTwoFactor:output_type -> panmail.v1.SetupTwoFactorResponse
+	50, // 48: panmail.v1.AuthService.VerifyTwoFactor:output_type -> panmail.v1.VerifyTwoFactorResponse
+	52, // 49: panmail.v1.AuthService.EnableTwoFactor:output_type -> panmail.v1.EnableTwoFactorResponse
+	54, // 50: panmail.v1.AuthService.DisableTwoFactor:output_type -> panmail.v1.DisableTwoFactorResponse
+	29, // 51: panmail.v1.ApiKeyService.CreateApiKey:output_type -> panmail.v1.CreateApiKeyResponse
+	33, // 52: panmail.v1.ApiKeyService.ListApiKeys:output_type -> panmail.v1.ListApiKeysResponse
+	31, // 53: panmail.v1.ApiKeyService.UpdateApiKey:output_type -> panmail.v1.UpdateApiKeyResponse
+	35, // 54: panmail.v1.ApiKeyService.DeleteApiKey:output_type -> panmail.v1.DeleteApiKeyResponse
+	37, // 55: panmail.v1.ApiKeyService.DisableApiKey:output_type -> panmail.v1.DisableApiKeyResponse
+	39, // 56: panmail.v1.ApiKeyService.EnableApiKey:output_type -> panmail.v1.EnableApiKeyResponse
+	11, // 57: panmail.v1.UserService.CreateUser:output_type -> panmail.v1.CreateUserResponse
+	13, // 58: panmail.v1.UserService.ListUsers:output_type -> panmail.v1.ListUsersResponse
+	15, // 59: panmail.v1.UserService.UpdateUserRole:output_type -> panmail.v1.UpdateUserRoleResponse
+	17, // 60: panmail.v1.UserService.DeleteUser:output_type -> panmail.v1.DeleteUserResponse
+	19, // 61: panmail.v1.UserService.UpdateUserTwoFactor:output_type -> panmail.v1.UpdateUserTwoFactorResponse
+	22, // 62: panmail.v1.UserService.AssignUserToTenant:output_type -> panmail.v1.AssignUserToTenantResponse
+	24, // 63: panmail.v1.UserService.RemoveUserFromTenant:output_type -> panmail.v1.RemoveUserFromTenantResponse
+	26, // 64: panmail.v1.UserService.ListUserTenants:output_type -> panmail.v1.ListUserTenantsResponse
+	3,  // 65: panmail.v1.TenantService.CreateTenant:output_type -> panmail.v1.CreateTenantResponse
+	7,  // 66: panmail.v1.TenantService.ListTenants:output_type -> panmail.v1.ListTenantsResponse
+	5,  // 67: panmail.v1.TenantService.UpdateTenant:output_type -> panmail.v1.UpdateTenantResponse
+	9,  // 68: panmail.v1.TenantService.DeleteTenant:output_type -> panmail.v1.DeleteTenantResponse
+	44, // [44:69] is the sub-list for method output_type
+	19, // [19:44] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_auth_proto_init() }
@@ -3127,7 +3249,7 @@ func file_panmail_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_auth_proto_rawDesc), len(file_panmail_v1_auth_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   52,
+			NumMessages:   54,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

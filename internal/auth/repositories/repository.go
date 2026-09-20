@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"github.com/gsoultan/panmail/internal/auth/entities"
 )
 
@@ -36,12 +37,22 @@ type MembershipRepository interface {
 	RemoveAllForUser(ctx context.Context, userID string) error
 }
 
+// ErrApiKeyNotFound reports that no key with that id exists in the tenant. The
+// two cases are deliberately one error: telling "wrong tenant" apart from "no
+// such key" enumerates the ids of other tenants.
+var ErrApiKeyNotFound = errors.New("api key not found")
+
 type ApiKeyRepository interface {
 	Create(ctx context.Context, key *entities.ApiKey) error
 	ListByTenantID(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.ApiKey, string, error)
 	Delete(ctx context.Context, id string, tenantID string) error
 	GetByHash(ctx context.Context, hash string) (*entities.ApiKey, error)
 	GetByID(ctx context.Context, id string, tenantID string) (*entities.ApiKey, error)
+	// Update replaces the editable fields of a key. It reports
+	// ErrApiKeyNotFound when no row in this tenant has that id, so an
+	// administrator is told a grant did not apply rather than being shown a
+	// success that changed nothing.
+	Update(ctx context.Context, id string, tenantID string, name string, scopes []entities.Scope) error
 	UpdateStatus(ctx context.Context, id string, tenantID string, isEnabled bool) error
 	UpdateLastUsed(ctx context.Context, id string) error
 }

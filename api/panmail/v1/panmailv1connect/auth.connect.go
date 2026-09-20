@@ -64,6 +64,9 @@ const (
 	// ApiKeyServiceListApiKeysProcedure is the fully-qualified name of the ApiKeyService's ListApiKeys
 	// RPC.
 	ApiKeyServiceListApiKeysProcedure = "/panmail.v1.ApiKeyService/ListApiKeys"
+	// ApiKeyServiceUpdateApiKeyProcedure is the fully-qualified name of the ApiKeyService's
+	// UpdateApiKey RPC.
+	ApiKeyServiceUpdateApiKeyProcedure = "/panmail.v1.ApiKeyService/UpdateApiKey"
 	// ApiKeyServiceDeleteApiKeyProcedure is the fully-qualified name of the ApiKeyService's
 	// DeleteApiKey RPC.
 	ApiKeyServiceDeleteApiKeyProcedure = "/panmail.v1.ApiKeyService/DeleteApiKey"
@@ -340,6 +343,7 @@ func (UnimplementedAuthServiceHandler) DisableTwoFactor(context.Context, *connec
 type ApiKeyServiceClient interface {
 	CreateApiKey(context.Context, *connect.Request[v1.CreateApiKeyRequest]) (*connect.Response[v1.CreateApiKeyResponse], error)
 	ListApiKeys(context.Context, *connect.Request[v1.ListApiKeysRequest]) (*connect.Response[v1.ListApiKeysResponse], error)
+	UpdateApiKey(context.Context, *connect.Request[v1.UpdateApiKeyRequest]) (*connect.Response[v1.UpdateApiKeyResponse], error)
 	DeleteApiKey(context.Context, *connect.Request[v1.DeleteApiKeyRequest]) (*connect.Response[v1.DeleteApiKeyResponse], error)
 	DisableApiKey(context.Context, *connect.Request[v1.DisableApiKeyRequest]) (*connect.Response[v1.DisableApiKeyResponse], error)
 	EnableApiKey(context.Context, *connect.Request[v1.EnableApiKeyRequest]) (*connect.Response[v1.EnableApiKeyResponse], error)
@@ -368,6 +372,12 @@ func NewApiKeyServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(apiKeyServiceMethods.ByName("ListApiKeys")),
 			connect.WithClientOptions(opts...),
 		),
+		updateApiKey: connect.NewClient[v1.UpdateApiKeyRequest, v1.UpdateApiKeyResponse](
+			httpClient,
+			baseURL+ApiKeyServiceUpdateApiKeyProcedure,
+			connect.WithSchema(apiKeyServiceMethods.ByName("UpdateApiKey")),
+			connect.WithClientOptions(opts...),
+		),
 		deleteApiKey: connect.NewClient[v1.DeleteApiKeyRequest, v1.DeleteApiKeyResponse](
 			httpClient,
 			baseURL+ApiKeyServiceDeleteApiKeyProcedure,
@@ -393,6 +403,7 @@ func NewApiKeyServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 type apiKeyServiceClient struct {
 	createApiKey  *connect.Client[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse]
 	listApiKeys   *connect.Client[v1.ListApiKeysRequest, v1.ListApiKeysResponse]
+	updateApiKey  *connect.Client[v1.UpdateApiKeyRequest, v1.UpdateApiKeyResponse]
 	deleteApiKey  *connect.Client[v1.DeleteApiKeyRequest, v1.DeleteApiKeyResponse]
 	disableApiKey *connect.Client[v1.DisableApiKeyRequest, v1.DisableApiKeyResponse]
 	enableApiKey  *connect.Client[v1.EnableApiKeyRequest, v1.EnableApiKeyResponse]
@@ -406,6 +417,11 @@ func (c *apiKeyServiceClient) CreateApiKey(ctx context.Context, req *connect.Req
 // ListApiKeys calls panmail.v1.ApiKeyService.ListApiKeys.
 func (c *apiKeyServiceClient) ListApiKeys(ctx context.Context, req *connect.Request[v1.ListApiKeysRequest]) (*connect.Response[v1.ListApiKeysResponse], error) {
 	return c.listApiKeys.CallUnary(ctx, req)
+}
+
+// UpdateApiKey calls panmail.v1.ApiKeyService.UpdateApiKey.
+func (c *apiKeyServiceClient) UpdateApiKey(ctx context.Context, req *connect.Request[v1.UpdateApiKeyRequest]) (*connect.Response[v1.UpdateApiKeyResponse], error) {
+	return c.updateApiKey.CallUnary(ctx, req)
 }
 
 // DeleteApiKey calls panmail.v1.ApiKeyService.DeleteApiKey.
@@ -427,6 +443,7 @@ func (c *apiKeyServiceClient) EnableApiKey(ctx context.Context, req *connect.Req
 type ApiKeyServiceHandler interface {
 	CreateApiKey(context.Context, *connect.Request[v1.CreateApiKeyRequest]) (*connect.Response[v1.CreateApiKeyResponse], error)
 	ListApiKeys(context.Context, *connect.Request[v1.ListApiKeysRequest]) (*connect.Response[v1.ListApiKeysResponse], error)
+	UpdateApiKey(context.Context, *connect.Request[v1.UpdateApiKeyRequest]) (*connect.Response[v1.UpdateApiKeyResponse], error)
 	DeleteApiKey(context.Context, *connect.Request[v1.DeleteApiKeyRequest]) (*connect.Response[v1.DeleteApiKeyResponse], error)
 	DisableApiKey(context.Context, *connect.Request[v1.DisableApiKeyRequest]) (*connect.Response[v1.DisableApiKeyResponse], error)
 	EnableApiKey(context.Context, *connect.Request[v1.EnableApiKeyRequest]) (*connect.Response[v1.EnableApiKeyResponse], error)
@@ -449,6 +466,12 @@ func NewApiKeyServiceHandler(svc ApiKeyServiceHandler, opts ...connect.HandlerOp
 		ApiKeyServiceListApiKeysProcedure,
 		svc.ListApiKeys,
 		connect.WithSchema(apiKeyServiceMethods.ByName("ListApiKeys")),
+		connect.WithHandlerOptions(opts...),
+	)
+	apiKeyServiceUpdateApiKeyHandler := connect.NewUnaryHandler(
+		ApiKeyServiceUpdateApiKeyProcedure,
+		svc.UpdateApiKey,
+		connect.WithSchema(apiKeyServiceMethods.ByName("UpdateApiKey")),
 		connect.WithHandlerOptions(opts...),
 	)
 	apiKeyServiceDeleteApiKeyHandler := connect.NewUnaryHandler(
@@ -475,6 +498,8 @@ func NewApiKeyServiceHandler(svc ApiKeyServiceHandler, opts ...connect.HandlerOp
 			apiKeyServiceCreateApiKeyHandler.ServeHTTP(w, r)
 		case ApiKeyServiceListApiKeysProcedure:
 			apiKeyServiceListApiKeysHandler.ServeHTTP(w, r)
+		case ApiKeyServiceUpdateApiKeyProcedure:
+			apiKeyServiceUpdateApiKeyHandler.ServeHTTP(w, r)
 		case ApiKeyServiceDeleteApiKeyProcedure:
 			apiKeyServiceDeleteApiKeyHandler.ServeHTTP(w, r)
 		case ApiKeyServiceDisableApiKeyProcedure:
@@ -496,6 +521,10 @@ func (UnimplementedApiKeyServiceHandler) CreateApiKey(context.Context, *connect.
 
 func (UnimplementedApiKeyServiceHandler) ListApiKeys(context.Context, *connect.Request[v1.ListApiKeysRequest]) (*connect.Response[v1.ListApiKeysResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.ApiKeyService.ListApiKeys is not implemented"))
+}
+
+func (UnimplementedApiKeyServiceHandler) UpdateApiKey(context.Context, *connect.Request[v1.UpdateApiKeyRequest]) (*connect.Response[v1.UpdateApiKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.ApiKeyService.UpdateApiKey is not implemented"))
 }
 
 func (UnimplementedApiKeyServiceHandler) DeleteApiKey(context.Context, *connect.Request[v1.DeleteApiKeyRequest]) (*connect.Response[v1.DeleteApiKeyResponse], error) {

@@ -83,6 +83,7 @@ var procedurePolicy = map[string]access{
 	// --- Administrator ------------------------------------------------------
 	panmailv1connect.ApiKeyServiceCreateApiKeyProcedure:           {minRole: RoleAdmin},
 	panmailv1connect.ApiKeyServiceListApiKeysProcedure:            {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceUpdateApiKeyProcedure:           {minRole: RoleAdmin},
 	panmailv1connect.ApiKeyServiceDeleteApiKeyProcedure:           {minRole: RoleAdmin},
 	panmailv1connect.ApiKeyServiceEnableApiKeyProcedure:           {minRole: RoleAdmin},
 	panmailv1connect.ApiKeyServiceDisableApiKeyProcedure:          {minRole: RoleAdmin},

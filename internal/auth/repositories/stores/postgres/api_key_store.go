@@ -25,6 +25,8 @@ var (
 	getApiKeyByHashQuery string
 	//go:embed sql/get_api_key_by_id.sql
 	getApiKeyByIDQuery string
+	//go:embed sql/update_api_key.sql
+	updateApiKeyQuery string
 	//go:embed sql/update_api_key_status.sql
 	updateApiKeyStatusQuery string
 	//go:embed sql/update_api_key_last_used.sql
@@ -126,6 +128,43 @@ func (s *apiKeyStore) GetByID(ctx context.Context, id string, tenantID string) (
 		return nil, err
 	}
 	return scanApiKey(db.QueryRowContext(ctx, getApiKeyByIDQuery, id, tenantID).Scan)
+}
+
+// Update replaces a key's name and grant.
+//
+// The scopes go through the same encodeScopes as Create, so an unknown value
+// is dropped and an empty grant becomes the least-privilege default here too —
+// the storage layer is the single place that decides what a stored grant may
+// contain.
+func (s *apiKeyStore) Update(
+	ctx context.Context, id string, tenantID string, name string, scopes []entities.Scope,
+) error {
+	db, err := s.getDB()
+	if err != nil {
+		return err
+	}
+
+	encoded, err := encodeScopes(scopes)
+	if err != nil {
+		return err
+	}
+
+	res, err := db.ExecContext(ctx, updateApiKeyQuery, name, encoded, time.Now(), id, tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Unlike UpdateStatus, this one reports a miss. Changing what a key may do
+	// and being told nothing when the id was wrong leaves an administrator
+	// believing a grant was narrowed when it was not.
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return repositories.ErrApiKeyNotFound
+	}
+	return nil
 }
 
 func (s *apiKeyStore) UpdateStatus(ctx context.Context, id string, tenantID string, isEnabled bool) error {
