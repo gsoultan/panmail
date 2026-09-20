@@ -16,6 +16,25 @@ export interface SnippetValues {
 
 export const PLACEHOLDER_KEY = 'YOUR_API_KEY';
 export const PLACEHOLDER_PROVIDER = 'YOUR_PROVIDER_ID';
+
+/**
+ * The errand the snippets show when the form is empty.
+ *
+ * A shipping notification rather than "sender" mailing "recipient": the snippet
+ * is the first thing an integrator copies, and a concrete errand makes the
+ * shape of a real send obvious at a glance -- which address is the business,
+ * which is the customer, what a subject actually looks like.
+ *
+ * The domain stays example.com deliberately. RFC 2606 reserves it, so a snippet
+ * pasted into a terminal before the addresses have been edited cannot deliver
+ * mail to a domain somebody owns.
+ *
+ * Defined once and imported by every snippet builder and by the send form,
+ * which each carried their own copy of the old pair and could drift apart.
+ */
+export const EXAMPLE_FROM = 'orders@example.com';
+export const EXAMPLE_TO = 'customer@example.com';
+export const EXAMPLE_SUBJECT = 'Your order #10492 has shipped';
 export const PLACEHOLDER_HOST = 'YOUR_PANMAIL_HOST';
 
 // Every generator interpolates form values — free text a user typed — into
@@ -82,11 +101,11 @@ export function jsArray(values: string[]): string {
 export function resolved(values: SnippetValues) {
   return {
     providerId: values.providerId || PLACEHOLDER_PROVIDER,
-    from: values.from || 'sender@example.com',
-    to: values.to?.length ? values.to : ['recipient@example.com'],
+    from: values.from || EXAMPLE_FROM,
+    to: values.to?.length ? values.to : [EXAMPLE_TO],
     cc: values.cc ?? [],
     bcc: values.bcc ?? [],
-    subject: values.subject || '(no subject)',
+    subject: values.subject || EXAMPLE_SUBJECT,
     bodyHtml: values.bodyHtml ?? '',
     bodyText: values.bodyText ?? '',
   };

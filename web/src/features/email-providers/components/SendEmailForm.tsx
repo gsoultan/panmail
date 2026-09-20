@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TextInput, Textarea, TagsInput, Button, Stack, Group, Select, Text, JsonInput, Tabs, Paper, rem, ThemeIcon, Code, ActionIcon, CopyButton, Tooltip, SimpleGrid, Badge, FileButton, Box, ScrollArea, Alert } from '@mantine/core';
 import { settingsService } from '../../../services/settings';
+import { EXAMPLE_FROM, EXAMPLE_TO } from '../../settings/components/smtp/snippets/types';
 import { describeConnection } from '../../settings/components/smtp/smtpConnection';
 import { buildSmtpSnippet } from '../../settings/components/smtp/smtpSnippet';
 import {
@@ -272,8 +273,8 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     const values = form.values;
     const data: any = {
       providerId: values.providerId || 'YOUR_PROVIDER_ID',
-      from: values.from || 'sender@example.com',
-      to: values.to.length > 0 ? values.to : ['recipient@example.com'],
+      from: values.from || EXAMPLE_FROM,
+      to: values.to.length > 0 ? values.to : [EXAMPLE_TO],
     };
 
     if (values.cc && values.cc.length > 0) {
@@ -388,7 +389,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                     />
                     <TextInput
                       label="From Email"
-                      placeholder="sender@example.com"
+                      placeholder={EXAMPLE_FROM}
                       {...form.getInputProps('from')}
                       required
                     />

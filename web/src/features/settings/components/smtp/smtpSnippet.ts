@@ -1,4 +1,5 @@
 import type { SmtpConnection } from './smtpConnection';
+import { EXAMPLE_FROM, EXAMPLE_SUBJECT, EXAMPLE_TO } from './snippets/types';
 
 // What the send form holds, narrowed to the parts that survive a trip through
 // SMTP. Anything the protocol cannot carry is reported in `notes` rather than
@@ -70,8 +71,8 @@ export function buildSmtpSnippet(
   const port = connection.port || 587;
   const provider = values.providerId || PLACEHOLDER_PROVIDER;
 
-  const from = values.from || 'sender@example.com';
-  const to = values.to?.length ? values.to : ['recipient@example.com'];
+  const from = values.from || EXAMPLE_FROM;
+  const to = values.to?.length ? values.to : [EXAMPLE_TO];
   const cc = values.cc ?? [];
   const bcc = values.bcc ?? [];
 
@@ -80,7 +81,7 @@ export function buildSmtpSnippet(
 
   const isHtml = Boolean(values.bodyHtml?.trim());
   const body = isHtml ? values.bodyHtml : values.bodyText;
-  const subject = values.subject || '(no subject)';
+  const subject = values.subject || EXAMPLE_SUBJECT;
 
   const swaksLines = [
     `swaks --server ${host}:${port}`,
