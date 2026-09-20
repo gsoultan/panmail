@@ -61,6 +61,11 @@ type ProcessEventUsecase interface {
 	// Called during wiring; without it the usecase masks at the default level
 	// rather than showing everything.
 	SetRedactionSource(src RedactionSource)
+
+	// SetSuppressor installs where an address is suppressed when an event says
+	// it is finished. Called during wiring; without it a bounce is recorded
+	// but nothing stops the next send, which is the behaviour this replaced.
+	SetSuppressor(s Suppressor)
 }
 
 type WebhookTrigger interface {

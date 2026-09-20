@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -56,8 +57,9 @@ func (m *workerMockOutboxRepo) CountPending(ctx context.Context, tenantID string
 }
 
 type mockEmailUsecase struct {
-	err   error
-	delay time.Duration
+	err      error
+	delay    time.Duration
+	recorded []panmailv1.EmailEventType
 }
 
 func (m *mockEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *panmailv1.SendEmailRequest) (*panmailv1.SendEmailResponse, error) {
@@ -75,6 +77,7 @@ func (m *mockEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 }
 
 func (m *mockEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient, subject, errorMessage string, metadata map[string]any) error {
+	m.recorded = append(m.recorded, eventType)
 	return nil
 }
 
@@ -123,28 +126,29 @@ func TestQueueWorker_ProcessEmail(t *testing.T) {
 		lastError          error
 		expectedStatus     entities.OutboxStatus
 		expectedRetryCount int
-		expectSuppressed   bool
+		// expectedEvent is what the worker hands to the event pipeline. A hard
+		// bounce is suppressed there rather than here -- see below.
+		expectedEvent panmailv1.EmailEventType
 	}{
 		{
 			name:               "Soft Bounce - Should Retry",
 			lastError:          errors.New("421 4.3.0 Temporary failure"),
 			expectedStatus:     entities.OutboxStatusDeferred,
 			expectedRetryCount: 1,
-			expectSuppressed:   false,
+			expectedEvent:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED,
 		},
 		{
 			name:               "Hard Bounce - Should Fail and Suppress",
 			lastError:          errors.New("550 5.1.1 User unknown"),
 			expectedStatus:     entities.OutboxStatusFailed,
 			expectedRetryCount: 1,
-			expectSuppressed:   true,
+			expectedEvent:      panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE,
 		},
 		{
 			name:               "Success - Should Delete",
 			lastError:          nil,
 			expectedStatus:     "", // N/A, deleted
 			expectedRetryCount: 0,
-			expectSuppressed:   false,
 		},
 	}
 
@@ -191,10 +195,21 @@ func TestQueueWorker_ProcessEmail(t *testing.T) {
 				t.Errorf("expected retry count %d, got %d", tc.expectedRetryCount, outboxRepo.lastUpdate.RetryCount)
 			}
 
-			if tc.expectSuppressed {
-				if len(suppressionUsecase.suppressedEmails) == 0 {
-					t.Error("expected recipient to be suppressed")
+			if tc.expectedEvent != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED {
+				if !slices.Contains(emailUsecase.recorded, tc.expectedEvent) {
+					t.Errorf("recorded %v, want it to include %v", emailUsecase.recorded, tc.expectedEvent)
 				}
+			}
+
+			// Suppression moved to RecordEvent, so that a bounce reported by an
+			// ESP webhook or an inbound DSN suppresses the address too, not
+			// only one seen by this worker. What is left here is the
+			// unsubscribe an SMTP error can carry, which no other path
+			// produces -- so a hard bounce must no longer suppress from here,
+			// or every address would be added twice.
+			if len(suppressionUsecase.suppressedEmails) != 0 {
+				t.Errorf("worker suppressed %v directly; that belongs to the event pipeline now",
+					suppressionUsecase.suppressedEmails)
 			}
 		})
 	}

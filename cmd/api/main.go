@@ -513,6 +513,11 @@ func main() {
 	// level the settings page currently says. Read through the provider so a
 	// change reaches every instance on its next refresh rather than at restart.
 	processEventUsecase.SetRedactionSource(settingsProvider)
+	// A hard bounce or a spam complaint suppresses the address wherever it
+	// arrives from -- an ESP webhook, an SMTP failure, or a DSN that came back
+	// as inbound mail. Without this the event is recorded and the next send
+	// goes out anyway, which is how a sender reputation erodes quietly.
+	processEventUsecase.SetSuppressor(manageSuppressionsUsecase)
 	eventService := eventservices.NewEventService(processEventUsecase)
 	webhookHandler := eventhttp.NewWebhookHandler(processEventUsecase, providerRepo)
 
