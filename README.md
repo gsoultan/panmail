@@ -88,7 +88,7 @@ Panmail follows a clean, layered architecture:
 
 ### Prerequisites
 
-- Go 1.27.0 (the version `go.mod` pins)
+- Go 1.27.1 (the version `go.mod` pins)
 - Bun (for frontend builds)
 - Buf (for gRPC generation)
 - PostgreSQL or SQLite
