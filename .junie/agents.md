@@ -5,7 +5,7 @@ This document provides project-specific information and development standards fo
 ## 🚀 Environment & Workflow
 
 ### Environment Setup
-- **Go Version**: Developed and tested with **Go 1.26.3**.
+- **Go Version**: Developed and tested with **Go 1.27.1**, the version `go.mod` pins.
 - **Protobuf Tooling**: **Buf** (required for gRPC code generation).
 - **Frontend Tooling**: Latest **Bun** (required for builds), **Vite 8**, and **TypeScript**.
 - **Pathing**: If `go` is not available in the default `PATH` on macOS, it is typically located at `/opt/homebrew/bin/go`.
