@@ -101,8 +101,11 @@ type CreateEmailProviderRequest struct {
 	AllowedDomains []string                            `protobuf:"bytes,10,rep,name=allowed_domains,json=allowedDomains,proto3" json:"allowed_domains,omitempty"`
 	// Secret used to verify this provider's delivery webhooks. Write-only.
 	WebhookSecret string `protobuf:"bytes,11,opt,name=webhook_secret,json=webhookSecret,proto3" json:"webhook_secret,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Per-provider send ceiling. Zero is unlimited.
+	SendRatePerMinute int32 `protobuf:"varint,16,opt,name=send_rate_per_minute,json=sendRatePerMinute,proto3" json:"send_rate_per_minute,omitempty"`
+	SendBurst         int32 `protobuf:"varint,17,opt,name=send_burst,json=sendBurst,proto3" json:"send_burst,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *CreateEmailProviderRequest) Reset() {
@@ -231,6 +234,20 @@ func (x *CreateEmailProviderRequest) GetWebhookSecret() string {
 		return x.WebhookSecret
 	}
 	return ""
+}
+
+func (x *CreateEmailProviderRequest) GetSendRatePerMinute() int32 {
+	if x != nil {
+		return x.SendRatePerMinute
+	}
+	return 0
+}
+
+func (x *CreateEmailProviderRequest) GetSendBurst() int32 {
+	if x != nil {
+		return x.SendBurst
+	}
+	return 0
 }
 
 type isCreateEmailProviderRequest_Config interface {
@@ -549,8 +566,13 @@ type UpdateEmailProviderRequest struct {
 	// Secret used to verify this provider's delivery webhooks. Write-only.
 	// Leave empty to keep the currently stored value.
 	WebhookSecret string `protobuf:"bytes,11,opt,name=webhook_secret,json=webhookSecret,proto3" json:"webhook_secret,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Per-provider send ceiling. Unlike webhook_secret, zero here means
+	// unlimited rather than "keep what is stored" -- the value is readable, so
+	// a client round-trips it and an explicit zero is how a ceiling is removed.
+	SendRatePerMinute int32 `protobuf:"varint,16,opt,name=send_rate_per_minute,json=sendRatePerMinute,proto3" json:"send_rate_per_minute,omitempty"`
+	SendBurst         int32 `protobuf:"varint,17,opt,name=send_burst,json=sendBurst,proto3" json:"send_burst,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *UpdateEmailProviderRequest) Reset() {
@@ -679,6 +701,20 @@ func (x *UpdateEmailProviderRequest) GetWebhookSecret() string {
 		return x.WebhookSecret
 	}
 	return ""
+}
+
+func (x *UpdateEmailProviderRequest) GetSendRatePerMinute() int32 {
+	if x != nil {
+		return x.SendRatePerMinute
+	}
+	return 0
+}
+
+func (x *UpdateEmailProviderRequest) GetSendBurst() int32 {
+	if x != nil {
+		return x.SendBurst
+	}
+	return 0
 }
 
 type isUpdateEmailProviderRequest_Config interface {
@@ -1247,7 +1283,7 @@ var File_panmail_v1_email_provider_service_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\n" +
 	"'panmail/v1/email_provider_service.proto\x12\n" +
-	"panmail.v1\x1a\x1epanmail/v1/provider_type.proto\x1a\x1fpanmail/v1/email_provider.proto\"\x98\x04\n" +
+	"panmail.v1\x1a\x1epanmail/v1/provider_type.proto\x1a\x1fpanmail/v1/email_provider.proto\"\xe8\x04\n" +
 	"\x1aCreateEmailProviderRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12,\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x18.panmail.v1.ProviderTypeR\x04type\x12,\n" +
@@ -1260,7 +1296,10 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\amailgun\x18\x0f \x01(\v2\x19.panmail.v1.MailgunConfigH\x00R\amailgun\x12'\n" +
 	"\x0fallowed_domains\x18\n" +
 	" \x03(\tR\x0eallowedDomains\x12%\n" +
-	"\x0ewebhook_secret\x18\v \x01(\tR\rwebhookSecretB\b\n" +
+	"\x0ewebhook_secret\x18\v \x01(\tR\rwebhookSecret\x12/\n" +
+	"\x14send_rate_per_minute\x18\x10 \x01(\x05R\x11sendRatePerMinute\x12\x1d\n" +
+	"\n" +
+	"send_burst\x18\x11 \x01(\x05R\tsendBurstB\b\n" +
 	"\x06config\"T\n" +
 	"\x1bCreateEmailProviderResponse\x125\n" +
 	"\bprovider\x18\x01 \x01(\v2\x19.panmail.v1.EmailProviderR\bprovider\")\n" +
@@ -1276,7 +1315,7 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\x04type\x18\x04 \x01(\x0e2\x18.panmail.v1.ProviderTypeR\x04type\"}\n" +
 	"\x1aListEmailProvidersResponse\x127\n" +
 	"\tproviders\x18\x01 \x03(\v2\x19.panmail.v1.EmailProviderR\tproviders\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xfa\x03\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xca\x04\n" +
 	"\x1aUpdateEmailProviderRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -1289,7 +1328,10 @@ const file_panmail_v1_email_provider_service_proto_rawDesc = "" +
 	"\amailgun\x18\x0f \x01(\v2\x19.panmail.v1.MailgunConfigH\x00R\amailgun\x12'\n" +
 	"\x0fallowed_domains\x18\n" +
 	" \x03(\tR\x0eallowedDomains\x12%\n" +
-	"\x0ewebhook_secret\x18\v \x01(\tR\rwebhookSecretB\b\n" +
+	"\x0ewebhook_secret\x18\v \x01(\tR\rwebhookSecret\x12/\n" +
+	"\x14send_rate_per_minute\x18\x10 \x01(\x05R\x11sendRatePerMinute\x12\x1d\n" +
+	"\n" +
+	"send_burst\x18\x11 \x01(\x05R\tsendBurstB\b\n" +
 	"\x06config\"T\n" +
 	"\x1bUpdateEmailProviderResponse\x125\n" +
 	"\bprovider\x18\x01 \x01(\v2\x19.panmail.v1.EmailProviderR\bprovider\",\n" +

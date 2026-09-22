@@ -55,6 +55,8 @@ export const emailProviderService = {
       // Verifies the delivery events this provider posts back. Empty means
       // none is configured, and the handler then refuses every event.
       webhookSecret: values.webhookSecret ?? '',
+      sendRatePerMinute: Number(values.sendRatePerMinute) || 0,
+      sendBurst: Number(values.sendBurst) || 0,
     });
     return res.provider;
   },
@@ -68,6 +70,10 @@ export const emailProviderService = {
       // rather than clearing it, which is what lets the form show a blank
       // field for a value it is never allowed to read back.
       webhookSecret: values.webhookSecret ?? '',
+      // Always sent, unlike the secret: the value is readable, so the form
+      // round-trips it, and an explicit zero is how a ceiling is removed.
+      sendRatePerMinute: Number(values.sendRatePerMinute) || 0,
+      sendBurst: Number(values.sendBurst) || 0,
     });
     return res.provider;
   },

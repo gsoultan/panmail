@@ -45,6 +45,16 @@ type EmailProvider struct {
 	// base64 ECDSA public key, Mailgun's HTTP webhook signing key, or a shared
 	// secret for the generic HMAC format. Write-only; never returned.
 	WebhookSecret string `protobuf:"bytes,15,opt,name=webhook_secret,json=webhookSecret,proto3" json:"webhook_secret,omitempty"`
+	// Ceiling on how fast this provider may be sent through, independent of the
+	// tenant's own. Zero is unlimited for both, and zero is the default.
+	//
+	// Unlike webhook_secret these are returned on read: an operator has to see a
+	// limit in order to change it, and a rate is configuration rather than a
+	// credential.
+	SendRatePerMinute int32 `protobuf:"varint,20,opt,name=send_rate_per_minute,json=sendRatePerMinute,proto3" json:"send_rate_per_minute,omitempty"`
+	// Deliveries allowed at once before the rate binds. Zero falls back to one
+	// minute's worth.
+	SendBurst     int32 `protobuf:"varint,21,opt,name=send_burst,json=sendBurst,proto3" json:"send_burst,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -203,6 +213,20 @@ func (x *EmailProvider) GetWebhookSecret() string {
 		return x.WebhookSecret
 	}
 	return ""
+}
+
+func (x *EmailProvider) GetSendRatePerMinute() int32 {
+	if x != nil {
+		return x.SendRatePerMinute
+	}
+	return 0
+}
+
+func (x *EmailProvider) GetSendBurst() int32 {
+	if x != nil {
+		return x.SendBurst
+	}
+	return 0
 }
 
 type isEmailProvider_Config interface {
@@ -940,7 +964,7 @@ var File_panmail_v1_email_provider_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\n" +
 	"\x1fpanmail/v1/email_provider.proto\x12\n" +
-	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1epanmail/v1/provider_type.proto\"\xb2\x05\n" +
+	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1epanmail/v1/provider_type.proto\"\x82\x06\n" +
 	"\rEmailProvider\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -959,7 +983,10 @@ const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"updateTime\x12\x1b\n" +
 	"\ttenant_id\x18\r \x01(\tR\btenantId\x12'\n" +
 	"\x0fallowed_domains\x18\x0e \x03(\tR\x0eallowedDomains\x12%\n" +
-	"\x0ewebhook_secret\x18\x0f \x01(\tR\rwebhookSecretB\b\n" +
+	"\x0ewebhook_secret\x18\x0f \x01(\tR\rwebhookSecret\x12/\n" +
+	"\x14send_rate_per_minute\x18\x14 \x01(\x05R\x11sendRatePerMinute\x12\x1d\n" +
+	"\n" +
+	"send_burst\x18\x15 \x01(\x05R\tsendBurstB\b\n" +
 	"\x06config\"\x84\x02\n" +
 	"\n" +
 	"SmtpConfig\x12\x12\n" +

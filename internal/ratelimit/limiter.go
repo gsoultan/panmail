@@ -112,7 +112,106 @@ func (l *Limiter) Allow(tenantID string, limit Limit, cost int) (allowed bool, r
 	now := l.now()
 	b := l.bucketFor(tenantID, limit, now)
 
-	// Refill for the time that has passed, capped at the bucket's size.
+	d := assess(b, cost, now)
+	d.apply(b)
+	return d.allowed, d.retryAfter
+}
+
+// Request is one bucket a send must pay, for AllowAll.
+type Request struct {
+	// Key identifies the bucket. A tenant id, or a tenant and provider id
+	// joined, so one tenant's providers do not share an allowance.
+	Key   string
+	Limit Limit
+}
+
+// AllowAll charges several buckets as one decision: every bucket pays, or none
+// does.
+//
+// Charging them in sequence instead would leak. A send that the tenant's
+// allowance admits but a provider's refuses would already have spent a tenant
+// token, so a caller retrying against a saturated provider would drain the
+// tenant's ceiling on messages that were never accepted — the limiter
+// punishing a tenant for a refusal it made itself.
+//
+// retryAfter is the longest of the refusing buckets': that is when the send
+// could next satisfy all of them, and telling a caller the shortest would
+// invite an immediate second refusal.
+func (l *Limiter) AllowAll(reqs []Request, cost int) (allowed bool, retryAfter time.Duration) {
+	if cost <= 0 {
+		cost = 1
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := l.now()
+
+	type pending struct {
+		b *bucket
+		d decision
+	}
+
+	// Decide first, mutate second. Refilling is time-based and safe to do
+	// either way, but the oversized-cost case empties a bucket, and doing that
+	// before knowing whether a later bucket refuses would charge a send that
+	// never went out.
+	decisions := make([]pending, 0, len(reqs))
+	allowed = true
+
+	for _, req := range reqs {
+		if req.Limit.Unlimited() || req.Key == "" {
+			continue
+		}
+		b := l.bucketFor(req.Key, req.Limit, now)
+		d := assess(b, cost, now)
+		if !d.allowed {
+			allowed = false
+			if d.retryAfter > retryAfter {
+				retryAfter = d.retryAfter
+			}
+		}
+		decisions = append(decisions, pending{b: b, d: d})
+	}
+
+	if !allowed {
+		return false, retryAfter
+	}
+
+	for _, p := range decisions {
+		p.d.apply(p.b)
+	}
+	return true, 0
+}
+
+// decision is what a bucket would do about a cost, before it does it.
+type decision struct {
+	allowed    bool
+	retryAfter time.Duration
+	// spend is the token count to deduct when applied. Ignored if empty.
+	spend float64
+	// empty marks the oversized-cost case, which zeroes the bucket rather
+	// than deducting from it.
+	empty bool
+}
+
+func (d decision) apply(b *bucket) {
+	if !d.allowed {
+		return
+	}
+	if d.empty {
+		b.tokens = 0
+		return
+	}
+	b.tokens -= d.spend
+}
+
+// assess refills a bucket for elapsed time and reports what it would do about
+// cost, without spending anything. Callers hold the lock.
+//
+// The refill is applied here rather than deferred: it reflects time that has
+// passed, not a charge, so it is correct whether or not the send proceeds.
+func assess(b *bucket, cost int, now time.Time) decision {
 	elapsed := now.Sub(b.refilled).Seconds()
 	if elapsed > 0 {
 		b.tokens = minFloat(b.capacity, b.tokens+elapsed*b.perSec)
@@ -126,17 +225,15 @@ func (l *Limiter) Allow(tenantID string, limit Limit, cost int) (allowed bool, r
 	// would block forever. Let it through rather than wedge the queue on one
 	// oversized message, and let the ceiling apply to what follows.
 	if want > b.capacity {
-		b.tokens = 0
-		return true, 0
+		return decision{allowed: true, empty: true}
 	}
 
 	if b.tokens >= want {
-		b.tokens -= want
-		return true, 0
+		return decision{allowed: true, spend: want}
 	}
 
 	shortfall := want - b.tokens
-	return false, time.Duration(shortfall / b.perSec * float64(time.Second))
+	return decision{retryAfter: time.Duration(shortfall / b.perSec * float64(time.Second))}
 }
 
 // bucketFor returns the tenant's bucket, creating or re-rating it as needed.
