@@ -20,6 +20,14 @@ type EmailProvider struct {
 	// Encrypted at rest and never returned by the API.
 	WebhookSecret string
 
+	// SendRatePerMinute and SendBurst cap how fast this provider may be sent
+	// through, independently of the tenant's own ceiling. Zero is unlimited
+	// for both, and zero is the default: an ESP account on a trial plan and a
+	// warmed-up dedicated IP tolerate very different rates, and the tenant
+	// ceiling cannot tell them apart.
+	SendRatePerMinute int32
+	SendBurst         int32
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

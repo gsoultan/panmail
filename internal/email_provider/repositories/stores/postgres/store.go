@@ -72,7 +72,7 @@ func (s *store) Create(ctx context.Context, p *entities.EmailProvider) error {
 
 	_, err = db.ExecContext(ctx, createProviderQuery,
 		p.ID, p.TenantID, p.Name, p.Type, config, string(allowedDomainsJSON), secret,
-		p.CreatedAt, p.UpdatedAt)
+		p.SendRatePerMinute, p.SendBurst, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
@@ -160,7 +160,8 @@ func (s *store) Update(ctx context.Context, p *entities.EmailProvider) error {
 	allowedDomainsJSON, _ := json.Marshal(p.AllowedDomains)
 
 	_, err = db.ExecContext(ctx, updateProviderQuery,
-		p.TenantID, p.ID, p.Name, config, string(allowedDomainsJSON), secret, p.UpdatedAt)
+		p.TenantID, p.ID, p.Name, config, string(allowedDomainsJSON), secret,
+		p.SendRatePerMinute, p.SendBurst, p.UpdatedAt)
 	return err
 }
 
@@ -196,7 +197,7 @@ func (s *store) scanProvider(scan func(...any) error) (*entities.EmailProvider, 
 	var webhookSecret sql.NullString
 
 	if err := scan(&p.ID, &p.TenantID, &p.Name, &p.Type, &config, &allowedDomainsJSON,
-		&webhookSecret, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		&webhookSecret, &p.SendRatePerMinute, &p.SendBurst, &p.CreatedAt, &p.UpdatedAt); err != nil {
 		return nil, err
 	}
 

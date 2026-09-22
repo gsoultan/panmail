@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	"github.com/gsoultan/panmail/internal/ratelimit"
 	tenantEntities "github.com/gsoultan/panmail/internal/tenant/entities"
 	"github.com/gsoultan/panmail/pkg/cache"
@@ -59,27 +60,79 @@ func recipientCount(to, cc, bcc []string) int {
 // through. Failing open is deliberate: the limiter protects a shared sending
 // reputation, and a database hiccup that silently stopped all outbound mail
 // would be a far worse outage than briefly missing a ceiling.
-func (u *sendEmailUsecase) checkSendRate(ctx context.Context, tenantID string, cost int) error {
+func (u *sendEmailUsecase) checkSendRate(
+	ctx context.Context, tenantID string, provider *providerEntities.EmailProvider, cost int,
+) error {
 	if u.limiter == nil || u.sendLimits == nil {
 		return nil
 	}
 
 	limit, err := u.sendLimits.SendLimitFor(ctx, tenantID)
-	if err != nil || limit.Unlimited() {
+	if err != nil {
+		return nil
+	}
+
+	providerLimit := providerSendLimit(provider)
+
+	if limit.Unlimited() && providerLimit.Unlimited() {
 		return nil
 	}
 
 	// Depth before rate: a queue that is hours deep should be refused even in
 	// a quiet second when a token happens to be available, because accepting
 	// makes the wait longer for everything already waiting.
-	if err := u.checkBacklog(ctx, tenantID, limit); err != nil {
-		return err
+	//
+	// Measured against the tenant's ceiling only. The backlog is the tenant's
+	// outbox, shared by every provider, so a per-provider rate says nothing
+	// about how deep it is.
+	if !limit.Unlimited() {
+		if err := u.checkBacklog(ctx, tenantID, limit); err != nil {
+			return err
+		}
 	}
 
-	if allowed, retryAfter := u.limiter.Allow(tenantID, limit, cost); !allowed {
+	// One decision across both buckets. Charging them in sequence would spend
+	// a tenant token on a send the provider then refused, so a caller
+	// hammering a saturated provider would drain the tenant's ceiling on
+	// messages that never went out.
+	reqs := []ratelimit.Request{{Key: tenantID, Limit: limit}}
+	if !providerLimit.Unlimited() && provider != nil {
+		reqs = append(reqs, ratelimit.Request{
+			Key:   providerBucketKey(tenantID, provider.ID),
+			Limit: providerLimit,
+		})
+	}
+
+	if allowed, retryAfter := u.limiter.AllowAll(reqs, cost); !allowed {
 		return &RateLimitedError{TenantID: tenantID, RetryAfter: retryAfter}
 	}
 	return nil
+}
+
+// providerBucketKey scopes a provider's bucket to its tenant.
+//
+// The provider id is already unique, so the tenant is not needed to tell two
+// providers apart. It is here so the key cannot collide with the tenant's own
+// bucket, which is keyed by a bare tenant id -- and a provider id is a UUID
+// while a tenant id is too, so without a separator a crafted id could name
+// someone else's bucket.
+func providerBucketKey(tenantID, providerID string) string {
+	return tenantID + "|provider|" + providerID
+}
+
+// providerSendLimit reads the ceiling off the provider already loaded for this
+// send.
+//
+// No lookup and no cache, unlike the tenant's: the send path has resolved the
+// provider row by the time the rate is charged, so reading two fields off it
+// costs nothing. A nil provider is unlimited rather than refused -- the
+// limiter must not be what decides a send with no provider, and the send path
+// rejects that earlier and for better reasons.
+func providerSendLimit(p *providerEntities.EmailProvider) ratelimit.Limit {
+	if p == nil {
+		return ratelimit.Limit{}
+	}
+	return ratelimit.Limit{PerMinute: int(p.SendRatePerMinute), Burst: int(p.SendBurst)}
 }
 
 // TenantLookup is the slice of tenant management this needs.

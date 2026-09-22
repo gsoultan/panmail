@@ -314,3 +314,137 @@ func TestConcurrentCallersDoNotExceedTheAllowance(t *testing.T) {
 		t.Errorf("granted %d sends, want exactly the burst of 100", granted)
 	}
 }
+
+// The leak AllowAll exists to prevent: charging buckets in sequence means a
+// send the tenant admits but the provider refuses has already spent a tenant
+// token, so retrying against a saturated provider drains the tenant's ceiling
+// on messages that were never accepted.
+func TestAllowAllChargesNothingWhenOneBucketRefuses(t *testing.T) {
+	l := New()
+
+	roomy := Limit{PerMinute: 600, Burst: 600}
+	tight := Limit{PerMinute: 60, Burst: 1}
+
+	// Exhaust the provider bucket.
+	if ok, _ := l.AllowAll([]Request{{Key: "prov", Limit: tight}}, 1); !ok {
+		t.Fatal("the first send should have been admitted")
+	}
+
+	// Now a send that needs both is refused by the provider.
+	if ok, _ := l.AllowAll([]Request{
+		{Key: "tenant", Limit: roomy},
+		{Key: "prov", Limit: tight},
+	}, 1); ok {
+		t.Fatal("a send was admitted while the provider bucket was empty")
+	}
+
+	// The tenant must not have paid for it. Its bucket started at 600 and has
+	// been asked for one token once, which was refused — so 600 sends must
+	// still fit.
+	for i := range 600 {
+		if ok, _ := l.AllowAll([]Request{{Key: "tenant", Limit: roomy}}, 1); !ok {
+			t.Fatalf("tenant bucket was drained by a refused send: failed at %d of 600", i+1)
+		}
+	}
+}
+
+func TestAllowAllChargesEveryBucketWhenAllAllow(t *testing.T) {
+	l := New()
+	limit := Limit{PerMinute: 60, Burst: 2}
+
+	for i := range 2 {
+		if ok, _ := l.AllowAll([]Request{
+			{Key: "tenant", Limit: limit},
+			{Key: "prov", Limit: limit},
+		}, 1); !ok {
+			t.Fatalf("send %d should have been admitted", i+1)
+		}
+	}
+
+	// Both buckets held two tokens, so the third is refused.
+	if ok, _ := l.AllowAll([]Request{
+		{Key: "tenant", Limit: limit},
+		{Key: "prov", Limit: limit},
+	}, 1); ok {
+		t.Fatal("a third send was admitted from a bucket of two")
+	}
+}
+
+// Telling a caller the shortest wait invites an immediate second refusal.
+func TestAllowAllReportsTheLongestWait(t *testing.T) {
+	l := New()
+
+	fast := Limit{PerMinute: 600, Burst: 1} // refills in 100ms
+	slow := Limit{PerMinute: 6, Burst: 1}   // refills in 10s
+
+	if ok, _ := l.AllowAll([]Request{{Key: "fast", Limit: fast}, {Key: "slow", Limit: slow}}, 1); !ok {
+		t.Fatal("the first send should have been admitted")
+	}
+
+	ok, retryAfter := l.AllowAll([]Request{
+		{Key: "fast", Limit: fast},
+		{Key: "slow", Limit: slow},
+	}, 1)
+	if ok {
+		t.Fatal("a second send was admitted with both buckets empty")
+	}
+	if retryAfter < 5*time.Second {
+		t.Fatalf("retryAfter = %v, want the slow bucket's wait, not the fast one's", retryAfter)
+	}
+}
+
+// An unlimited bucket takes part in the decision without constraining it, so a
+// provider with no ceiling does not stop the tenant's from being charged.
+func TestAllowAllSkipsUnlimitedAndEmptyKeys(t *testing.T) {
+	l := New()
+	limit := Limit{PerMinute: 60, Burst: 1}
+
+	ok, _ := l.AllowAll([]Request{
+		{Key: "tenant", Limit: limit},
+		{Key: "prov", Limit: Limit{}}, // unlimited
+		{Key: "", Limit: limit},       // no bucket to charge
+	}, 1)
+	if !ok {
+		t.Fatal("the send should have been admitted")
+	}
+
+	// The tenant bucket was charged, so the next is refused.
+	if ok, _ := l.AllowAll([]Request{{Key: "tenant", Limit: limit}}, 1); ok {
+		t.Fatal("the tenant bucket was not charged")
+	}
+
+	// The unlimited provider never got a bucket.
+	if l.Tracked() != 1 {
+		t.Errorf("tracked %d buckets, want 1", l.Tracked())
+	}
+}
+
+// A cost bigger than a bucket is let through rather than wedging the queue,
+// and that path empties the bucket. It must not empty it when a different
+// bucket refuses the send, because then a message that never went out has
+// spent someone's whole allowance.
+func TestAllowAllDoesNotEmptyABucketForARefusedSend(t *testing.T) {
+	l := New()
+
+	// Capacity 1, so a cost of 3 is oversized here and takes the let-through
+	// path that zeroes the bucket.
+	small := Limit{PerMinute: 60, Burst: 1}
+	// Capacity 10, so a cost of 3 is an ordinary charge it can refuse.
+	other := Limit{PerMinute: 60, Burst: 10}
+
+	if ok, _ := l.AllowAll([]Request{{Key: "other", Limit: other}}, 10); !ok {
+		t.Fatal("the draining send should have been admitted")
+	}
+
+	if ok, _ := l.AllowAll([]Request{
+		{Key: "small", Limit: small},
+		{Key: "other", Limit: other},
+	}, 3); ok {
+		t.Fatal("a send was admitted while the other bucket was empty")
+	}
+
+	// "small" must still hold its token.
+	if ok, _ := l.AllowAll([]Request{{Key: "small", Limit: small}}, 1); !ok {
+		t.Fatal("the refused send emptied a bucket it never should have charged")
+	}
+}

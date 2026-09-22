@@ -28,6 +28,17 @@ message EmailProvider {
   // base64 ECDSA public key, Mailgun's HTTP webhook signing key, or a shared
   // secret for the generic HMAC format. Write-only; never returned.
   string webhook_secret = 15;
+
+  // Ceiling on how fast this provider may be sent through, independent of the
+  // tenant's own. Zero is unlimited for both, and zero is the default.
+  //
+  // Unlike webhook_secret these are returned on read: an operator has to see a
+  // limit in order to change it, and a rate is configuration rather than a
+  // credential.
+  int32 send_rate_per_minute = 20;
+  // Deliveries allowed at once before the rate binds. Zero falls back to one
+  // minute's worth.
+  int32 send_burst = 21;
 }
 
 message SmtpConfig {

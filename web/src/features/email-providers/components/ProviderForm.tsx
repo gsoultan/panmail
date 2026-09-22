@@ -44,6 +44,10 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
     // Write-only. Reads redact it, so this is blank on every open and an
     // empty value on submit means "keep what is stored".
     webhookSecret: '',
+    // Readable, unlike the secret, so these seed from the saved provider.
+    // Zero is unlimited and zero is the default.
+    sendRatePerMinute: 0,
+    sendBurst: 0,
   };
 
   const getInitialValues = () => {
@@ -71,6 +75,8 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
       // Never seeded from the provider: reads redact it, so the only honest
       // starting value is blank.
       webhookSecret: '',
+      sendRatePerMinute: initialValues.sendRatePerMinute ?? 0,
+      sendBurst: initialValues.sendBurst ?? 0,
     };
   };
 
@@ -298,6 +304,33 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
             <Stack gap="md">
               <Text fw={700} size="sm" tt="uppercase" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))">Server Configuration</Text>
               {renderConfigFields()}
+              <Divider my="xs" />
+              <Title order={5}>Send rate</Title>
+              <Text size="sm" c="dimmed">
+                A ceiling for this provider on its own, charged alongside the tenant&rsquo;s.
+                A trial ESP account and a warmed-up dedicated IP tolerate very different
+                rates, and the tenant ceiling cannot tell them apart. Leave at 0 for no
+                limit.
+              </Text>
+              <Group grow>
+                <NumberInput
+                  label="Deliveries per minute"
+                  description="0 means no limit for this provider."
+                  min={0}
+                  size="md"
+                  radius="md"
+                  {...form.getInputProps('sendRatePerMinute')}
+                />
+                <NumberInput
+                  label="Burst"
+                  description="How many may go at once before the rate binds. 0 uses one minute's worth."
+                  min={0}
+                  size="md"
+                  radius="md"
+                  {...form.getInputProps('sendBurst')}
+                />
+              </Group>
+
               <InboundWebhookSection
                 providerType={form.values.type}
                 providerId={initialValues?.id}

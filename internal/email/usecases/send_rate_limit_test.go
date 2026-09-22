@@ -9,6 +9,7 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email/repositories/stores"
+	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	"github.com/gsoultan/panmail/internal/ratelimit"
 	tenantEntities "github.com/gsoultan/panmail/internal/tenant/entities"
 	"github.com/gsoultan/panmail/pkg/cache"
@@ -51,7 +52,7 @@ func TestATenantWithNoLimitIsNotChecked(t *testing.T) {
 	u := usecaseWithLimit(limits)
 
 	for i := range 100 {
-		if err := u.checkSendRate(context.Background(), rateTenant, 10); err != nil {
+		if err := u.checkSendRate(context.Background(), rateTenant, nil, 10); err != nil {
 			t.Fatalf("send %d refused for an unlimited tenant: %v", i, err)
 		}
 	}
@@ -62,12 +63,12 @@ func TestSendingOverTheRateIsRefusedWithARetryTime(t *testing.T) {
 	u := usecaseWithLimit(limits)
 
 	for i := range 5 {
-		if err := u.checkSendRate(context.Background(), rateTenant, 1); err != nil {
+		if err := u.checkSendRate(context.Background(), rateTenant, nil, 1); err != nil {
 			t.Fatalf("send %d refused inside the burst: %v", i+1, err)
 		}
 	}
 
-	err := u.checkSendRate(context.Background(), rateTenant, 1)
+	err := u.checkSendRate(context.Background(), rateTenant, nil, 1)
 	var limited *RateLimitedError
 	if !errors.As(err, &limited) {
 		t.Fatalf("error = %v, want a RateLimitedError so callers can tell it apart", err)
@@ -85,10 +86,10 @@ func TestOneLargeSendCanExhaustTheAllowance(t *testing.T) {
 	u := usecaseWithLimit(limits)
 
 	// Eight recipients in one call, so only two remain.
-	if err := u.checkSendRate(context.Background(), rateTenant, 8); err != nil {
+	if err := u.checkSendRate(context.Background(), rateTenant, nil, 8); err != nil {
 		t.Fatalf("eight recipients should fit a burst of ten: %v", err)
 	}
-	if err := u.checkSendRate(context.Background(), rateTenant, 5); err == nil {
+	if err := u.checkSendRate(context.Background(), rateTenant, nil, 5); err == nil {
 		t.Error("five more should not fit in the two that remain")
 	}
 }
@@ -101,7 +102,7 @@ func TestAnUnreadableLimitFailsOpen(t *testing.T) {
 	u := usecaseWithLimit(limits)
 
 	for range 100 {
-		if err := u.checkSendRate(context.Background(), rateTenant, 1); err != nil {
+		if err := u.checkSendRate(context.Background(), rateTenant, nil, 1); err != nil {
 			t.Fatalf("a send was refused because the limit could not be read: %v", err)
 		}
 	}
@@ -112,7 +113,7 @@ func TestAnUnreadableLimitFailsOpen(t *testing.T) {
 func TestNoLimiterMeansNoLimiting(t *testing.T) {
 	u := &sendEmailUsecase{}
 	for range 100 {
-		if err := u.checkSendRate(context.Background(), rateTenant, 100); err != nil {
+		if err := u.checkSendRate(context.Background(), rateTenant, nil, 100); err != nil {
 			t.Fatalf("unconfigured limiter refused a send: %v", err)
 		}
 	}
@@ -123,12 +124,12 @@ func TestTenantsAreChargedSeparately(t *testing.T) {
 	u := usecaseWithLimit(limits)
 
 	for range 3 {
-		u.checkSendRate(context.Background(), "noisy", 1)
+		u.checkSendRate(context.Background(), "noisy", nil, 1)
 	}
-	if err := u.checkSendRate(context.Background(), "noisy", 1); err == nil {
+	if err := u.checkSendRate(context.Background(), "noisy", nil, 1); err == nil {
 		t.Fatal("the noisy tenant should be capped")
 	}
-	if err := u.checkSendRate(context.Background(), "quiet", 1); err != nil {
+	if err := u.checkSendRate(context.Background(), "quiet", nil, 1); err != nil {
 		t.Errorf("a second tenant was refused because of the first: %v", err)
 	}
 }
@@ -239,7 +240,7 @@ func usecaseWithBacklog(limit ratelimit.Limit, outbox stores.OutboxRepository) *
 func TestABacklogWithinTheCeilingIsAccepted(t *testing.T) {
 	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 60, Burst: 10}, &stubOutbox{pending: 3599})
 
-	if err := u.checkSendRate(context.Background(), rateTenant, 1); err != nil {
+	if err := u.checkSendRate(context.Background(), rateTenant, nil, 1); err != nil {
 		t.Errorf("refused just inside the ceiling: %v", err)
 	}
 }
@@ -247,7 +248,7 @@ func TestABacklogWithinTheCeilingIsAccepted(t *testing.T) {
 func TestABacklogAtTheCeilingIsRefused(t *testing.T) {
 	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 60, Burst: 10}, &stubOutbox{pending: 3600})
 
-	err := u.checkSendRate(context.Background(), rateTenant, 1)
+	err := u.checkSendRate(context.Background(), rateTenant, nil, 1)
 	var full *BacklogFullError
 	if !errors.As(err, &full) {
 		t.Fatalf("error = %v, want a BacklogFullError", err)
@@ -263,7 +264,7 @@ func TestABacklogAtTheCeilingIsRefused(t *testing.T) {
 func TestDepthIsRefusedEvenWithTokensAvailable(t *testing.T) {
 	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 60, Burst: 100}, &stubOutbox{pending: 10_000})
 
-	err := u.checkSendRate(context.Background(), rateTenant, 1)
+	err := u.checkSendRate(context.Background(), rateTenant, nil, 1)
 	var full *BacklogFullError
 	if !errors.As(err, &full) {
 		t.Errorf("error = %v, want the depth refusal rather than a rate refusal", err)
@@ -277,7 +278,7 @@ func TestAnUnlimitedTenantHasNoBacklogCeiling(t *testing.T) {
 	outbox := &stubOutbox{pending: 1_000_000}
 	u := usecaseWithBacklog(ratelimit.Limit{}, outbox)
 
-	if err := u.checkSendRate(context.Background(), rateTenant, 1); err != nil {
+	if err := u.checkSendRate(context.Background(), rateTenant, nil, 1); err != nil {
 		t.Errorf("an unlimited tenant was refused on depth: %v", err)
 	}
 	if outbox.counts != 0 {
@@ -290,7 +291,7 @@ func TestAnUncountableBacklogFailsOpen(t *testing.T) {
 
 	// Same reasoning as an unreadable limit: a database hiccup must not
 	// silently stop outbound mail.
-	if err := u.checkSendRate(context.Background(), rateTenant, 1); err != nil {
+	if err := u.checkSendRate(context.Background(), rateTenant, nil, 1); err != nil {
 		t.Errorf("a send was refused because the queue could not be counted: %v", err)
 	}
 }
@@ -300,11 +301,145 @@ func TestTheBacklogCountIsNotQueriedPerSend(t *testing.T) {
 	u := usecaseWithBacklog(ratelimit.Limit{PerMinute: 6000, Burst: 1000}, outbox)
 
 	for range 100 {
-		u.checkSendRate(context.Background(), rateTenant, 1)
+		u.checkSendRate(context.Background(), rateTenant, nil, 1)
 	}
 	// A COUNT on the hot path of every send would be the most expensive thing
 	// in the send.
 	if outbox.counts != 1 {
 		t.Errorf("counted the queue %d times for 100 sends, want 1", outbox.counts)
+	}
+}
+
+func providerWithRate(id string, perMinute, burst int32) *providerEntities.EmailProvider {
+	return &providerEntities.EmailProvider{
+		ID:                id,
+		SendRatePerMinute: perMinute,
+		SendBurst:         burst,
+	}
+}
+
+// The tenant ceiling cannot tell an ESP trial account apart from a warmed-up
+// dedicated IP. A provider ceiling refuses before the tenant's would.
+func TestAProviderCeilingBindsBeforeTheTenantsDoes(t *testing.T) {
+	limits := &stubLimits{limit: ratelimit.Limit{PerMinute: 600, Burst: 600}}
+	u := usecaseWithLimit(limits)
+	p := providerWithRate("prov-1", 60, 2)
+
+	for i := range 2 {
+		if err := u.checkSendRate(context.Background(), rateTenant, p, 1); err != nil {
+			t.Fatalf("send %d refused: %v", i+1, err)
+		}
+	}
+
+	err := u.checkSendRate(context.Background(), rateTenant, p, 1)
+	if err == nil {
+		t.Fatal("a third send was admitted through a provider bucket of two")
+	}
+	var limited *RateLimitedError
+	if !errors.As(err, &limited) {
+		t.Fatalf("error = %v, want a RateLimitedError", err)
+	}
+}
+
+// The leak the single decision exists to prevent. A send the tenant admits and
+// the provider refuses must not spend a tenant token, or retrying against a
+// saturated provider drains the tenant's ceiling on mail that never went out.
+func TestAProviderRefusalDoesNotSpendTheTenantsAllowance(t *testing.T) {
+	limits := &stubLimits{limit: ratelimit.Limit{PerMinute: 600, Burst: 10}}
+	u := usecaseWithLimit(limits)
+	tight := providerWithRate("prov-1", 60, 1)
+
+	if err := u.checkSendRate(context.Background(), rateTenant, tight, 1); err != nil {
+		t.Fatalf("the first send should have been admitted: %v", err)
+	}
+
+	// Five refusals against the saturated provider.
+	for range 5 {
+		if err := u.checkSendRate(context.Background(), rateTenant, tight, 1); err == nil {
+			t.Fatal("a send was admitted through an empty provider bucket")
+		}
+	}
+
+	// The tenant held 10 and has paid for exactly one admitted send, so nine
+	// more must fit through a provider with no ceiling of its own.
+	unlimited := providerWithRate("prov-2", 0, 0)
+	for i := range 9 {
+		if err := u.checkSendRate(context.Background(), rateTenant, unlimited, 1); err != nil {
+			t.Fatalf("the refused sends drained the tenant bucket: failed at %d of 9: %v", i+1, err)
+		}
+	}
+}
+
+// A tenant's providers must not share an allowance, or one busy provider
+// throttles the rest.
+func TestProvidersDoNotShareABucket(t *testing.T) {
+	limits := &stubLimits{limit: ratelimit.Limit{PerMinute: 600, Burst: 600}}
+	u := usecaseWithLimit(limits)
+
+	first := providerWithRate("prov-1", 60, 1)
+	second := providerWithRate("prov-2", 60, 1)
+
+	if err := u.checkSendRate(context.Background(), rateTenant, first, 1); err != nil {
+		t.Fatalf("first provider refused: %v", err)
+	}
+	if err := u.checkSendRate(context.Background(), rateTenant, first, 1); err == nil {
+		t.Fatal("the first provider's bucket was not charged")
+	}
+	if err := u.checkSendRate(context.Background(), rateTenant, second, 1); err != nil {
+		t.Fatalf("the second provider was throttled by the first: %v", err)
+	}
+}
+
+// Two tenants configuring the same provider id must not share a bucket.
+func TestAProviderBucketIsScopedToItsTenant(t *testing.T) {
+	if providerBucketKey("tenant-a", "p1") == providerBucketKey("tenant-b", "p1") {
+		t.Fatal("two tenants share a provider bucket")
+	}
+	// And the key cannot collide with a tenant's own bucket.
+	if providerBucketKey("tenant-a", "p1") == "tenant-a" {
+		t.Fatal("a provider bucket collides with its tenant's bucket")
+	}
+}
+
+// Zero is unlimited and zero is the default, so switching this on must not
+// start refusing mail for providers already configured.
+func TestAProviderWithNoCeilingIsNotCharged(t *testing.T) {
+	limits := &stubLimits{limit: ratelimit.Limit{}}
+	u := usecaseWithLimit(limits)
+	p := providerWithRate("prov-1", 0, 0)
+
+	for i := range 50 {
+		if err := u.checkSendRate(context.Background(), rateTenant, p, 10); err != nil {
+			t.Fatalf("send %d refused for an unlimited provider and tenant: %v", i+1, err)
+		}
+	}
+	if u.limiter.Tracked() != 0 {
+		t.Errorf("tracked %d buckets, want none", u.limiter.Tracked())
+	}
+}
+
+// A provider ceiling alone is enough to engage the limiter: the tenant having
+// none must not skip the check entirely.
+func TestAProviderCeilingAppliesWithNoTenantCeiling(t *testing.T) {
+	limits := &stubLimits{limit: ratelimit.Limit{}}
+	u := usecaseWithLimit(limits)
+	p := providerWithRate("prov-1", 60, 1)
+
+	if err := u.checkSendRate(context.Background(), rateTenant, p, 1); err != nil {
+		t.Fatalf("the first send should have been admitted: %v", err)
+	}
+	if err := u.checkSendRate(context.Background(), rateTenant, p, 1); err == nil {
+		t.Fatal("the provider ceiling was ignored because the tenant had none")
+	}
+}
+
+// A nil provider must not be what refuses a send: the send path rejects a
+// missing provider earlier and for better reasons.
+func TestANilProviderIsUnlimitedRatherThanRefused(t *testing.T) {
+	limits := &stubLimits{limit: ratelimit.Limit{}}
+	u := usecaseWithLimit(limits)
+
+	if err := u.checkSendRate(context.Background(), rateTenant, nil, 1); err != nil {
+		t.Fatalf("a nil provider was refused: %v", err)
 	}
 }

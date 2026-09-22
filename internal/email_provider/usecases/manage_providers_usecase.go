@@ -54,8 +54,12 @@ func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, re
 		Config:         configBytes,
 		AllowedDomains: req.AllowedDomains,
 		WebhookSecret:  req.WebhookSecret,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+
+		SendRatePerMinute: req.SendRatePerMinute,
+		SendBurst:         req.SendBurst,
+
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	if err := u.repo.Create(ctx, p); err != nil {
@@ -146,6 +150,13 @@ func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, re
 	p.AllowedDomains = req.AllowedDomains
 	p.UpdatedAt = time.Now()
 
+	// Applied unconditionally, unlike the secret below. The rate is readable,
+	// so a client round-trips it, and an explicit zero is how a ceiling is
+	// removed -- treating zero as "keep" would make a limit impossible to
+	// clear through the API.
+	p.SendRatePerMinute = req.SendRatePerMinute
+	p.SendBurst = req.SendBurst
+
 	// An empty secret means "leave it alone": the API never returns the stored
 	// value, so a client editing a provider has nothing to send back.
 	if req.WebhookSecret != "" {
@@ -234,8 +245,14 @@ func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.
 		Name:           p.Name,
 		Type:           p.Type,
 		AllowedDomains: p.AllowedDomains,
-		CreateTime:     timestamppb.New(p.CreatedAt),
-		UpdateTime:     timestamppb.New(p.UpdatedAt),
+
+		// Configuration, not a credential: an operator has to see a ceiling in
+		// order to change it.
+		SendRatePerMinute: p.SendRatePerMinute,
+		SendBurst:         p.SendBurst,
+
+		CreateTime: timestamppb.New(p.CreatedAt),
+		UpdateTime: timestamppb.New(p.UpdatedAt),
 	}
 
 	switch p.Type {

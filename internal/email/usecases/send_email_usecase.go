@@ -243,7 +243,7 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	// the admission rate. The gap is a backlog drained after an outage, which
 	// leaves faster than it arrived; pacing that needs a limit on queue depth,
 	// which is a different measurement from this one.
-	if err := u.checkSendRate(ctx, tenantID, recipientCount(req.To, req.Cc, req.Bcc)); err != nil {
+	if err := u.checkSendRate(ctx, tenantID, provider, recipientCount(req.To, req.Cc, req.Bcc)); err != nil {
 		return nil, err
 	}
 

@@ -37,6 +37,10 @@ message CreateEmailProviderRequest {
   repeated string allowed_domains = 10;
   // Secret used to verify this provider's delivery webhooks. Write-only.
   string webhook_secret = 11;
+
+  // Per-provider send ceiling. Zero is unlimited.
+  int32 send_rate_per_minute = 16;
+  int32 send_burst = 17;
 }
 
 message CreateEmailProviderResponse {
@@ -79,6 +83,12 @@ message UpdateEmailProviderRequest {
   // Secret used to verify this provider's delivery webhooks. Write-only.
   // Leave empty to keep the currently stored value.
   string webhook_secret = 11;
+
+  // Per-provider send ceiling. Unlike webhook_secret, zero here means
+  // unlimited rather than "keep what is stored" -- the value is readable, so
+  // a client round-trips it and an explicit zero is how a ceiling is removed.
+  int32 send_rate_per_minute = 16;
+  int32 send_burst = 17;
 }
 
 message UpdateEmailProviderResponse {
