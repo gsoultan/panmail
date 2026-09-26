@@ -538,6 +538,19 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 
 	slog.Info("starting actual delivery", "id", messageID, "recipient_count", len(recipients), "provider_count", len(providers))
 
+	// Take this delivery's turn at the ceilings before sending anything, and
+	// only for the recipients still to go: a retry of a partly delivered
+	// message is not charged again for the ones already done.
+	pending := 0
+	for _, recipient := range recipients {
+		if !deliveredMap[recipient] {
+			pending++
+		}
+	}
+	if err := u.paceDelivery(ctx, tenantID, firstSender(providers), pending); err != nil {
+		return nil, err
+	}
+
 	// We iterate through recipients to support individual tracking and status
 	var deliveryErrors []error
 	for _, recipient := range recipients {

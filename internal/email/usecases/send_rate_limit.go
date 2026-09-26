@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	"github.com/gsoultan/panmail/internal/ratelimit"
 	tenantEntities "github.com/gsoultan/panmail/internal/tenant/entities"
@@ -259,6 +260,122 @@ func (u *sendEmailUsecase) checkBacklog(ctx context.Context, tenantID string, li
 
 	if pending >= ceiling {
 		return &BacklogFullError{TenantID: tenantID, Pending: pending, Ceiling: ceiling}
+	}
+	return nil
+}
+
+// maxPaceWait is the longest a delivery will sleep for its turn.
+//
+// It has to sit well inside perEmailTimeout, because the wait and the SMTP
+// exchange share one context: a message that slept its whole budget would time
+// out mid-send. Anything longer is not slept through but rescheduled, which
+// also keeps a worker goroutine from being parked for minutes behind a slow
+// provider while other tenants' mail waits.
+const maxPaceWait = 5 * time.Second
+
+// DeliveryPacedError says a queued message is not being sent yet because
+// sending it now would exceed a ceiling. It is a scheduling answer, not a
+// failure: the outbox worker reschedules the message for RetryAfter without
+// counting an attempt, so a large backlog drains at the ceiling instead of
+// exhausting its retries.
+type DeliveryPacedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *DeliveryPacedError) Error() string {
+	return fmt.Sprintf("delivery paced; next slot in %s", e.RetryAfter.Round(time.Millisecond))
+}
+
+// egressBucketKey names the buckets charged at delivery.
+//
+// Deliberately not the admission keys. SendEmail runs twice per message --
+// once to admit, once to deliver -- and charging one bucket on both sides is
+// the double-billing that once halved every configured rate. Separate buckets
+// each see every message once: in steady state they move together, and in a
+// backlog drain, when nothing is being admitted, only this one binds.
+func egressBucketKey(tenantID, providerID string) string {
+	if providerID == "" {
+		return tenantID + "|egress"
+	}
+	return tenantID + "|egress|provider|" + providerID
+}
+
+// paceDelivery takes this delivery's turn at the tenant's and the provider's
+// ceilings, waiting for it if the wait is short.
+//
+// Without it the outbox drained at the worker's full concurrency. Both
+// ceilings were charged at admission only, so after an outage a backlog left
+// as fast as the worker could push it -- straight through the per-provider
+// ceiling an operator set to protect that provider, which is the case that
+// ceiling is most for.
+//
+// The cost is the recipients still to be sent, so a retry of a partly
+// delivered message is not charged again for the ones already done.
+func (u *sendEmailUsecase) paceDelivery(
+	ctx context.Context, tenantID string, provider *providerEntities.EmailProvider, pending int,
+) error {
+	if u.limiter == nil || pending <= 0 {
+		return nil
+	}
+
+	var reqs []ratelimit.Request
+	if u.sendLimits != nil {
+		// A lookup that fails paces nothing, for the same reason admission
+		// fails open: a database hiccup must not stop the queue.
+		if limit, err := u.sendLimits.SendLimitFor(ctx, tenantID); err == nil {
+			reqs = append(reqs, ratelimit.Request{Key: egressBucketKey(tenantID, ""), Limit: limit})
+		}
+	}
+	if provider != nil {
+		reqs = append(reqs, ratelimit.Request{
+			Key:   egressBucketKey(tenantID, provider.ID),
+			Limit: providerSendLimit(provider),
+		})
+	}
+
+	res := u.limiter.ReserveAll(reqs, pending)
+	wait := res.Delay()
+	if wait == 0 {
+		return nil
+	}
+
+	// Too long to sleep through: give the slot back and be rescheduled for it.
+	// The reservation already queued this message behind everything ahead of
+	// it, so the time it is handed is its turn, and a batch of rescheduled
+	// messages comes back spread out rather than all at once.
+	if wait > maxPaceWait {
+		res.Cancel()
+		return &DeliveryPacedError{RetryAfter: wait}
+	}
+
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		// Shutdown or the send's own deadline. The slot is unused, so it goes
+		// back, and the message waits for the next pass rather than failing.
+		res.Cancel()
+		return &DeliveryPacedError{RetryAfter: wait}
+	}
+}
+
+// firstSender is the provider a delivery will try first, which is the one its
+// pace is charged to.
+//
+// provider_id is mandatory, so in practice the list holds exactly that
+// provider. It holds more only when the named one vanished while the message
+// was queued and doSend fell back to every sender the tenant has; charging the
+// first of those is an approximation, and an acceptable one for a path that
+// exists to rescue mail rather than to pace it. Receivers are skipped, as the
+// send loop skips them.
+func firstSender(providers []*providerEntities.EmailProvider) *providerEntities.EmailProvider {
+	for _, p := range providers {
+		if p.Type == panmailv1.ProviderType_PROVIDER_TYPE_IMAP || p.Type == panmailv1.ProviderType_PROVIDER_TYPE_POP3 {
+			continue
+		}
+		return p
 	}
 	return nil
 }

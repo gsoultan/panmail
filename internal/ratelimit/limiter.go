@@ -317,3 +317,120 @@ func minFloat(a, b float64) float64 {
 	}
 	return b
 }
+
+// Reservation is a claim on future tokens, made by ReserveAll.
+//
+// It exists for the delivery side, where the answer to "not yet" is not a
+// refusal but a time. A send is charged now and told how long until the tokens
+// it took would have been there; if that is short it waits and sends, and if
+// it is long it Cancels and the message is rescheduled for then.
+type Reservation struct {
+	l     *Limiter
+	delay time.Duration
+	held  []held
+}
+
+type held struct {
+	key string
+	// restore is what Cancel gives back: the cost for an ordinary charge, or
+	// the whole balance for the oversized case, which empties the bucket.
+	restore float64
+}
+
+// Delay is how long until every bucket the reservation drew on would have been
+// in credit. Zero means the tokens were there.
+func (r *Reservation) Delay() time.Duration {
+	if r == nil {
+		return 0
+	}
+	return r.delay
+}
+
+// Cancel returns the tokens a reservation took.
+//
+// Giving back exactly what was taken errs on the slow side, never the fast one:
+// reservations made after this one computed their delays with it counted, so
+// they stay scheduled a little later than they now need to be. That is a pace
+// slightly under the ceiling, which is the harmless direction for a limit that
+// protects someone else's quota.
+func (r *Reservation) Cancel() {
+	if r == nil || len(r.held) == 0 {
+		return
+	}
+	r.l.mu.Lock()
+	defer r.l.mu.Unlock()
+
+	for _, h := range r.held {
+		// Evicted since: there is no debt left to repay, and recreating the
+		// bucket here would hand out a fresh burst.
+		b, ok := r.l.buckets[h.key]
+		if !ok {
+			continue
+		}
+		b.tokens = minFloat(b.capacity, b.tokens+h.restore)
+	}
+	r.held = nil
+}
+
+// ReserveAll charges every bucket now, into debt if need be, and reports how
+// long until all of them would be in credit.
+//
+// It is AllowAll's counterpart for a caller that can wait. Taking the tokens
+// immediately is what makes concurrent callers queue: the tenth to reserve
+// finds nine charges ahead of it and is told a delay nine tokens long, so a
+// batch drawing on one bucket is spread across time at the bucket's rate
+// rather than all told to come back at the same moment.
+func (l *Limiter) ReserveAll(reqs []Request, cost int) *Reservation {
+	if cost <= 0 {
+		cost = 1
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := l.now()
+	r := &Reservation{l: l}
+	want := float64(cost)
+
+	for _, req := range reqs {
+		if req.Limit.Unlimited() || req.Key == "" {
+			continue
+		}
+		b := l.bucketFor(req.Key, req.Limit, now)
+
+		elapsed := now.Sub(b.refilled).Seconds()
+		if elapsed > 0 {
+			b.tokens = minFloat(b.capacity, b.tokens+elapsed*b.perSec)
+			b.refilled = now
+		}
+		b.seen = now
+
+		// The same rule as Allow: a cost the bucket could never hold goes
+		// through rather than wedging the queue, and empties the bucket so the
+		// ceiling applies to what follows. Waiting for it would be waiting
+		// forever.
+		if want > b.capacity {
+			r.held = append(r.held, held{key: req.Key, restore: maxFloat(b.tokens, 0)})
+			b.tokens = 0
+			continue
+		}
+
+		b.tokens -= want
+		r.held = append(r.held, held{key: req.Key, restore: want})
+
+		if b.tokens < 0 {
+			wait := time.Duration(-b.tokens / b.perSec * float64(time.Second))
+			if wait > r.delay {
+				r.delay = wait
+			}
+		}
+	}
+	return r
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
