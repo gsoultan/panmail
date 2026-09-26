@@ -3,6 +3,7 @@ package usecases
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"strings"
 
 	"github.com/gsoultan/gsmail"
@@ -96,10 +97,7 @@ func resolveRecipients(lists ...[]string) (resolvedRecipients, error) {
 
 			// What NormalizeAddress would have returned, without paying for a
 			// second parse of an address already parsed above.
-			normal := key
-			if parsed != nil {
-				normal = strings.ToLower(strings.TrimSpace(parsed.Address))
-			}
+			normal := keyFromParsed(key, parsed)
 
 			resolved.addresses = append(resolved.addresses, key)
 			resolved.normalised = append(resolved.normalised, normal)
@@ -107,4 +105,31 @@ func resolveRecipients(lists ...[]string) (resolvedRecipients, error) {
 	}
 
 	return resolved, nil
+}
+
+// keyFromParsed is the form a recipient is suppressed under, from an address
+// already parsed. Admission and delivery both go through it -- delivery via
+// suppressionKeyOf -- so the two cannot disagree about whether an address is
+// on the list.
+func keyFromParsed(lowered string, parsed *mail.Address) string {
+	if parsed != nil {
+		return strings.ToLower(strings.TrimSpace(parsed.Address))
+	}
+	return lowered
+}
+
+// suppressionKeyOf is keyFromParsed for an address that has not been parsed.
+//
+// Delivery needs it because its recipient list comes from uniqueRecipients,
+// which only lowercases: "Bob <Bob@Example.com>" stays "bob <bob@example.com>",
+// and a suppression is stored under "bob@example.com". Looking that up as-is
+// would never match a display-name recipient, so a suppression recorded for
+// one would be silently ignored at delivery.
+func suppressionKeyOf(address string) string {
+	lowered := strings.ToLower(strings.TrimSpace(address))
+	parsed, err := gsmail.ParseEmailAddress(address)
+	if err != nil {
+		parsed = nil
+	}
+	return keyFromParsed(lowered, parsed)
 }
