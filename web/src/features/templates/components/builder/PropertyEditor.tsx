@@ -65,12 +65,21 @@ const loadCustomVars = (): string[] => {
   }
 };
 
-export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange, designVariables = [] }) => {
+// A default of `[]` in the parameter list is a new array on every render, which
+// would defeat the memo below for every caller that omits the prop.
+const NO_DESIGN_VARIABLES: string[] = [];
+
+export const PropertyEditor: React.FC<PropertyEditorProps> = ({ block, onChange, designVariables = NO_DESIGN_VARIABLES }) => {
   const [varAssistantOpened, setVarAssistantOpened] = useState(false);
   const [userVars, setUserVars] = useState<string[]>(loadCustomVars);
   const [newVar, setNewVar] = useState('');
 
-  const customVars = [...BUILTIN_VARS, ...userVars.filter((v) => !BUILTIN_VARS.includes(v))];
+  // Memoised on its real input. Built inline it was a new array every render,
+  // so the suggestions memo below recomputed every render too.
+  const customVars = useMemo(
+    () => [...BUILTIN_VARS, ...userVars.filter((v) => !BUILTIN_VARS.includes(v))],
+    [userVars],
+  );
 
   // The autocomplete offers bare names; the assistant list above is braced.
   const suggestions = useMemo(() => {

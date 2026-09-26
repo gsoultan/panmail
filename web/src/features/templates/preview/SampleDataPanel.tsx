@@ -132,16 +132,3 @@ export const SampleDataPanel: React.FC<SampleDataPanelProps> = ({ html, value, o
     </Popover>
   );
 };
-
-/** Parses the panel's text into data the renderer can use, or undefined. */
-export const parseSampleData = (json: string): PreviewData | undefined => {
-  if (!json.trim()) return undefined;
-  try {
-    const data = JSON.parse(json);
-    if (data && typeof data === 'object' && !Array.isArray(data)) return data as PreviewData;
-  } catch {
-    // An unparseable draft simply falls back to placeholders rather than
-    // blanking the preview while it is being typed.
-  }
-  return undefined;
-};
