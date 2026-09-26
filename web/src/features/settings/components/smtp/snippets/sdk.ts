@@ -2,15 +2,15 @@ import {
   type SnippetValues,
   goString,
   goStringSlice,
-  jsArray,
-  jsString,
   phpArray,
   phpString,
   resolved,
 } from './types';
 
-// The SDK snippets: one call through the published client for each language,
-// from panmail-sdk.
+// The SDK snippets: one call through the published client for each language
+// panmail-sdk ships in, which is Go and PHP. It never shipped for Node --
+// the package was written and withdrawn unpublished -- so Node, like Java, is
+// served by the API and SMTP tabs, which need no package at all.
 //
 // The reason to prefer these over the API tab is the part nobody gets right
 // from the endpoint alone — the gateway answers *both* capacity refusals with
@@ -121,48 +121,6 @@ ${fields.join('\n')}
     // Not queued either, but retrying on a timer makes the wait longer for
     // everything already queued. Slow down, or stop.
     throw new RuntimeException('the queue is too deep; slow down rather than retry');
-}
-`;
-}
-
-/** Node, using the @gsoultan/panmail-sdk npm package. */
-export function nodeSdkSnippet(values: SnippetValues, baseUrl: string): string {
-  const v = resolved(values);
-
-  const fields = [
-    `    providerId: '${jsString(v.providerId)}',`,
-    `    from: '${jsString(v.from)}',`,
-    `    to: ${jsArray(v.to)},`,
-  ];
-  if (v.cc.length > 0) fields.push(`    cc: ${jsArray(v.cc)},`);
-  if (v.bcc.length > 0) fields.push(`    bcc: ${jsArray(v.bcc)},`);
-  fields.push(`    subject: '${jsString(v.subject)}',`);
-  if (v.bodyHtml) fields.push(`    html: '${jsString(v.bodyHtml)}',`);
-  if (v.bodyText) fields.push(`    text: '${jsString(v.bodyText)}',`);
-  if (values.templateId) fields.push(`    templateId: '${jsString(values.templateId)}',`);
-
-  return `import { PanmailClient, BacklogFullError, RateLimitedError } from '@gsoultan/panmail-sdk';
-
-const client = new PanmailClient('${jsString(baseUrl)}', process.env.PANMAIL_API_KEY);
-
-try {
-  const result = await client.send({
-${fields.join('\n')}
-  });
-
-  // Queued, not delivered: delivery is reported later, keyed by this id.
-  console.log('queued', result.messageId);
-} catch (error) {
-  // Both capacity refusals mean the message was not queued. Only a rate limit
-  // is safe to repeat, and only after its delay.
-  if (error instanceof RateLimitedError) {
-    throw new Error(\`over the send rate, retry after \${error.retryAfter}s\`);
-  }
-  if (error instanceof BacklogFullError) {
-    // Retrying on a timer makes the wait longer for everything already queued.
-    throw new Error('the queue is too deep; slow down rather than retry');
-  }
-  throw error;
 }
 `;
 }
