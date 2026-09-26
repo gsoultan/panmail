@@ -75,16 +75,21 @@ export const SettingsPage: React.FC = () => {
     },
   });
 
+  // Depends on setValues rather than `form`: the adapter returns a fresh
+  // object every render, so depending on it would re-seed on every render and
+  // reset whatever the user is typing. setValues keeps its identity, which
+  // useAdaptedForm.test.tsx pins.
+  const { setValues } = form;
   React.useEffect(() => {
     if (settings) {
-      form.setValues({
+      setValues({
         baseUrl: settings.baseUrl || '',
         retryPattern: settings.retryPattern || [],
         contentRedaction: settings.contentRedaction || 2,
         ...retentionValues(settings),
       });
     }
-  }, [settings]);
+  }, [settings, setValues]);
 
   const mutation = useMutation({
     mutationFn: (values: typeof form.values) => settingsService.updateSettings(values as any),

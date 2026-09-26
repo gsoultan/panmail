@@ -415,3 +415,34 @@ describe('the Mantine-shaped surface', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * The adapter returns a fresh object every render, so an effect that depends on
+ * `form` re-runs every render — and one that writes values back then resets
+ * whatever the user is typing. Effects depend on the individual callbacks
+ * instead, which is only safe if those keep their identity.
+ *
+ * They do because TanStack creates its FormApi once, in useState, and each
+ * callback here is a useCallback over that instance. This pins it: if either
+ * stops being stable, every effect seeded this way starts clobbering input.
+ */
+describe('callback identity', () => {
+  test('setValues and setFieldValue survive a re-render', () => {
+    const { result, rerender } = renderHook(() => useAdaptedForm<Values>({ initialValues }));
+    const first = { setValues: result.current.setValues, setFieldValue: result.current.setFieldValue };
+
+    act(() => result.current.setFieldValue('name', 'changed'));
+    rerender();
+
+    expect(result.current.setValues).toBe(first.setValues);
+    expect(result.current.setFieldValue).toBe(first.setFieldValue);
+  });
+
+  // The thing that makes depending on `form` itself wrong.
+  test('the returned object does not', () => {
+    const { result, rerender } = renderHook(() => useAdaptedForm<Values>({ initialValues }));
+    const first = result.current;
+    rerender();
+    expect(result.current).not.toBe(first);
+  });
+});

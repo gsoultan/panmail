@@ -223,6 +223,7 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
   // list gets a new identity on every background refetch, and writing the
   // props back then would reset a provider the user had since picked.
   const seededRef = React.useRef<string | null>(null);
+  const { setFieldValue } = form;
   React.useEffect(() => {
     const tId = initialTemplateId || '';
     const pId = initialProviderId || '';
@@ -232,15 +233,17 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     if (seededRef.current === seed) return;
     seededRef.current = seed;
 
-    form.setFieldValue('templateId', tId);
-    form.setFieldValue('providerId', pId);
-    form.setFieldValue(
+    setFieldValue('templateId', tId);
+    setFieldValue('providerId', pId);
+    setFieldValue(
       'templateData',
       template ? JSON.stringify(extractVariables(template), null, 2) : '{}',
     );
-    // `form` is deliberately absent: the adapter returns a fresh object each
-    // render, so depending on it would reintroduce the loop this fixes.
-  }, [initialTemplateId, initialProviderId, templates]);
+    // Depends on setFieldValue rather than `form`: the adapter returns a fresh
+    // object each render, so depending on it would reintroduce the loop this
+    // fixes. setFieldValue keeps its identity, which useAdaptedForm.test.tsx
+    // pins, so listing it changes nothing about when this runs.
+  }, [initialTemplateId, initialProviderId, templates, setFieldValue]);
 
   const handleSubmit = (values: typeof form.values) => {
     const data: any = {
