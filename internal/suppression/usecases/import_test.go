@@ -259,13 +259,17 @@ func TestImportKeepsAGivenReasonAndSuppliesADefault(t *testing.T) {
 	}
 }
 
-// gsmail v0.9.1's NormalizeAddress does not return on an empty input, and
-// nothing validated before calling it. Any caller holding suppressions:write
-// could pin a core with `AddSuppression{email: ""}`, repeatedly.
+// An empty address used to be stored: one row per tenant with nothing in it,
+// occupying the UNIQUE(tenant_id, email) slot, matching no send, and reported
+// as success. Add and Remove now refuse it, and Check answers false without a
+// query.
 //
-// Every assertion here runs behind a deadline on purpose: a regression must
-// fail the suite rather than hang it for the package timeout.
-func TestAnEmptyAddressIsRefusedRatherThanSpun(t *testing.T) {
+// This test was first written, and named, on the belief that gsmail's
+// NormalizeAddress spun forever on an empty input. It does not -- that was a
+// goroutine dump misread on a saturated machine; see the correction on #57.
+// The deadlines cost nothing, so they stay: a regression still fails the suite
+// rather than hanging it.
+func TestAnEmptyAddressIsRefused(t *testing.T) {
 	within := func(t *testing.T, name string, fn func()) {
 		t.Helper()
 		done := make(chan struct{})
