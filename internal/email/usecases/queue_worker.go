@@ -270,6 +270,15 @@ func (w *queueWorker) handleFailure(ctx context.Context, e *entities.OutboxEmail
 		return
 	}
 
+	// A pass that failed for some recipients is judged recipient by recipient.
+	// Classifying it as a whole recorded one recipient's hard bounce against
+	// every co-recipient -- and suppressed them all.
+	var perRecipient *RecipientFailuresError
+	if errors.As(sendErr, &perRecipient) {
+		w.handleRecipientFailures(bookCtx, e, req, perRecipient)
+		return
+	}
+
 	slog.Warn("email delivery attempt failed", "id", e.ID, "error", sendErr)
 
 	e.RetryCount++
@@ -514,4 +523,78 @@ func (w *queueWorker) reschedulePaced(ctx context.Context, e *entities.OutboxEma
 
 	slog.Debug("email delivery paced", "id", e.ID, "next_attempt_at", e.NextRetryAt)
 	w.updateOutbox(ctx, e)
+}
+
+// handleRecipientFailures settles a delivery pass from each failed recipient's
+// own verdict.
+//
+// The send path has already recorded DELIVERED for the recipients that got the
+// message and DEFERRED for each failed attempt. What is left is the final word
+// for recipients that are finished, and whether the row stays for the rest.
+// Nothing here is recorded against a recipient that was delivered.
+func (w *queueWorker) handleRecipientFailures(
+	ctx context.Context, e *entities.OutboxEmail, req *panmailv1.SendEmailRequest, rf *RecipientFailuresError,
+) {
+	e.UpdatedAt = time.Now()
+	e.LastError = rf.Error()
+
+	for _, f := range rf.Permanent() {
+		w.recordRecipientFailure(ctx, e, req, f)
+		// A hard bounce or a complaint suppresses itself through RecordEvent.
+		// An unsubscribe carried in an SMTP reply does not -- RecordEvent leaves
+		// UNSUBSCRIBED to the unsubscribe handler -- so it is suppressed here, as
+		// the message-level path did, but for this recipient alone.
+		if f.Class.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSUBSCRIBED {
+			if _, err := w.suppressionUsecase.Add(ctx, e.TenantID, &panmailv1.AddSuppressionRequest{
+				Email:  f.Recipient,
+				Reason: fmt.Sprintf("Automatic suppression due to %s: %v", f.Class.Type.String(), f.Err),
+			}); err != nil {
+				slog.Error("failed to suppress recipient", "error", err, "recipient", f.Recipient, "id", e.ID)
+			}
+		}
+	}
+
+	retry := rf.Retryable()
+	if len(retry) == 0 {
+		// Everyone is finished. If this pass delivered to anyone the message did
+		// what it could, which is how a partial success has always ended; if it
+		// delivered to no one, it failed.
+		if rf.Delivered > 0 {
+			w.deleteOutbox(ctx, e.ID)
+			return
+		}
+		e.Status = entities.OutboxStatusFailed
+		w.updateOutbox(ctx, e)
+		return
+	}
+
+	// Some recipients are worth another attempt, so the row stays. The next
+	// pass skips everyone delivered or settled, so it goes to them alone.
+	e.RetryCount++
+	if delay, ok := nextRetryDelay(retry[0].Class, e.RetryCount, w.getRetryPattern(ctx, e.TenantID)); ok {
+		e.Status = entities.OutboxStatusDeferred
+		e.NextRetryAt = time.Now().Add(delay)
+		w.updateOutbox(ctx, e)
+		return
+	}
+
+	// Out of attempts: the recipients still failing get their final verdict,
+	// and only they.
+	for _, f := range retry {
+		w.recordRecipientFailure(ctx, e, req, f)
+	}
+	e.Status = entities.OutboxStatusFailed
+	w.updateOutbox(ctx, e)
+}
+
+// recordRecipientFailure records one recipient's verdict with that recipient's
+// own error, so a suppression reason or a webhook payload never carries a
+// co-recipient's diagnostic.
+func (w *queueWorker) recordRecipientFailure(
+	ctx context.Context, e *entities.OutboxEmail, req *panmailv1.SendEmailRequest, f RecipientFailure,
+) {
+	if err := w.emailUsecase.RecordEvent(ctx, e.TenantID, req.ProviderId, e.ID,
+		f.Class.Type, f.Recipient, req.Subject, f.Err.Error(), nil); err != nil {
+		slog.Error("failed to record recipient outcome", "error", err, "id", e.ID, "recipient", f.Recipient)
+	}
 }
