@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -246,4 +247,64 @@ func (m *workerMockOutboxRepo) Stats(context.Context) (int64, time.Time, error) 
 		}
 	}
 	return int64(len(m.emails)), oldest, nil
+}
+
+// A domain refusal read as retryable, so it went round the whole default
+// schedule -- eight retries over roughly two days -- failing identically each
+// time. A refusal that says it is permanent fails on the first attempt.
+func TestAPermanentRefusalIsNotRetried(t *testing.T) {
+	outboxRepo := &workerMockOutboxRepo{}
+	emailUsecase := &mockEmailUsecase{
+		err: &ProviderDomainRefusedError{Provider: "ESP", Domain: "someone-elses-bank.com"},
+	}
+	w := NewQueueWorker(outboxRepo, emailUsecase, &mockSuppressionUsecase{},
+		&mockTenantUsecase{}, time.Second).(*queueWorker)
+
+	req := panmailv1.SendEmailRequest{
+		To: []string{"victim@example.com"}, From: "ceo@someone-elses-bank.com",
+		Subject: "x", Body: "x",
+	}
+	reqBytes, _ := protojson.Marshal(&req)
+	outboxRepo.emails = append(outboxRepo.emails, &entities.OutboxEmail{
+		ID: "123", TenantID: "tenant1", Request: reqBytes,
+		Status: entities.OutboxStatusPending, NextRetryAt: time.Now(),
+	})
+
+	w.processPending(context.Background())
+
+	if outboxRepo.lastUpdate == nil {
+		t.Fatal("the outbox row was never updated")
+	}
+	if outboxRepo.lastUpdate.Status != entities.OutboxStatusFailed {
+		t.Fatalf("status = %s, want failed on the first attempt rather than deferred",
+			outboxRepo.lastUpdate.Status)
+	}
+	if outboxRepo.lastUpdate.RetryCount != 1 {
+		t.Errorf("retry count = %d, want 1 attempt", outboxRepo.lastUpdate.RetryCount)
+	}
+}
+
+// The marker is read from the error, not its text: wrapping it on the way up
+// must not quietly turn the retries back on.
+func TestAPermanentRefusalSurvivesWrapping(t *testing.T) {
+	outboxRepo := &workerMockOutboxRepo{}
+	emailUsecase := &mockEmailUsecase{
+		err: fmt.Errorf("delivery failed: %w",
+			&ProviderDomainRefusedError{Provider: "ESP", Domain: "example.com"}),
+	}
+	w := NewQueueWorker(outboxRepo, emailUsecase, &mockSuppressionUsecase{},
+		&mockTenantUsecase{}, time.Second).(*queueWorker)
+
+	req := panmailv1.SendEmailRequest{To: []string{"a@example.com"}, From: "b@example.com", Subject: "x", Body: "x"}
+	reqBytes, _ := protojson.Marshal(&req)
+	outboxRepo.emails = append(outboxRepo.emails, &entities.OutboxEmail{
+		ID: "124", TenantID: "tenant1", Request: reqBytes,
+		Status: entities.OutboxStatusPending, NextRetryAt: time.Now(),
+	})
+
+	w.processPending(context.Background())
+
+	if outboxRepo.lastUpdate == nil || outboxRepo.lastUpdate.Status != entities.OutboxStatusFailed {
+		t.Fatalf("a wrapped permanent refusal was retried: %+v", outboxRepo.lastUpdate)
+	}
 }

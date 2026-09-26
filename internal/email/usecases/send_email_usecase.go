@@ -229,6 +229,19 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 
 	// 2. Client mode (Async Queuing)
 
+	// Refuse a From domain the provider is not authorized for while the
+	// caller is still waiting. This used to be checked only at delivery, so a
+	// doomed send was answered 200, queued, and then failed in the worker
+	// where nobody was listening. Checked before the rate so a send that can
+	// never go out does not spend anyone's allowance.
+	domain, err := senderDomain(req.From)
+	if err != nil {
+		return nil, err
+	}
+	if !providerAllowsDomain(provider, domain) {
+		return nil, &ProviderDomainRefusedError{Provider: provider.Name, Domain: domain}
+	}
+
 	// The send rate is charged here and only here.
 	//
 	// SendEmail is called twice for every message — once by a client, which
@@ -248,12 +261,6 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	}
 
 	messageID := uuid.New().String()
-
-	// Extract domain from From address
-	fromParts := strings.Split(req.From, "@")
-	if len(fromParts) != 2 {
-		return nil, fmt.Errorf("invalid from address: %s", req.From)
-	}
 
 	// Check suppressions for every recipient, in one round trip.
 	//
@@ -429,12 +436,12 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		messageID = uuid.New().String()
 	}
 
-	// Extract domain from From address
-	fromParts := strings.Split(req.From, "@")
-	if len(fromParts) != 2 {
-		return nil, fmt.Errorf("invalid from address: %s", req.From)
+	// The same extractor admission used, so the two cannot disagree about
+	// what domain this send is from.
+	fromDomain, err := senderDomain(req.From)
+	if err != nil {
+		return nil, err
 	}
-	fromDomain := strings.ToLower(fromParts[1])
 
 	// The address headers every copy carries, as opposed to the single address
 	// each copy is delivered to. Bcc is absent by design: it is the one list
@@ -461,18 +468,12 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		}
 
 		if p != nil {
-			// Check if this provider is allowed to send for this domain
-			if len(p.AllowedDomains) > 0 {
-				allowed := false
-				for _, d := range p.AllowedDomains {
-					if strings.ToLower(d) == fromDomain {
-						allowed = true
-						break
-					}
-				}
-				if !allowed {
-					return nil, fmt.Errorf("provider %s is not authorized to send for domain %s", p.Name, fromDomain)
-				}
+			// Still checked here though admission checked it too: this is the
+			// authority, since AllowedDomains may have changed while the message
+			// was queued. The refusal is permanent, so the worker fails it once
+			// rather than retrying it for two days.
+			if !providerAllowsDomain(p, fromDomain) {
+				return nil, &ProviderDomainRefusedError{Provider: p.Name, Domain: fromDomain}
 			}
 			providers = append(providers, p)
 		}
