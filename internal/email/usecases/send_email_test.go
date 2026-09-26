@@ -621,9 +621,21 @@ func TestSendEmailUsecase_MultiRecipient_PartialFailure(t *testing.T) {
 	ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
 	_, err := u.SendEmail(ctx, testTenantID, req)
 
-	// Should NOT return error because some succeeded
-	if err != nil {
-		t.Fatalf("SendEmail failed but should have continued: %v", err)
+	// The pass still delivers to everyone it can -- the assertions below check
+	// that -- but it no longer reports success. It used to, because some
+	// recipients succeeded, and the worker then deleted the row with
+	// fail@example.com still on it: a transient failure that was never tried
+	// again, while its last event promised it would be. It now reports the
+	// failure for that recipient alone, retryable, so the row stays for it.
+	var perRecipient *RecipientFailuresError
+	if !errors.As(err, &perRecipient) {
+		t.Fatalf("error = %v, want a RecipientFailuresError for the recipient that failed", err)
+	}
+	if perRecipient.Delivered != 2 {
+		t.Errorf("delivered = %d, want the two that succeeded", perRecipient.Delivered)
+	}
+	if retry := perRecipient.Retryable(); len(retry) != 1 || retry[0].Recipient != "fail@example.com" {
+		t.Errorf("retryable = %+v, want only fail@example.com", retry)
 	}
 
 	// Verify events
