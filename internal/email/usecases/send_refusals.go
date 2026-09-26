@@ -66,3 +66,32 @@ func (e *TemplateRefusedError) Error() string {
 }
 
 func (e *TemplateRefusedError) Unwrap() error { return e.Err }
+
+// ProviderDomainRefusedError reports a send whose From domain the provider is
+// not authorized for.
+//
+// A decision, not a failure: the provider's AllowedDomains will answer the
+// same way until an operator edits them. It is refused at admission so the
+// caller hears it while waiting, and again at delivery, which remains the
+// authority because the configuration can change in between.
+type ProviderDomainRefusedError struct {
+	Provider string
+	Domain   string
+}
+
+func (e *ProviderDomainRefusedError) Error() string {
+	return fmt.Sprintf("provider %s is not authorized to send for domain %s", e.Provider, e.Domain)
+}
+
+func (e *ProviderDomainRefusedError) permanent() {}
+
+// permanentRefusal marks a refusal that retrying cannot change.
+//
+// The outbox worker classifies a failed send from its message, and it read this
+// one as retryable: a domain refusal went round the whole default schedule --
+// eight retries over roughly two days -- failing identically each time. A
+// refusal carrying this marker fails the first time instead. It is opt-in per
+// type, so nothing is made permanent by accident.
+type permanentRefusal interface {
+	permanent()
+}

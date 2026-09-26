@@ -64,6 +64,14 @@ func TestRefusalsThatAreDecisionsGetTheirOwnCode(t *testing.T) {
 			want: connect.CodeFailedPrecondition,
 		},
 		{
+			// Same reasoning as suppression: a well-formed request the caller
+			// may make, refused by configuration that will not change on its
+			// own.
+			name: "provider not authorized for the sender's domain",
+			err:  &usecases.ProviderDomainRefusedError{Provider: "ESP", Domain: "example.com"},
+			want: connect.CodeFailedPrecondition,
+		},
+		{
 			name: "provider does not exist",
 			err:  &usecases.ProviderNotFoundError{ProviderID: "nope"},
 			want: connect.CodeInvalidArgument,

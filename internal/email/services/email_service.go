@@ -66,6 +66,14 @@ func (s *emailService) SendEmail(ctx context.Context, req *connect.Request[panma
 			return nil, connect.NewError(connect.CodeFailedPrecondition, suppressed)
 		}
 
+		// Same reasoning as suppression: the request is well formed and the
+		// caller may make it, but the provider's AllowedDomains refuse it and
+		// will keep refusing until an operator changes them.
+		var wrongDomain *usecases.ProviderDomainRefusedError
+		if errors.As(err, &wrongDomain) {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, wrongDomain)
+		}
+
 		var noProvider *usecases.ProviderNotFoundError
 		if errors.As(err, &noProvider) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, noProvider)

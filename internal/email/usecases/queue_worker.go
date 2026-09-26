@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -265,6 +266,18 @@ func (w *queueWorker) handleFailure(ctx context.Context, e *entities.OutboxEmail
 	e.LastError = sendErr.Error()
 
 	classification := emailutil.ClassifyError(e.LastError)
+
+	// The classifier reads the message, and it cannot tell a refusal that will
+	// change from one that will not. A domain refusal read as retryable, so it
+	// went round the whole default schedule -- eight retries over roughly two
+	// days -- failing identically each time. A refusal that says it is
+	// permanent is taken at its word, from the error itself rather than its
+	// text, so rewording it cannot quietly turn the retries back on.
+	var permanent permanentRefusal
+	if errors.As(sendErr, &permanent) {
+		classification.Retryable = false
+	}
+
 	recipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
 	retryPattern := w.getRetryPattern(bookCtx, e.TenantID)
 
