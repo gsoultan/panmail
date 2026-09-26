@@ -448,3 +448,126 @@ func TestAllowAllDoesNotEmptyABucketForARefusedSend(t *testing.T) {
 		t.Fatal("the refused send emptied a bucket it never should have charged")
 	}
 }
+
+func reserveClock() (*Limiter, *time.Time) {
+	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+	l := NewWithClock(func() time.Time { return now })
+	return l, &now
+}
+
+// Within the burst there is nothing to wait for.
+func TestReserveAllIsImmediateWithinTheBurst(t *testing.T) {
+	l, _ := reserveClock()
+	limit := Limit{PerMinute: 60, Burst: 3}
+
+	for i := range 3 {
+		if d := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1).Delay(); d != 0 {
+			t.Fatalf("reservation %d delayed %v inside the burst", i+1, d)
+		}
+	}
+}
+
+// The property the delivery side depends on: concurrent callers are spread
+// across time at the bucket's rate, rather than all told to come back at once.
+// At 60 a minute a token is a second, so the queue is one second apart.
+func TestReserveAllSpacesCallersAtTheRate(t *testing.T) {
+	l, _ := reserveClock()
+	limit := Limit{PerMinute: 60, Burst: 1}
+
+	var delays []time.Duration
+	for range 4 {
+		delays = append(delays, l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1).Delay())
+	}
+
+	want := []time.Duration{0, time.Second, 2 * time.Second, 3 * time.Second}
+	for i := range want {
+		if delays[i] != want[i] {
+			t.Fatalf("delays = %v, want %v", delays, want)
+		}
+	}
+}
+
+// Cancelling gives the tokens back, so a rescheduled send does not hold a slot
+// it is not going to use.
+func TestCancelReturnsTheTokens(t *testing.T) {
+	l, _ := reserveClock()
+	limit := Limit{PerMinute: 60, Burst: 1}
+
+	first := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1)
+	second := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1)
+	if second.Delay() != time.Second {
+		t.Fatalf("second delay = %v, want 1s", second.Delay())
+	}
+	second.Cancel()
+
+	// With the second given back, the next caller queues behind the first
+	// only, not behind both.
+	if d := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1).Delay(); d != time.Second {
+		t.Fatalf("delay after cancel = %v, want 1s", d)
+	}
+	_ = first
+}
+
+// Giving back more than was taken would let a cancelled reservation mint a
+// burst.
+func TestCancelNeverRaisesABucketAboveItsCapacity(t *testing.T) {
+	l, now := reserveClock()
+	limit := Limit{PerMinute: 60, Burst: 2}
+
+	r := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1)
+	// Long enough that the bucket refills to full on the next touch.
+	*now = now.Add(time.Hour)
+	l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 0).Cancel()
+	r.Cancel()
+
+	for i := range 2 {
+		if d := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1).Delay(); d != 0 {
+			t.Fatalf("reservation %d delayed %v; capacity is 2", i+1, d)
+		}
+	}
+	if d := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1).Delay(); d == 0 {
+		t.Fatal("a third immediate reservation from a bucket of two: Cancel overfilled it")
+	}
+}
+
+// Across several buckets the delay is the longest: that is when the send could
+// satisfy all of them.
+func TestReserveAllReportsTheLongestDelay(t *testing.T) {
+	l, _ := reserveClock()
+	fast := Limit{PerMinute: 600, Burst: 1} // a token every 100ms
+	slow := Limit{PerMinute: 6, Burst: 1}   // a token every 10s
+
+	l.ReserveAll([]Request{{Key: "fast", Limit: fast}, {Key: "slow", Limit: slow}}, 1)
+	d := l.ReserveAll([]Request{{Key: "fast", Limit: fast}, {Key: "slow", Limit: slow}}, 1).Delay()
+	if d != 10*time.Second {
+		t.Fatalf("delay = %v, want the slow bucket's 10s", d)
+	}
+}
+
+// Same rule as Allow: a cost the bucket could never hold goes through at once
+// rather than waiting forever, and Cancel puts back what it took.
+func TestReserveAllLetsAnOversizedCostThrough(t *testing.T) {
+	l, _ := reserveClock()
+	limit := Limit{PerMinute: 60, Burst: 5}
+
+	r := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 50)
+	if r.Delay() != 0 {
+		t.Fatalf("oversized cost delayed %v, want immediate", r.Delay())
+	}
+	r.Cancel()
+
+	for i := range 5 {
+		if d := l.ReserveAll([]Request{{Key: "p", Limit: limit}}, 1).Delay(); d != 0 {
+			t.Fatalf("after cancelling an oversized reservation, reservation %d delayed %v", i+1, d)
+		}
+	}
+}
+
+func TestReserveAllSkipsUnlimitedBuckets(t *testing.T) {
+	l, _ := reserveClock()
+	r := l.ReserveAll([]Request{{Key: "p", Limit: Limit{}}, {Key: "", Limit: Limit{PerMinute: 1}}}, 100)
+	if r.Delay() != 0 || l.Tracked() != 0 {
+		t.Fatalf("delay = %v, tracked = %d; want no buckets and no wait", r.Delay(), l.Tracked())
+	}
+	r.Cancel() // must not panic on an empty reservation
+}

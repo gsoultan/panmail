@@ -259,6 +259,17 @@ func (w *queueWorker) handleFailure(ctx context.Context, e *entities.OutboxEmail
 	bookCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bookkeepingTimeout)
 	defer cancel()
 
+	// Paced is not failed. The message was never attempted -- it was told its
+	// turn at a ceiling is later -- so it keeps its retry count, records no
+	// event, and is not classified. Counting it as an attempt would let a large
+	// backlog exhaust the retry schedule on pacing alone and fail mail that
+	// nothing was wrong with.
+	var paced *DeliveryPacedError
+	if errors.As(sendErr, &paced) {
+		w.reschedulePaced(bookCtx, e, paced.RetryAfter)
+		return
+	}
+
 	slog.Warn("email delivery attempt failed", "id", e.ID, "error", sendErr)
 
 	e.RetryCount++
@@ -488,3 +499,19 @@ func (w *queueWorker) pruneIfDue(ctx context.Context) {
 // SetRetention configures how long a permanently failed message is kept. Safe
 // to call while the worker is running.
 func (w *queueWorker) SetRetention(d time.Duration) { w.retention.Store(int64(d)) }
+
+// reschedulePaced puts a paced message back for its slot.
+//
+// DEFERRED rather than PENDING so the claim query holds it until next_retry_at,
+// and created_at is untouched so it keeps its place in line when it returns.
+// LastError is left alone: it records the last thing that went wrong, and
+// being paced is not that.
+func (w *queueWorker) reschedulePaced(ctx context.Context, e *entities.OutboxEmail, after time.Duration) {
+	now := time.Now()
+	e.Status = entities.OutboxStatusDeferred
+	e.NextRetryAt = now.Add(after)
+	e.UpdatedAt = now
+
+	slog.Debug("email delivery paced", "id", e.ID, "next_attempt_at", e.NextRetryAt)
+	w.updateOutbox(ctx, e)
+}
