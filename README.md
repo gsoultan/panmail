@@ -217,13 +217,14 @@ Authenticate with the `X-API-Key` header — *not* `Authorization`, which carrie
 
 #### With an SDK
 
-The clients live in their own repo, **[gsoultan/panmail-sdk](https://github.com/gsoultan/panmail-sdk)**, in three languages. They are the same small library each time: one call, typed refusals you can act on, and a deliberate refusal to retry anything whose outcome is unknown.
+The clients live in their own repo, **[gsoultan/panmail-sdk](https://github.com/gsoultan/panmail-sdk)**, in Go and PHP. They are the same small library each time: one call, typed refusals you can act on, and a deliberate refusal to retry anything whose outcome is unknown.
 
 | Language | Install | Runtime deps |
 | --- | --- | --- |
 | Go | `go get github.com/gsoultan/panmail-sdk` | none — stdlib only |
 | PHP | `composer require gsoultan/panmail-sdk` | ext-curl, ext-json |
-| Node | `npm i @gsoultan/panmail-sdk` | none — `fetch` |
+
+There is no Node package: from Node, POST the JSON with `fetch` — the dashboard's **API Request** tab generates the call, and [`docs/WIRE.md`](https://github.com/gsoultan/panmail-sdk/blob/main/docs/WIRE.md) is the whole contract.
 
 There is no Java client. One existed during development and was withdrawn before
 the first tag: publishing it meant verifying a Maven Central namespace, which is

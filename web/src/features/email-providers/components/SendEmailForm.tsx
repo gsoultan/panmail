@@ -13,7 +13,6 @@ import {
 import {
   goSdkSnippet,
   phpSdkSnippet,
-  nodeSdkSnippet,
 } from '../../settings/components/smtp/snippets/sdk';
 import {
   goSmtpSnippet,
@@ -331,13 +330,12 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
     java: javaApiSnippet(form.values, apiOrigin),
     node: nodeApiSnippet(form.values, apiOrigin),
   };
-  // No Java: panmail-sdk shipped in Go, PHP and Node only, and the Java client
-  // was withdrawn before the first tag rather than left half-published. Java
-  // callers use the API or SMTP tab, which need no package at all.
+  // Go and PHP only: panmail-sdk never shipped for Java or Node -- both
+  // clients were withdrawn unpublished rather than left half-released. Callers
+  // in either use the API or SMTP tab, which need no package at all.
   const sdkSnippets = {
     go: goSdkSnippet(form.values, apiOrigin),
     php: phpSdkSnippet(form.values, apiOrigin),
-    node: nodeSdkSnippet(form.values, apiOrigin),
   };
   const smtpSnippets = {
     go: goSmtpSnippet(form.values, smtpConnection),
@@ -622,8 +620,8 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                   <Text size="xs" c="dimmed">
                     One call, and the two capacity refusals arrive as distinct types you can
                     catch. Neither means the message was queued — but only a rate limit is safe
-                    to repeat. Go, PHP and Node; for Java use the API or SMTP tab, which are the
-                    same send without the dependency.
+                    to repeat. Go and PHP; for Java or Node use the API or SMTP tab, which are
+                    the same send without the dependency.
                   </Text>
                 </Stack>
               </Group>
@@ -633,7 +631,6 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
               <Tabs.List mb="md">
                 <Tabs.Tab value="go" leftSection={<IconCode size={14} />}>Go</Tabs.Tab>
                 <Tabs.Tab value="php" leftSection={<IconCode size={14} />}>PHP</Tabs.Tab>
-                <Tabs.Tab value="node" leftSection={<IconCode size={14} />}>Node</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="go">
@@ -644,9 +641,6 @@ export const SendEmailForm: React.FC<SendEmailFormProps> = ({
                 <SnippetBlock label="PHP" code={sdkSnippets.php} />
               </Tabs.Panel>
 
-              <Tabs.Panel value="node">
-                <SnippetBlock label="Node" code={sdkSnippets.node} />
-              </Tabs.Panel>
             </Tabs>
           </Stack>
         </Tabs.Panel>

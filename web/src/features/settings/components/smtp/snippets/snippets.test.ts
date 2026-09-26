@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { goApiSnippet, phpApiSnippet, javaApiSnippet, nodeApiSnippet } from './api';
-import { goSdkSnippet, phpSdkSnippet, nodeSdkSnippet } from './sdk';
+import { goSdkSnippet, phpSdkSnippet } from './sdk';
 import { goSmtpSnippet, phpSmtpSnippet, javaSmtpSnippet, nodeSmtpSnippet } from './smtp';
 import type { SnippetValues } from './types';
 import type { SmtpConnection } from '../smtpConnection';
@@ -36,14 +36,13 @@ const apiGenerators = [
   { name: 'Node', build: nodeApiSnippet },
 ];
 
-// No Java. panmail-sdk ships in Go, PHP and Node; the Java client was withdrawn
-// before the first tag, so a Java SDK snippet would name a package that will
-// never resolve. Java is still covered in apiGenerators and smtpGenerators,
-// which need no package at all.
+// Go and PHP only. panmail-sdk never shipped for Java or Node -- both clients
+// were withdrawn unpublished -- so an SDK snippet for either would name a
+// package that will never resolve. Both languages are still covered in
+// apiGenerators and smtpGenerators, which need no package at all.
 const sdkGenerators = [
   { name: 'Go', build: goSdkSnippet },
   { name: 'PHP', build: phpSdkSnippet },
-  { name: 'Node', build: nodeSdkSnippet },
 ];
 
 // The two API-shaped tab groups share every generic assertion: same form
@@ -103,7 +102,6 @@ describe('API and SDK snippets', () => {
   test('each SDK snippet uses its published client', () => {
     expect(goSdkSnippet(values(), BASE)).toContain('github.com/gsoultan/panmail-sdk');
     expect(phpSdkSnippet(values(), BASE)).toContain('use Panmail\\Client;');
-    expect(nodeSdkSnippet(values(), BASE)).toContain("from '@gsoultan/panmail-sdk'");
   });
 
   // The client is given a base URL and derives the procedure path itself, so an
@@ -315,8 +313,10 @@ newline`;
     expect(line).toContain('\\n');
   });
 
+  // Through the API generator for the same reason as Java: jsString is the
+  // thing under test, and there is no Node SDK snippet to reach it through.
   test('Node escapes the single quote that would close its literal', () => {
-    const code = nodeSdkSnippet(values({ subject: nasty }), BASE);
+    const code = nodeApiSnippet(values({ subject: nasty }), BASE);
     const line = code.split('\n').find((l) => l.includes('subject:'))!;
     expect(line).toContain("it\\'s");
     // The literal must stay on one line.
