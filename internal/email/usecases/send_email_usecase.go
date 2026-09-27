@@ -3,7 +3,6 @@ package usecases
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -25,6 +24,7 @@ import (
 	templateEntities "github.com/gsoultan/panmail/internal/template/repositories/entities"
 	templateStores "github.com/gsoultan/panmail/internal/template/repositories/stores"
 	"github.com/gsoultan/panmail/pkg/cache"
+	"github.com/gsoultan/panmail/pkg/emailutil"
 	"github.com/gsoultan/panmail/pkg/tracking"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -528,12 +528,10 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	if err != nil {
 		slog.Error("failed to list existing events for message", "error", err, "id", messageID)
 	}
-	deliveredMap := make(map[string]bool)
-	for _, ee := range existingEvents {
-		if ee.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
-			deliveredMap[ee.Recipient] = true
-		}
-	}
+	// Recipients an earlier pass finished for good without delivering -- a
+	// hard bounce, a complaint, a drop -- are settled, and are not tried again
+	// when a co-recipient's transient failure keeps the message alive.
+	deliveredMap, settledMap, finished := finishedFrom(existingEvents)
 
 	recipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
 
@@ -544,7 +542,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	// a retry schedule, or pacing -- and an unsubscribe, a complaint or an
 	// operator's suppression in that time has to stop it. Checked before the
 	// pace, so a recipient who will not be sent to does not spend allowance.
-	dropped, err := u.dropSuppressedAtDelivery(ctx, tenantID, messageID, subject, recipients, deliveredMap)
+	dropped, err := u.dropSuppressedAtDelivery(ctx, tenantID, messageID, subject, recipients, finished)
 	if err != nil {
 		return nil, err
 	}
@@ -554,7 +552,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	// message is not charged again for the ones already done.
 	pending := 0
 	for _, recipient := range recipients {
-		if !deliveredMap[recipient] && !dropped[recipient] {
+		if !finished[recipient] && !dropped[recipient] {
 			pending++
 		}
 	}
@@ -563,13 +561,14 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	}
 
 	// We iterate through recipients to support individual tracking and status
-	var deliveryErrors []error
+	var failures []RecipientFailure
+	delivered := 0
 	for _, recipient := range recipients {
 		if deliveredMap[recipient] {
 			slog.Info("email already delivered to recipient, skipping", "id", messageID, "recipient", recipient)
 			continue
 		}
-		if dropped[recipient] {
+		if dropped[recipient] || settledMap[recipient] {
 			continue
 		}
 
@@ -663,16 +662,27 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DEFERRED, recipient, subject, err.Error(), nil)
 		}
 
+		if sent {
+			delivered++
+		}
 		if !sent && recipientErr != nil {
-			// Failed all providers for this recipient
+			// Failed all providers for this recipient. Classified on its own
+			// error, never on the pass's: see RecipientFailuresError.
 			slog.Error("failed to deliver email to recipient via all providers", "id", messageID, "recipient", recipient, "error", recipientErr)
-			deliveryErrors = append(deliveryErrors, fmt.Errorf("failed to deliver to %s: %w", recipient, recipientErr))
+			failures = append(failures, RecipientFailure{
+				Recipient: recipient,
+				Err:       recipientErr,
+				Class:     emailutil.ClassifyError(recipientErr.Error()),
+			})
 		}
 	}
 
-	if len(deliveryErrors) > 0 && len(deliveryErrors) == len(recipients) {
-		// All recipients failed
-		return nil, errors.Join(deliveryErrors...)
+	// Any failure is reported, per recipient, whether or not others were
+	// delivered. Reporting only when every recipient failed let a partial
+	// failure read as success, and the worker then deleted the row with a
+	// transiently failing recipient still on it.
+	if len(failures) > 0 {
+		return nil, &RecipientFailuresError{Failures: failures, Delivered: delivered}
 	}
 
 	return &panmailv1.SendEmailResponse{
@@ -931,4 +941,44 @@ func (u *sendEmailUsecase) suppressionsFor(
 		}
 	}
 	return reasons, nil
+}
+
+// finishedFrom sorts a message's event history into the recipients it has
+// finished with: delivered, settled for good without delivery, and the two
+// together.
+//
+// One definition, used by the send path to decide who a pass skips and by the
+// worker to decide who a message-level verdict applies to. If the two ever
+// disagreed, a recipient could be skipped by delivery and still handed a
+// failure verdict, or the reverse.
+func finishedFrom(events []*panmailv1.EmailEvent) (delivered, settled, finished map[string]bool) {
+	delivered = make(map[string]bool)
+	settled = make(map[string]bool)
+	for _, ee := range events {
+		if ee.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+			delivered[ee.Recipient] = true
+		}
+		if settledEvents[ee.Type] {
+			settled[ee.Recipient] = true
+		}
+	}
+	finished = make(map[string]bool, len(delivered)+len(settled))
+	for r := range delivered {
+		finished[r] = true
+	}
+	for r := range settled {
+		finished[r] = true
+	}
+	return delivered, settled, finished
+}
+
+// FinishedRecipients reports the recipients a message is already done with,
+// for the outbox worker. See finishedFrom.
+func (u *sendEmailUsecase) FinishedRecipients(ctx context.Context, tenantID, messageID string) (map[string]bool, error) {
+	events, err := u.eventUsecase.ListByMessageID(ctx, tenantID, messageID)
+	if err != nil {
+		return nil, err
+	}
+	_, _, finished := finishedFrom(events)
+	return finished, nil
 }
