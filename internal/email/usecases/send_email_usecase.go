@@ -528,26 +528,10 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	if err != nil {
 		slog.Error("failed to list existing events for message", "error", err, "id", messageID)
 	}
-	deliveredMap := make(map[string]bool)
-	// Recipients an earlier pass finished for good without delivering: a hard
-	// bounce, a complaint, a drop. They are not tried again when a
-	// co-recipient's transient failure keeps the message alive.
-	settledMap := make(map[string]bool)
-	for _, ee := range existingEvents {
-		if ee.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
-			deliveredMap[ee.Recipient] = true
-		}
-		if settledEvents[ee.Type] {
-			settledMap[ee.Recipient] = true
-		}
-	}
-	finished := make(map[string]bool, len(deliveredMap)+len(settledMap))
-	for r := range deliveredMap {
-		finished[r] = true
-	}
-	for r := range settledMap {
-		finished[r] = true
-	}
+	// Recipients an earlier pass finished for good without delivering -- a
+	// hard bounce, a complaint, a drop -- are settled, and are not tried again
+	// when a co-recipient's transient failure keeps the message alive.
+	deliveredMap, settledMap, finished := finishedFrom(existingEvents)
 
 	recipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
 
@@ -957,4 +941,44 @@ func (u *sendEmailUsecase) suppressionsFor(
 		}
 	}
 	return reasons, nil
+}
+
+// finishedFrom sorts a message's event history into the recipients it has
+// finished with: delivered, settled for good without delivery, and the two
+// together.
+//
+// One definition, used by the send path to decide who a pass skips and by the
+// worker to decide who a message-level verdict applies to. If the two ever
+// disagreed, a recipient could be skipped by delivery and still handed a
+// failure verdict, or the reverse.
+func finishedFrom(events []*panmailv1.EmailEvent) (delivered, settled, finished map[string]bool) {
+	delivered = make(map[string]bool)
+	settled = make(map[string]bool)
+	for _, ee := range events {
+		if ee.Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED {
+			delivered[ee.Recipient] = true
+		}
+		if settledEvents[ee.Type] {
+			settled[ee.Recipient] = true
+		}
+	}
+	finished = make(map[string]bool, len(delivered)+len(settled))
+	for r := range delivered {
+		finished[r] = true
+	}
+	for r := range settled {
+		finished[r] = true
+	}
+	return delivered, settled, finished
+}
+
+// FinishedRecipients reports the recipients a message is already done with,
+// for the outbox worker. See finishedFrom.
+func (u *sendEmailUsecase) FinishedRecipients(ctx context.Context, tenantID, messageID string) (map[string]bool, error) {
+	events, err := u.eventUsecase.ListByMessageID(ctx, tenantID, messageID)
+	if err != nil {
+		return nil, err
+	}
+	_, _, finished := finishedFrom(events)
+	return finished, nil
 }

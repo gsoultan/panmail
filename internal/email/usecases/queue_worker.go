@@ -306,7 +306,13 @@ func (w *queueWorker) handleFailure(ctx context.Context, e *entities.OutboxEmail
 		classification.RecipientAtFault = false
 	}
 
-	recipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
+	// Only recipients the message is not already finished with. A message-level
+	// failure can now come on a later pass -- a partly delivered message's row
+	// survives while a co-recipient is retried -- and recording this verdict
+	// against everyone on the request gave a recipient who had been delivered
+	// a REJECTED after its DELIVERED, and fired MAIL_REJECTED for mail that
+	// arrived.
+	recipients := w.unfinishedRecipients(bookCtx, e, uniqueRecipients(req.To, req.Cc, req.Bcc))
 	retryPattern := w.getRetryPattern(bookCtx, e.TenantID)
 
 	if delay, ok := nextRetryDelay(classification, e.RetryCount, retryPattern); ok {
@@ -605,4 +611,41 @@ func (w *queueWorker) recordRecipientFailure(
 		f.Class.Type, f.Recipient, req.Subject, f.Err.Error(), nil); err != nil {
 		slog.Error("failed to record recipient outcome", "error", err, "id", e.ID, "recipient", f.Recipient)
 	}
+}
+
+// finishedRecipientLister is implemented by the send usecase. It is optional
+// here only so test doubles need not implement it; production wiring must, and
+// the assertion below makes that a compile error rather than a silent return to
+// recording verdicts against delivered recipients.
+type finishedRecipientLister interface {
+	FinishedRecipients(ctx context.Context, tenantID, messageID string) (map[string]bool, error)
+}
+
+var _ finishedRecipientLister = (*sendEmailUsecase)(nil)
+
+// unfinishedRecipients drops the recipients a message is already done with.
+//
+// If the history cannot be read, every recipient is kept: a verdict recorded
+// twice for a delivered recipient is a wrong event, but a verdict lost for an
+// undelivered one is a failure nobody hears about, which is worse.
+func (w *queueWorker) unfinishedRecipients(ctx context.Context, e *entities.OutboxEmail, recipients []string) []string {
+	lister, ok := w.emailUsecase.(finishedRecipientLister)
+	if !ok {
+		return recipients
+	}
+	finished, err := lister.FinishedRecipients(ctx, e.TenantID, e.ID)
+	if err != nil {
+		slog.Error("failed to read which recipients are finished; recording for all", "error", err, "id", e.ID)
+		return recipients
+	}
+	if len(finished) == 0 {
+		return recipients
+	}
+	out := recipients[:0:0]
+	for _, r := range recipients {
+		if !finished[r] {
+			out = append(out, r)
+		}
+	}
+	return out
 }
