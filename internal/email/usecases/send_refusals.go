@@ -67,6 +67,13 @@ func (e *TemplateRefusedError) Error() string {
 
 func (e *TemplateRefusedError) Unwrap() error { return e.Err }
 
+// permanent: a template that is missing or will not render against this
+// message's data fails identically on every attempt. The classifier read its
+// message as a retryable bounce, so a template deleted while messages sat in
+// the outbox sent each of them round the whole retry schedule -- eight
+// attempts over two days -- before failing anyway.
+func (e *TemplateRefusedError) permanent() {}
+
 // ProviderDomainRefusedError reports a send whose From domain the provider is
 // not authorized for.
 //

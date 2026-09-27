@@ -287,6 +287,14 @@ func (w *queueWorker) handleFailure(ctx context.Context, e *entities.OutboxEmail
 	var permanent permanentRefusal
 	if errors.As(sendErr, &permanent) {
 		classification.Retryable = false
+		// A refusal is panmail declining to send, not a mail server bouncing
+		// the message, so it is recorded as REJECTED whatever its text happens
+		// to match. Left to the classifier, a missing template read as BOUNCED
+		// and counted towards every recipient's bounce rate, and the tenant's
+		// webhook heard MAIL_BOUNCED for mail that was never offered to anyone.
+		// It says nothing about the recipient, so it cannot suppress them.
+		classification.Type = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_REJECTED
+		classification.RecipientAtFault = false
 	}
 
 	recipients := uniqueRecipients(req.To, req.Cc, req.Bcc)
