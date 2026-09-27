@@ -539,12 +539,22 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 
 	slog.Info("starting actual delivery", "id", messageID, "recipient_count", len(recipients), "provider_count", len(providers))
 
+	// Suppressions made since admission. Admission checked every recipient,
+	// but the message may have sat in the outbox since -- through a backlog,
+	// a retry schedule, or pacing -- and an unsubscribe, a complaint or an
+	// operator's suppression in that time has to stop it. Checked before the
+	// pace, so a recipient who will not be sent to does not spend allowance.
+	dropped, err := u.dropSuppressedAtDelivery(ctx, tenantID, messageID, subject, recipients, deliveredMap)
+	if err != nil {
+		return nil, err
+	}
+
 	// Take this delivery's turn at the ceilings before sending anything, and
 	// only for the recipients still to go: a retry of a partly delivered
 	// message is not charged again for the ones already done.
 	pending := 0
 	for _, recipient := range recipients {
-		if !deliveredMap[recipient] {
+		if !deliveredMap[recipient] && !dropped[recipient] {
 			pending++
 		}
 	}
@@ -557,6 +567,9 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	for _, recipient := range recipients {
 		if deliveredMap[recipient] {
 			slog.Info("email already delivered to recipient, skipping", "id", messageID, "recipient", recipient)
+			continue
+		}
+		if dropped[recipient] {
 			continue
 		}
 
