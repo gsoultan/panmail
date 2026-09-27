@@ -19,7 +19,8 @@ import {
 import { useAdaptedForm } from '../../../lib/form/useAdaptedForm';
 import { buildPreviewDocument } from '../preview/buildPreviewDocument';
 import { renderTemplatePreview } from '../preview/renderPreview';
-import { SampleDataPanel, parseSampleData } from '../preview/SampleDataPanel';
+import { SampleDataPanel } from '../preview/SampleDataPanel';
+import { parseSampleData } from '../preview/parseSampleData';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { 
