@@ -21,6 +21,14 @@ type ListFilter struct {
 	Subject        string
 }
 
+// MessageProviderBackfiller records which provider delivered a stored message
+// that does not name one yet, without the caller reading and rewriting the
+// whole body to change one field. Optional: a store without it gets the read
+// and rewrite.
+type MessageProviderBackfiller interface {
+	BackfillMessageProvider(ctx context.Context, tenantID, messageID, providerID string) error
+}
+
 type EventRepository interface {
 	Write(ctx context.Context, event *entities.EmailEvent) error
 	List(ctx context.Context, tenantID string, filter ListFilter) ([]*entities.EmailEvent, string, error)

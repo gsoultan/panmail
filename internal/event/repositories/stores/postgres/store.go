@@ -202,6 +202,36 @@ func (s *Store) GetLatestMessageForRecipient(ctx context.Context, tenantID, reci
 	return m, err
 }
 
+// BackfillMessageProvider records the provider on a stored message that does
+// not name one yet: one UPDATE of one column, rather than reading the body
+// with its attachments and writing all of it back. A message that already
+// names a provider is left alone, as is one that is not there.
+func (s *Store) BackfillMessageProvider(ctx context.Context, tenantID, messageID, providerID string) error {
+	conn, err := s.db()
+	if err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE email_messages SET provider_id = $1
+		 WHERE tenant_id = $2 AND id = $3 AND provider_id IS NULL`,
+		nullableUUID(providerID), tenantID, messageID); err != nil {
+		return err
+	}
+
+	if s.stopPebble {
+		return nil
+	}
+	// Mirrored like the body it belongs to, so reverting to local reads finds
+	// the provider there too.
+	if b, ok := s.local.(stores.MessageProviderBackfiller); ok {
+		if err := b.BackfillMessageProvider(ctx, tenantID, messageID, providerID); err != nil {
+			slog.Warn("could not mirror a message's provider to the local store",
+				"error", err, "id", messageID)
+		}
+	}
+	return nil
+}
+
 // TruncateMessagesBefore deletes stored bodies older than the cutoff, from the
 // database and from the local store.
 //
