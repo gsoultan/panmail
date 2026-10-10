@@ -27,7 +27,21 @@ type store struct {
 	opChan  chan any
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
+
+	// closeMu orders enqueueing against Close. A sender holds it for reading
+	// across its check of closed and its send, so once Close has taken it for
+	// writing and set closed, no op can reach opChan behind the worker's final
+	// drain — which is what lets that drain be the last word.
+	closeMu   sync.RWMutex
+	closed    bool
+	closeOnce sync.Once
+	closeErr  error
 }
+
+// ErrClosed is returned by a write that arrives after Close. The write is
+// refused rather than queued, because a queued op nobody will ever commit is a
+// silent loss, and blocking on a channel nobody reads would hang the caller.
+var ErrClosed = errors.New("event store is closed")
 
 type writeOp struct {
 	event *entities.EmailEvent
@@ -114,37 +128,70 @@ func (s *store) worker() {
 	batchLatestTs := make(map[string]string)
 
 	count := 0
+	commit := func() {
+		if count == 0 {
+			return
+		}
+		_ = batch.Commit(nil)
+		batch = s.db.NewBatch()
+		clear(batchLatestTs)
+		count = 0
+	}
+	apply := func(op any) {
+		switch v := op.(type) {
+		case writeOp:
+			_ = s.performWrite(batch, v.event, batchLatestTs)
+		case messageOp:
+			_ = s.performWriteMessage(batch, v.message)
+		case resourceOp:
+			_ = s.performWriteResource(batch, v.point)
+		}
+		count++
+		if count >= 500 {
+			commit()
+		}
+	}
+
 	for {
 		select {
 		case op := <-s.opChan:
-			switch v := op.(type) {
-			case writeOp:
-				_ = s.performWrite(batch, v.event, batchLatestTs)
-			case messageOp:
-				_ = s.performWriteMessage(batch, v.message)
-			case resourceOp:
-				_ = s.performWriteResource(batch, v.point)
-			}
-			count++
-			if count >= 500 {
-				_ = batch.Commit(nil)
-				batch = s.db.NewBatch()
-				clear(batchLatestTs)
-				count = 0
-			}
+			apply(op)
 		case <-ticker.C:
-			if count > 0 {
-				_ = batch.Commit(nil)
-				batch = s.db.NewBatch()
-				clear(batchLatestTs)
-				count = 0
-			}
+			commit()
 		case <-s.stopCh:
-			if count > 0 {
-				_ = batch.Commit(nil)
+			// Drain before the final commit. select picks among ready cases at
+			// random, so stop can win while thousands of ops are still
+			// buffered — and every one of them is a write its caller was told
+			// had been accepted. Close has already stopped new ops arriving,
+			// so this terminates.
+			for {
+				select {
+				case op := <-s.opChan:
+					apply(op)
+					continue
+				default:
+				}
+				break
 			}
+			commit()
+			_ = batch.Close()
 			return
 		}
+	}
+}
+
+// enqueue hands an op to the writer, or refuses it once the store is closing.
+func (s *store) enqueue(ctx context.Context, op any) error {
+	s.closeMu.RLock()
+	defer s.closeMu.RUnlock()
+	if s.closed {
+		return ErrClosed
+	}
+	select {
+	case s.opChan <- op:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -317,21 +364,11 @@ func (s *store) performWriteMessage(batch *pebble.Batch, m *entities.EmailMessag
 }
 
 func (s *store) Write(ctx context.Context, e *entities.EmailEvent) error {
-	select {
-	case s.opChan <- writeOp{event: e}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return s.enqueue(ctx, writeOp{event: e})
 }
 
 func (s *store) WriteMessage(ctx context.Context, m *entities.EmailMessage) error {
-	select {
-	case s.opChan <- messageOp{message: m}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return s.enqueue(ctx, messageOp{message: m})
 }
 
 func (s *store) GetByID(ctx context.Context, tenantID string, id string) (*entities.EmailEvent, error) {
@@ -430,12 +467,7 @@ func (s *store) WriteResourceMetric(ctx context.Context, cpuUsage float64, memUs
 			SystemLoad15: load15,
 		},
 	}
-	select {
-	case s.opChan <- op:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return s.enqueue(ctx, op)
 }
 
 func (s *store) performWriteResource(batch *pebble.Batch, p entities.ResourcePoint) error {
@@ -889,10 +921,22 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 	return res, nil
 }
 
+// Close stops accepting writes, commits everything already accepted, and
+// closes the database. Safe to call more than once, since the shared store and
+// the wrappers around this one can each reach it on the way down.
 func (s *store) Close() error {
-	close(s.stopCh)
-	s.wg.Wait()
-	return s.db.Close()
+	s.closeOnce.Do(func() {
+		// Taken for writing, so every sender already past its closed check
+		// has finished its send before the worker is told to drain.
+		s.closeMu.Lock()
+		s.closed = true
+		s.closeMu.Unlock()
+
+		close(s.stopCh)
+		s.wg.Wait()
+		s.closeErr = s.db.Close()
+	})
+	return s.closeErr
 }
 
 // Checkpoint writes a consistent snapshot of this store into dir.
