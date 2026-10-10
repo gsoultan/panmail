@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/gsoultan/panmail/internal/event/repositories/entities"
+	"github.com/gsoultan/panmail/internal/event/repositories/stores"
 )
 
 const (
@@ -37,6 +38,26 @@ const (
 // TruncateBefore archives every delivery event older than before and then
 // removes it, returning how many events it removed.
 func (s *store) TruncateBefore(ctx context.Context, before time.Time) (int64, error) {
+	return s.truncateBefore(ctx, before, nil)
+}
+
+// TruncateBeforeArchivingOnly is TruncateBefore for a store that is a mirror.
+//
+// In shared mode the database is authoritative and this store still receives
+// every event, so the two hold the same rows and both expire them. Archiving
+// from both would write every expired event to the archive twice; archiving
+// from neither here would lose the events only this store has — those written
+// before the database was, which are exactly the history an operator reaches
+// for an archive to recover. So each expiring event is archived here only when
+// elsewhere says it does not hold it.
+func (s *store) TruncateBeforeArchivingOnly(ctx context.Context, before time.Time, elsewhere stores.ArchivedElsewhere) (int64, error) {
+	if elsewhere == nil {
+		return 0, errors.New("retention: a mirror prune needs to know what is archived elsewhere")
+	}
+	return s.truncateBefore(ctx, before, elsewhere)
+}
+
+func (s *store) truncateBefore(ctx context.Context, before time.Time, elsewhere stores.ArchivedElsewhere) (int64, error) {
 	// A zero cutoff would expire the entire store: subtracting an unset time
 	// from MaxInt64 overflows, and every key compares as older than it. The
 	// retention worker never passes one, but this is an exported delete path
@@ -64,14 +85,11 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) (int64, er
 	archives := newTenantArchiveSet(fmt.Sprintf("archive_%s%s", time.Now().Format(archiveStamp), archiveExt))
 	defer archives.closeAll()
 
-	batch := s.db.NewBatch()
 	var removed int64
-	pending := 0
-	var latest []latestPointer
+	chunk := make([]expiredEvent, 0, truncateBatchSize)
 
 	for iter.SeekGE([]byte(eventKeyPrefix)); iter.Valid(); iter.Next() {
 		if err := ctx.Err(); err != nil {
-			batch.Close()
 			return removed, err
 		}
 
@@ -84,43 +102,74 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) (int64, er
 			continue
 		}
 
-		rec := expiredEvent{key: iter.Key(), id: parts[3], value: iter.Value()}
-		pointer, err := s.expireEvent(batch, archives, rec)
-		if err != nil {
-			batch.Close()
-			return removed, err
-		}
-		if pointer != nil {
-			latest = append(latest, *pointer)
-		}
-		removed++
-		pending++
-
-		if pending < truncateBatchSize {
+		// Copied: the iterator reuses its buffers, and the chunk outlives
+		// this step.
+		chunk = append(chunk, expiredEvent{
+			key:   slices.Clone(iter.Key()),
+			id:    parts[3],
+			value: slices.Clone(iter.Value()),
+		})
+		if len(chunk) < truncateBatchSize {
 			continue
 		}
-		if err := batch.Commit(pebble.Sync); err != nil {
-			batch.Close()
+		n, err := s.expireChunk(ctx, archives, chunk, elsewhere)
+		removed += n
+		if err != nil {
 			return removed, err
 		}
-		if err := s.expireLatest(ctx, latest); err != nil {
-			return removed, err
-		}
-		latest = latest[:0]
-		batch = s.db.NewBatch()
-		pending = 0
+		chunk = chunk[:0]
 	}
 
-	if err := commitOrClose(batch, pending); err != nil {
-		return removed, err
-	}
-	if err := s.expireLatest(ctx, latest); err != nil {
+	n, err := s.expireChunk(ctx, archives, chunk, elsewhere)
+	removed += n
+	if err != nil {
 		return removed, err
 	}
 	if removed > 0 {
 		compact(s.db, eventRanges)
 	}
 	return removed, nil
+}
+
+// expireChunk archives and removes one bounded chunk of expired events,
+// committing it as a single batch.
+func (s *store) expireChunk(ctx context.Context, archives *tenantArchiveSet, chunk []expiredEvent, elsewhere stores.ArchivedElsewhere) (int64, error) {
+	if len(chunk) == 0 {
+		return 0, nil
+	}
+
+	var held map[string]bool
+	if elsewhere != nil {
+		ids := make([]string, len(chunk))
+		for i, rec := range chunk {
+			ids[i] = rec.id
+		}
+		var err error
+		if held, err = elsewhere(ctx, ids); err != nil {
+			// Stop rather than delete: not knowing whether an event is
+			// archived elsewhere is not knowing whether deleting it here
+			// loses it.
+			return 0, err
+		}
+	}
+
+	batch := s.db.NewBatch()
+	latest := make([]latestPointer, 0, len(chunk))
+	for _, rec := range chunk {
+		pointer, err := s.expireEvent(batch, archives, rec, !held[rec.id])
+		if err != nil {
+			batch.Close()
+			return 0, err
+		}
+		if pointer != nil {
+			latest = append(latest, *pointer)
+		}
+	}
+	if err := batch.Commit(pebble.Sync); err != nil {
+		batch.Close()
+		return 0, err
+	}
+	return int64(len(chunk)), s.expireLatest(ctx, latest)
 }
 
 // expiredEvent is one event on its way out: the key it lives under, its id,
@@ -132,10 +181,11 @@ type expiredEvent struct {
 	value []byte
 }
 
-// expireEvent archives one event and stages the deletion of it and of its
-// timeline entry. It returns the latest-event pointer the event may own, which
-// only the writer is allowed to remove: see latestExpiryOp.
-func (s *store) expireEvent(batch *pebble.Batch, archives *tenantArchiveSet, rec expiredEvent) (*latestPointer, error) {
+// expireEvent archives one event, unless told another store will, and stages
+// the deletion of it and of its timeline entry. It returns the latest-event
+// pointer the event may own, which only the writer is allowed to remove: see
+// latestExpiryOp.
+func (s *store) expireEvent(batch *pebble.Batch, archives *tenantArchiveSet, rec expiredEvent, archive bool) (*latestPointer, error) {
 	var e entities.EmailEvent
 	if err := json.Unmarshal(rec.value, &e); err != nil {
 		// Unreadable, but still expired: nothing can present it to a user, and
@@ -147,12 +197,14 @@ func (s *store) expireEvent(batch *pebble.Batch, archives *tenantArchiveSet, rec
 		return nil, nil
 	}
 
-	archived, err := json.Marshal(e)
-	if err != nil {
-		return nil, err
-	}
-	if err := archives.write(e.TenantID, archived); err != nil {
-		return nil, err
+	if archive {
+		archived, err := json.Marshal(e)
+		if err != nil {
+			return nil, err
+		}
+		if err := archives.write(e.TenantID, archived); err != nil {
+			return nil, err
+		}
 	}
 
 	pointer := s.deleteEventIndexes(batch, &e)

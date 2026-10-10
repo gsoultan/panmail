@@ -2,7 +2,9 @@ package stores
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/gsoultan/panmail/internal/event/repositories/entities"
 )
@@ -58,6 +60,55 @@ func (s *shadowed) Write(ctx context.Context, event *entities.EmailEvent) error 
 	// wrong trade — the whole point of the phase is that it cannot hurt.
 	if err := s.shadow.Write(ctx, event); err != nil {
 		slog.Warn("could not shadow a delivery event", "error", err, "id", event.ID)
+	}
+	return nil
+}
+
+// TruncateBefore expires events in the primary, which archives them, and then
+// deletes the shadow's copies of the same events.
+//
+// The shadow's rows used to be left alone, because the embedded primary
+// answered retention by itself — so the shared tables grew for the whole of the
+// shadow phase, which can be long. They are deleted without archiving: every
+// shadowed event is also in the primary (it is shadowed only after the primary
+// took it), so the primary's archive already has it, and a second would put
+// each expired event in the archive twice.
+//
+// The count is the primary's. The shadow's is the same events again.
+func (s *shadowed) TruncateBefore(ctx context.Context, before time.Time) (int64, error) {
+	n, err := s.EventRepository.TruncateBefore(ctx, before)
+	if err != nil {
+		return n, err
+	}
+	return n, s.pruneShadow(func(p SharedPruner) (int64, error) {
+		return p.DeleteEventsBefore(ctx, before)
+	})
+}
+
+// TruncateMessagesBefore deletes expired bodies from both stores.
+func (s *shadowed) TruncateMessagesBefore(ctx context.Context, before time.Time) (int64, error) {
+	n, err := s.EventRepository.TruncateMessagesBefore(ctx, before)
+	if err != nil {
+		return n, err
+	}
+	return n, s.pruneShadow(func(p SharedPruner) (int64, error) {
+		return p.DeleteMessagesBefore(ctx, before)
+	})
+}
+
+// pruneShadow runs one prune against the shadow's own tables, if it has any.
+//
+// Its failure is returned, unlike a failed shadow write. A write the shadow
+// missed is a gap in a comparison; a prune it keeps missing is a table that
+// grows until the disk is full, and the retention failure metric is the only
+// place that would ever show it.
+func (s *shadowed) pruneShadow(prune func(SharedPruner) (int64, error)) error {
+	p, ok := s.shadow.(SharedPruner)
+	if !ok {
+		return nil
+	}
+	if _, err := prune(p); err != nil {
+		return fmt.Errorf("shadow store: %w", err)
 	}
 	return nil
 }
