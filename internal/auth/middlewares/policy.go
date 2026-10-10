@@ -80,25 +80,32 @@ var procedurePolicy = map[string]access{
 	panmailv1connect.UserServiceAssignUserToTenantProcedure:   {minRole: RoleSuperAdmin},
 	panmailv1connect.UserServiceRemoveUserFromTenantProcedure: {minRole: RoleSuperAdmin},
 
-	// --- Administrator ------------------------------------------------------
-	panmailv1connect.ApiKeyServiceCreateApiKeyProcedure:           {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceListApiKeysProcedure:            {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceUpdateApiKeyProcedure:           {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceDeleteApiKeyProcedure:           {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceEnableApiKeyProcedure:           {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceDisableApiKeyProcedure:          {minRole: RoleAdmin},
-	panmailv1connect.UserServiceCreateUserProcedure:               {minRole: RoleAdmin},
-	panmailv1connect.UserServiceListUsersProcedure:                {minRole: RoleAdmin},
-	panmailv1connect.UserServiceDeleteUserProcedure:               {minRole: RoleAdmin},
-	panmailv1connect.UserServiceUpdateUserRoleProcedure:           {minRole: RoleAdmin},
-	panmailv1connect.UserServiceUpdateUserTwoFactorProcedure:      {minRole: RoleAdmin},
-	panmailv1connect.SystemSettingsServiceUpdateSettingsProcedure: {minRole: RoleAdmin},
+	// System settings are one row for the whole deployment: the base URL in
+	// every tracking link, the retention that deletes every tenant's mail,
+	// the redaction applied to every stored body. Administrator is a tenant
+	// role, and letting one tenant's administrator set those for everybody
+	// else is the confinement above turned inside out.
+	panmailv1connect.SystemSettingsServiceUpdateSettingsProcedure: {minRole: RoleSuperAdmin},
 
-	// Opening a listening port is a signed-in-administrator action, and the
-	// absent scope is doing real work: it denies API keys outright. The SMTP
-	// password is an API key, so a key that could enable the listener would be
-	// a credential able to widen the surface on which its own kind is accepted.
-	panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure: {minRole: RoleAdmin},
+	// The SMTP listener is one port for the whole deployment, so it is the
+	// deployment's operator's to open, for the same reason. The absent scope
+	// is doing real work too: it denies API keys outright. The SMTP password
+	// is an API key, so a key that could enable the listener would be a
+	// credential able to widen the surface on which its own kind is accepted.
+	panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure: {minRole: RoleSuperAdmin},
+
+	// --- Administrator ------------------------------------------------------
+	panmailv1connect.ApiKeyServiceCreateApiKeyProcedure:      {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceListApiKeysProcedure:       {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceUpdateApiKeyProcedure:      {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceDeleteApiKeyProcedure:      {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceEnableApiKeyProcedure:      {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceDisableApiKeyProcedure:     {minRole: RoleAdmin},
+	panmailv1connect.UserServiceCreateUserProcedure:          {minRole: RoleAdmin},
+	panmailv1connect.UserServiceListUsersProcedure:           {minRole: RoleAdmin},
+	panmailv1connect.UserServiceDeleteUserProcedure:          {minRole: RoleAdmin},
+	panmailv1connect.UserServiceUpdateUserRoleProcedure:      {minRole: RoleAdmin},
+	panmailv1connect.UserServiceUpdateUserTwoFactorProcedure: {minRole: RoleAdmin},
 
 	// --- Editor: configuration changes --------------------------------------
 	panmailv1connect.EmailProviderServiceCreateEmailProviderProcedure:     {minRole: RoleEditor, scope: entities.ScopeProvidersWrite},

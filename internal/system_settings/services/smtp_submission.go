@@ -16,7 +16,7 @@ import (
 
 // UpdateSmtpSubmission opens or closes the submission listener.
 //
-// Admin-only, enforced by the RBAC interceptor from the procedure table in
+// Super-admin only, enforced by the RBAC interceptor from the procedure table in
 // internal/auth/middlewares/policy.go, which is the only place authorisation is
 // decided in this codebase. Nothing here re-checks the role, because a handler
 // that enforced its own would be the one place a policy change did not reach.
