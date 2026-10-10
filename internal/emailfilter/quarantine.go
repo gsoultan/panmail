@@ -152,7 +152,9 @@ type RuleRepository interface {
 	List(ctx context.Context, tenantID string) ([]Rule, error)
 
 	// Enabled returns the enabled rules for one direction in priority order,
-	// validated and with patterns compiled. This is the send path's read.
+	// validated and with patterns compiled. This is the send path's read, so
+	// an implementation may cache it: the rules returned can be shared between
+	// callers, and must not be modified.
 	Enabled(ctx context.Context, tenantID string, direction Direction) ([]Rule, error)
 }
 
