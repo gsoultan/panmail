@@ -2,11 +2,13 @@ package logging
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"connectrpc.com/connect"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
+	"github.com/gsoultan/panmail/internal/auth/middlewares"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -27,13 +29,9 @@ func (s *Service) ListLogs(
 		pageSize = 50
 	}
 
-	tenantID := ""
-	if ctx != nil {
-		if val := ctx.Value("tenant_id"); val != nil {
-			if tid, ok := val.(string); ok {
-				tenantID = tid
-			}
-		}
+	tenantID, err := logScope(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	entries, nextToken, err := s.store.List(pageSize, req.Msg.PageToken, tenantID)
@@ -64,13 +62,9 @@ func (s *Service) StreamLogs(
 	req *connect.Request[panmailv1.StreamLogsRequest],
 	stream *connect.ServerStream[panmailv1.LogEntry],
 ) error {
-	tenantID := ""
-	if ctx != nil {
-		if val := ctx.Value("tenant_id"); val != nil {
-			if tid, ok := val.(string); ok {
-				tenantID = tid
-			}
-		}
+	tenantID, err := logScope(ctx)
+	if err != nil {
+		return err
 	}
 
 	logCh := s.store.Subscribe(ctx)
@@ -84,8 +78,7 @@ func (s *Service) StreamLogs(
 				return nil
 			}
 
-			// Filter by tenant
-			if tenantID != "" && entry.TenantID != "" && entry.TenantID != tenantID {
+			if tenantID != "" && entry.TenantID != tenantID {
 				continue
 			}
 
@@ -107,4 +100,18 @@ func (s *Service) RegisterHandler(mux *http.ServeMux) {
 	mux.Handle(panmailv1connect.NewLogServiceHandler(s))
 }
 
-// I need to import "net/http" but I'll add it in the next step or just fix the file.
+// logScope returns the tenant whose entries the caller may read, or "" for
+// the unfiltered view, which only a super administrator gets. The lookup goes
+// through the auth package's typed context key; the plain "tenant_id" string
+// key this used to read never matched it, so every administrator was handed
+// every tenant's log lines.
+func logScope(ctx context.Context) (string, error) {
+	if middlewares.GetRole(ctx) == middlewares.RoleSuperAdmin {
+		return "", nil
+	}
+	tenantID := middlewares.GetTenantID(ctx)
+	if tenantID == "" {
+		return "", connect.NewError(connect.CodePermissionDenied, errors.New("no tenant in scope"))
+	}
+	return tenantID, nil
+}
