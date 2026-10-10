@@ -57,12 +57,17 @@ func (r *heldReleaser) ReleaseHeld(ctx context.Context, tenantID, messageID stri
 	return nil
 }
 
-// DiscardHeld removes the payload of a message a reviewer refused.
+// DiscardHeld removes the payload of a message a reviewer refused, or one that
+// expired unreviewed. Idempotent: discarding a message that is no longer in the
+// outbox succeeds.
 func (r *heldReleaser) DiscardHeld(ctx context.Context, tenantID, messageID string) error {
 	email, err := r.outbox.GetByID(ctx, messageID)
 	if err != nil {
 		return fmt.Errorf("reading the held message: %w", err)
 	}
+	// Already gone is already discarded. A reject retried after a timeout, or
+	// an expiry sweep reaching a row a reviewer's reject already removed, has
+	// nothing left to do and must not report a failure for it.
 	if email == nil {
 		return nil
 	}

@@ -340,3 +340,12 @@ func TestStatsOnAnEmptyQueue(t *testing.T) {
 		t.Errorf("oldest = %v, want the zero time on an empty queue", oldest)
 	}
 }
+
+// Absent is (nil, nil), as the interface says, not the driver's ErrNoRows.
+func TestGetByIDOfAMissingRowIsNilNil(t *testing.T) {
+	repo, _ := newOutboxTestStore(t)
+	got, err := repo.GetByID(context.Background(), storetest.ID("nobody"))
+	if err != nil || got != nil {
+		t.Fatalf("GetByID(missing) = %+v, %v; want nil, nil", got, err)
+	}
+}

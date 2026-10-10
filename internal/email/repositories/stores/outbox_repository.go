@@ -9,6 +9,11 @@ import (
 
 type OutboxRepository interface {
 	Create(ctx context.Context, email *entities.OutboxEmail) error
+
+	// GetByID returns (nil, nil) when there is no such message. A row that has
+	// gone is an answer, not a failure: a delivered or discarded message is
+	// deleted, and a caller retrying an operation has to be able to tell that
+	// apart from a database it could not reach.
 	GetByID(ctx context.Context, id string) (*entities.OutboxEmail, error)
 
 	// ClaimPending atomically takes ownership of up to limit due messages for
