@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -39,6 +40,13 @@ type DurableWorker struct {
 	interval  time.Duration
 	batchSize int
 	lease     time.Duration
+	// How many subscriptions are delivered to at once, and how long into a
+	// claim new attempts may still be started. See processDue.
+	concurrency int
+	batchBudget time.Duration
+	// Time held back at the end of a lease for recording an outcome, so an
+	// attempt started at the last moment still writes it under the claim.
+	saveReserve time.Duration
 	// How long a finished notification is kept, in nanoseconds. Atomic
 	// because the retention worker rewrites it whenever an administrator
 	// saves the settings page, while this worker is reading it between
@@ -52,10 +60,31 @@ type DurableWorker struct {
 }
 
 const (
-	defaultDeliveryInterval  = 5 * time.Second
-	defaultDeliveryBatch     = 50
-	defaultDeliveryLease     = 2 * time.Minute
-	defaultDeliveryTimeout   = 15 * time.Second
+	defaultDeliveryInterval = 5 * time.Second
+	defaultDeliveryBatch    = 50
+	defaultDeliveryTimeout  = 15 * time.Second
+
+	// A claim has to outlast everything done under it, or another worker
+	// takes the rows over while this one is still posting them and the
+	// endpoint receives each notification twice. The batch used to be fifty
+	// sequential POSTs of up to fifteen seconds each -- twelve and a half
+	// minutes -- under a two-minute lease; with two workers running, most of
+	// a slow batch was delivered twice.
+	//
+	// Now no attempt starts more than defaultBatchBudget into a claim, and
+	// one that starts then finishes within defaultDeliveryTimeout and records
+	// its outcome within defaultSaveReserve. The lease covers all three with
+	// room to spare, and TestTheLeaseOutlastsTheWorstCaseBatch holds it to
+	// that. Rows a batch did not reach are released for the next claim.
+	defaultBatchBudget   = time.Minute
+	defaultSaveReserve   = 10 * time.Second
+	defaultDeliveryLease = 2 * time.Minute
+
+	// Subscriptions delivered to at once. Each subscription's notifications
+	// are still sent one at a time and in order; this is what stops one slow
+	// endpoint from holding every other tenant's notifications behind it.
+	defaultDeliveryConcurrency = 8
+
 	defaultDeliveryRetention = 7 * 24 * time.Hour
 	deliveryPrunePeriod      = time.Hour
 
@@ -78,6 +107,9 @@ func NewDurableWorker(deliveries stores.DeliveryRepository, webhookUsecase useca
 		interval:       defaultDeliveryInterval,
 		batchSize:      defaultDeliveryBatch,
 		lease:          defaultDeliveryLease,
+		concurrency:    defaultDeliveryConcurrency,
+		batchBudget:    defaultBatchBudget,
+		saveReserve:    defaultSaveReserve,
 		trigger:        make(chan struct{}, 1),
 	}
 	w.SetRetention(defaultDeliveryRetention)
@@ -180,6 +212,7 @@ func (w *DurableWorker) Start(ctx context.Context) {
 }
 
 func (w *DurableWorker) processDue(ctx context.Context) int {
+	claimedAt := time.Now()
 	due, err := w.deliveries.ClaimDue(ctx, w.batchSize, w.lease)
 	if err != nil {
 		slog.Error("webhook: failed to claim due notifications", "error", err)
@@ -191,10 +224,6 @@ func (w *DurableWorker) processDue(ctx context.Context) int {
 	// panmail cannot tell — it records a failure and delivers again, so the
 	// endpoint sees the event twice. Signatures let a receiver deduplicate, but
 	// making it their problem on every deploy is not a design.
-	//
-	// Deliveries here are sequential, so this is one request rather than the
-	// two hundred the outbox had in flight. Worth the same treatment anyway:
-	// it is the same bug, and it costs nothing to not have it.
 	attemptCtx, cancelAttempt := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelAttempt()
 	stopDrainTimer := context.AfterFunc(ctx, func() {
@@ -202,16 +231,77 @@ func (w *DurableWorker) processDue(ctx context.Context) int {
 	})
 	defer stopDrainTimer()
 
-	for _, d := range due {
-		// Still the parent context: this decides whether to *start* another
-		// delivery, and one not yet attempted cannot be duplicated by leaving
-		// it. The rest stay claimed until the lease expires.
-		if ctx.Err() != nil {
-			return len(due)
-		}
-		w.attempt(attemptCtx, d)
+	startBy := claimedAt.Add(w.startWindow())
+
+	// One subscription's notifications go out one at a time and in order;
+	// different subscriptions go out side by side, up to w.concurrency. The
+	// batch was sequential, so an endpoint taking fifteen seconds to answer
+	// held up every notification queued behind it, for every tenant.
+	sem := make(chan struct{}, max(w.concurrency, 1))
+	var wg sync.WaitGroup
+	for _, group := range bySubscription(due) {
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			for i, d := range group {
+				// Still the parent context: this decides whether to *start*
+				// another delivery, and one not yet attempted cannot be
+				// duplicated by leaving it. Nor may one start so late in the
+				// claim that the lease could run out before it is recorded.
+				if ctx.Err() != nil || !time.Now().Before(startBy) {
+					w.release(ctx, group[i:])
+					return
+				}
+				w.attempt(attemptCtx, d)
+			}
+		})
 	}
+	wg.Wait()
 	return len(due)
+}
+
+// startWindow is how long into a claim an attempt may still start: the batch
+// budget, or less if the lease is too short to fit an attempt and its
+// bookkeeping after it.
+func (w *DurableWorker) startWindow() time.Duration {
+	window := w.lease - w.client.Timeout - w.saveReserve
+	if w.client.Timeout == 0 {
+		// An unbounded client cannot be fitted into any lease. Not how the
+		// worker is built, but a zero here should not mean "start nothing".
+		window = w.lease - w.saveReserve
+	}
+	return min(w.batchBudget, window)
+}
+
+// bySubscription groups a batch by the subscription it is owed to, keeping
+// each group in claim order.
+func bySubscription(due []*entities.WebhookDelivery) [][]*entities.WebhookDelivery {
+	index := map[string]int{}
+	var groups [][]*entities.WebhookDelivery
+	for _, d := range due {
+		i, ok := index[d.WebhookID]
+		if !ok {
+			i = len(groups)
+			index[d.WebhookID] = i
+			groups = append(groups, nil)
+		}
+		groups[i] = append(groups[i], d)
+	}
+	return groups
+}
+
+// release hands back notifications this batch claimed but did not attempt,
+// so the next claim -- here or on another instance -- can take them straight
+// away rather than waiting out the lease. Nothing about them changes but the
+// claim.
+func (w *DurableWorker) release(ctx context.Context, rest []*entities.WebhookDelivery) {
+	for _, d := range rest {
+		d.Status = entities.DeliveryStatusDeferred
+		if d.AttemptCount == 0 {
+			d.Status = entities.DeliveryStatusPending
+		}
+		w.save(ctx, d)
+	}
 }
 
 // attempt makes one delivery and records what happened.
@@ -316,7 +406,15 @@ func (w *DurableWorker) save(ctx context.Context, d *entities.WebhookDelivery) {
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 
-	if err := w.deliveries.Update(saveCtx, d); err != nil {
+	err := w.deliveries.Update(saveCtx, d)
+	switch {
+	case errors.Is(err, stores.ErrClaimLost):
+		// The lease ran out and another worker has the row. Its outcome is
+		// the one that counts; overwriting it is how a delivered
+		// notification used to go back on the queue.
+		slog.Warn("webhook: claim lost before the outcome was recorded",
+			"delivery_id", d.ID, "status", d.Status)
+	case err != nil:
 		slog.Error("webhook: failed to record the delivery outcome",
 			"delivery_id", d.ID, "status", d.Status, "error", err)
 	}

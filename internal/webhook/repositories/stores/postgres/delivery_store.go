@@ -109,12 +109,19 @@ func (s *deliveryStore) ClaimDue(ctx context.Context, limit int, leaseFor time.D
 			return nil, err
 		}
 		d.Status = entities.DeliveryStatus(status)
+		d.ClaimToken = token
 		claimed = append(claimed, d)
 	}
 	return claimed, rows.Err()
 }
 
 func (s *deliveryStore) Update(ctx context.Context, d *entities.WebhookDelivery) error {
+	// Checked here rather than left to the query: an empty token can never
+	// match, and on PostgreSQL the column is a UUID that would reject it with
+	// a syntax error rather than a clean miss.
+	if d.ClaimToken == "" {
+		return stores.ErrClaimLost
+	}
 	database, err := s.getDB()
 	if err != nil {
 		return err
@@ -123,9 +130,22 @@ func (s *deliveryStore) Update(ctx context.Context, d *entities.WebhookDelivery)
 	// Same reason as Create: every timestamp this table holds is UTC, or the
 	// comparisons that drive the queue silently match nothing.
 	d.NextAttemptAt = d.NextAttemptAt.UTC()
-	_, err = database.ExecContext(ctx, updateDeliveryQuery,
-		d.ID, string(d.Status), d.AttemptCount, d.NextAttemptAt, d.LastError, d.UpdatedAt)
-	return err
+	res, err := database.ExecContext(ctx, updateDeliveryQuery,
+		d.ID, string(d.Status), d.AttemptCount, d.NextAttemptAt, d.LastError, d.UpdatedAt, d.ClaimToken)
+	if err != nil {
+		return err
+	}
+	// Both drivers in use report affected rows, and this is the only way to
+	// learn the claim had moved on, so a driver that declines is an error.
+	updated, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return stores.ErrClaimLost
+	}
+	d.ClaimToken = ""
+	return nil
 }
 
 func (s *deliveryStore) Delete(ctx context.Context, id string) error {

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -137,13 +138,15 @@ func TestAnOutcomeIsRecordedAndReleasesTheClaim(t *testing.T) {
 }
 
 func TestATerminalNotificationIsNotRedelivered(t *testing.T) {
-	repo := newDeliveryTestStore(t)
 	ctx := context.Background()
 
-	queue(t, repo, storetest.TenantA, time.Now().Add(-time.Minute))
-	claimed, _ := repo.ClaimDue(ctx, 10, time.Minute)
-
+	// A row per status: an outcome is written under a claim, and recording
+	// one releases it, so the same row cannot be finished twice.
 	for _, status := range []entities.DeliveryStatus{entities.DeliveryStatusDelivered, entities.DeliveryStatusFailed} {
+		repo := newDeliveryTestStore(t)
+		queue(t, repo, storetest.TenantA, time.Now().Add(-time.Minute))
+		claimed, _ := repo.ClaimDue(ctx, 10, time.Minute)
+
 		d := claimed[0]
 		d.Status = status
 		d.NextAttemptAt = time.Now().Add(-time.Hour)
@@ -181,10 +184,18 @@ func TestPruneRemovesFinishedNotificationsOnly(t *testing.T) {
 
 	old := time.Now().Add(-48 * time.Hour)
 
-	finished := queue(t, repo, storetest.TenantA, old)
+	// Finished the way the worker finishes one: claimed, then recorded. An
+	// outcome can only be written under a claim.
+	queue(t, repo, storetest.TenantA, old)
+	claimed, err := repo.ClaimDue(ctx, 10, time.Minute)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("claim: %d rows, %v", len(claimed), err)
+	}
+	finished := claimed[0]
 	finished.Status = entities.DeliveryStatusDelivered
-	finished.UpdatedAt = old
-	repo.Update(ctx, finished)
+	if err := repo.Update(ctx, finished); err != nil {
+		t.Fatalf("update: %v", err)
+	}
 
 	pending := queue(t, repo, storetest.TenantA, old)
 
@@ -199,7 +210,7 @@ func TestPruneRemovesFinishedNotificationsOnly(t *testing.T) {
 	}
 
 	// The pending one is still live work; pruning it loses a notification.
-	claimed, _ := repo.ClaimDue(ctx, 10, time.Minute)
+	claimed, _ = repo.ClaimDue(ctx, 10, time.Minute)
 	if len(claimed) != 1 || claimed[0].ID != pending.ID {
 		t.Error("the pending notification was pruned")
 	}
@@ -224,5 +235,55 @@ func TestATimestampInLocalTimeIsStillFound(t *testing.T) {
 	}
 	if len(claimed) != 1 {
 		t.Errorf("claimed %d; a notification written in local time is invisible to the worker", len(claimed))
+	}
+}
+
+// The double delivery this closes. Worker A's lease ran out mid-batch, worker
+// B reclaimed the row and delivered it, and A then wrote its own outcome over
+// B's -- unconditionally, so a row B had marked delivered could go back to
+// deferred and be sent a third time.
+func TestAnOutcomeIsRefusedOnceTheClaimHasMovedOn(t *testing.T) {
+	repo := newDeliveryTestStore(t)
+	ctx := context.Background()
+
+	queue(t, repo, storetest.TenantA, time.Now().Add(-time.Minute))
+
+	// A's lease, already run out.
+	stale, err := repo.ClaimDue(ctx, 10, -time.Minute)
+	if err != nil || len(stale) != 1 {
+		t.Fatalf("first claim: %d rows, %v", len(stale), err)
+	}
+	fresh, err := repo.ClaimDue(ctx, 10, time.Minute)
+	if err != nil || len(fresh) != 1 {
+		t.Fatalf("reclaim: %d rows, %v", len(fresh), err)
+	}
+
+	// B delivers and records it.
+	fresh[0].Status = entities.DeliveryStatusDelivered
+	fresh[0].AttemptCount = 1
+	if err := repo.Update(ctx, fresh[0]); err != nil {
+		t.Fatalf("B's update: %v", err)
+	}
+
+	// A, late, would put it back for another attempt.
+	stale[0].Status = entities.DeliveryStatusDeferred
+	stale[0].AttemptCount = 1
+	stale[0].NextAttemptAt = time.Now().Add(-time.Second)
+	if err := repo.Update(ctx, stale[0]); !errors.Is(err, stores.ErrClaimLost) {
+		t.Fatalf("A's update returned %v, want ErrClaimLost", err)
+	}
+
+	if again, _ := repo.ClaimDue(ctx, 10, time.Minute); len(again) != 0 {
+		t.Errorf("a delivered notification was made due again by a worker that no longer held it")
+	}
+}
+
+func TestAnOutcomeWithoutAClaimIsRefused(t *testing.T) {
+	repo := newDeliveryTestStore(t)
+	d := queue(t, repo, storetest.TenantA, time.Now().Add(-time.Minute))
+
+	d.Status = entities.DeliveryStatusFailed
+	if err := repo.Update(context.Background(), d); !errors.Is(err, stores.ErrClaimLost) {
+		t.Errorf("update without a claim returned %v, want ErrClaimLost", err)
 	}
 }
