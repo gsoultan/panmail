@@ -53,6 +53,24 @@ func asConnectError(err error) error {
 	}
 }
 
+// guardTargetInTenant resolves the user a request acts on inside the caller's
+// tenant and refuses when that user is a super admin and the caller is not.
+//
+// A super admin's home is a tenant like any other, so its administrator sees
+// them in ListUsers and can name their id. Without this an administrator could
+// demote, delete or strip the second factor from the account that administers
+// the whole deployment.
+func guardTargetInTenant(ctx context.Context, users usecases.UserUsecase, tenantID, targetID string) error {
+	target, err := users.GetInTenant(ctx, tenantID, targetID)
+	if err != nil {
+		return asConnectError(err)
+	}
+	if target.Role == middlewares.RoleSuperAdmin && middlewares.GetRole(ctx) != middlewares.RoleSuperAdmin {
+		return connect.NewError(connect.CodePermissionDenied, errors.New("insufficient permissions to modify a Super Admin"))
+	}
+	return nil
+}
+
 func toProtoRole(role string) panmailv1.UserRole {
 	return panmailv1.UserRole(panmailv1.UserRole_value[role])
 }
@@ -163,16 +181,8 @@ func (s *userService) UpdateUserTwoFactor(ctx context.Context, req *connect.Requ
 		return nil, err
 	}
 
-	// Role protection: Admin cannot change Super Admin's 2FA
-	callerRole := middlewares.GetRole(ctx)
-	if callerRole != middlewares.RoleSuperAdmin {
-		targetUser, err := s.usecase.GetInTenant(ctx, tenantID, req.Msg.Id)
-		if err != nil {
-			return nil, asConnectError(err)
-		}
-		if targetUser != nil && targetUser.Role == middlewares.RoleSuperAdmin {
-			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("insufficient permissions to modify Super Admin settings"))
-		}
+	if err := guardTargetInTenant(ctx, s.usecase, tenantID, req.Msg.Id); err != nil {
+		return nil, err
 	}
 
 	if err := s.usecase.UpdateUserTwoFactor(ctx, tenantID, req.Msg.Id, req.Msg.Enabled); err != nil {

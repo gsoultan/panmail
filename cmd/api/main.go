@@ -878,10 +878,11 @@ func main() {
 
 	membershipUsecase := authusecases.NewMembershipUsecase(membershipRepo, userRepo, tenantRepo)
 
-	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, membershipRepo, swappableTokenMaker)
-	authService := authservices.NewAuthService(authUsecase, membershipUsecase)
-
 	userUsecase := authusecases.NewUserUsecase(userRepo, membershipRepo)
+
+	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, membershipRepo, swappableTokenMaker)
+	authService := authservices.NewAuthService(authUsecase, membershipUsecase, userUsecase)
+
 	userService := authservices.NewUserService(userUsecase, membershipUsecase)
 
 	apiKeyUsecase := authusecases.NewApiKeyUsecase(apiKeyRepo)
