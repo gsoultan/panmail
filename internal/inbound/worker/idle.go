@@ -12,6 +12,7 @@ import (
 	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
+	inboundUsecases "github.com/gsoultan/panmail/internal/inbound/usecases"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -276,7 +277,7 @@ func (s *IdleSupervisor) deliver(ctx context.Context, tenantID string, provider 
 		Headers:   headers,
 	}
 
-	if err := s.poller.inboundUsecase.Process(ctx, inbound); err != nil {
+	if err := s.poller.inboundUsecase.Process(ctx, inbound, inboundUsecases.ParseDeliveryReport(e.Attachments)); err != nil {
 		slog.Error("idle: failed to process inbound email",
 			"tenant_id", tenantID, "provider_id", provider.ID, "error", err)
 	}

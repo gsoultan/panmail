@@ -67,7 +67,7 @@ type recordingUsecase struct {
 	seen []string
 }
 
-func (r *recordingUsecase) Process(_ context.Context, e *panmailv1.InboundEmail) error {
+func (r *recordingUsecase) Process(_ context.Context, e *panmailv1.InboundEmail, _ *inboundUsecases.DeliveryReport) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.seen = append(r.seen, e.Subject)

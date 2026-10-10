@@ -110,7 +110,7 @@ Administrator.
 | --- | --- |
 | I1 | IMAP/POP3 polling and IMAP IDLE per provider; an IDLE session restarts when its provider's settings change. |
 | I2 | An HTTP parse endpoint at `/inbound/{tenant_id}/{provider_id}`, authenticated with the provider's webhook secret (HMAC header or HTTP Basic). The tenant comes from the credential, never from the body. JSON, multipart and urlencoded bodies are accepted; anything unparseable is refused. |
-| I3 | A received bounce report is recorded against its `Final-Recipient`/`Original-Recipient` only; never against the sender. |
+| I3 | A received bounce is recorded only when it is a delivery status notification (a `message/delivery-status` part) whose returned headers carry the `X-Panmail-Ref` panmail signed onto that copy, verifying for the receiving tenant and the reported `Final-Recipient`/`Original-Recipient`, and the event store shows that message sent to that address. It is recorded against that address and message only; never against the sender. Anything else is stored as mail and suppresses no one. |
 | I4 | A received message is committed before it is acknowledged. |
 
 ### 4.5 Filtering and review
@@ -202,8 +202,11 @@ they share:
 
 ## 7. Known gaps
 
-- Bounce detection on mail fetched over IMAP is a heuristic; anyone who can
-  mail the tenant's mailbox can forge a bounce report naming an address.
+- A bounce report counts only when it returns panmail's signed reference, so
+  reports about mail sent before the reference existed, from a gateway with no
+  auth key, or through an inbound-parse service that does not post the raw
+  message are not recorded. A recipient who passes on a copy with its headers
+  intact hands over the means to bounce their own address, and only theirs.
 - The HTTP inbound endpoint has no idempotency key, so a provider that retries
   the same post stores it twice.
 - A single slow webhook endpoint can still fill a batch when it owns more than

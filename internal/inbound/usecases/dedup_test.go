@@ -63,7 +63,7 @@ func TestTheSameMessageIsStoredOnce(t *testing.T) {
 	ctx := context.Background()
 
 	for range 5 {
-		if err := u.Process(ctx, inbound("msg-1", "Hello")); err != nil {
+		if err := u.Process(ctx, inbound("msg-1", "Hello"), nil); err != nil {
 			t.Fatalf("process: %v", err)
 		}
 	}
@@ -80,7 +80,7 @@ func TestTheWebhookFiresOncePerMessage(t *testing.T) {
 	ctx := context.Background()
 
 	for range 5 {
-		u.Process(ctx, inbound("msg-1", "Hello"))
+		u.Process(ctx, inbound("msg-1", "Hello"), nil)
 	}
 
 	if hooks.fired != 1 {
@@ -94,7 +94,7 @@ func TestDistinctMessagesAreAllProcessed(t *testing.T) {
 	ctx := context.Background()
 
 	for _, id := range []string{"a", "b", "c"} {
-		u.Process(ctx, inbound(id, "Hello"))
+		u.Process(ctx, inbound(id, "Hello"), nil)
 	}
 
 	if repo.writes != 3 || hooks.fired != 3 {
@@ -109,7 +109,7 @@ func TestAFailedLookupAcceptsTheMessage(t *testing.T) {
 	repo.lookupErr = errors.New("store unavailable")
 	u := NewInboundUsecase(repo, nil, hooks)
 
-	if err := u.Process(context.Background(), inbound("msg-1", "Hello")); err != nil {
+	if err := u.Process(context.Background(), inbound("msg-1", "Hello"), nil); err != nil {
 		t.Fatalf("process: %v", err)
 	}
 	if repo.writes != 1 {
@@ -124,11 +124,11 @@ func TestAnotherTenantsCopyIsNotSuppressed(t *testing.T) {
 	u := NewInboundUsecase(repo, nil, hooks)
 	ctx := context.Background()
 
-	u.Process(ctx, inbound("shared", "Hello"))
+	u.Process(ctx, inbound("shared", "Hello"), nil)
 
 	other := inbound("shared", "Hello")
 	other.TenantId = "22222222-2222-2222-2222-222222222222"
-	u.Process(ctx, other)
+	u.Process(ctx, other, nil)
 
 	if repo.writes != 2 {
 		t.Errorf("wrote %d, want both tenants to keep their own copy", repo.writes)
@@ -140,7 +140,7 @@ func TestAMessageWithNoIdIsStillAccepted(t *testing.T) {
 	u := NewInboundUsecase(repo, nil, hooks)
 
 	// Nothing to deduplicate on, so it is processed rather than discarded.
-	if err := u.Process(context.Background(), inbound("", "Hello")); err != nil {
+	if err := u.Process(context.Background(), inbound("", "Hello"), nil); err != nil {
 		t.Fatalf("process: %v", err)
 	}
 	if repo.writes != 1 {
@@ -155,7 +155,7 @@ func TestTheStoredTimestampIsPreserved(t *testing.T) {
 	when := time.Date(2026, 2, 10, 15, 4, 5, 0, time.UTC)
 	e := inbound("msg-1", "Hello")
 	e.Timestamp = timestamppb.New(when)
-	u.Process(context.Background(), e)
+	u.Process(context.Background(), e, nil)
 
 	stored := repo.stored[dedupTenant+"/msg-1"]
 	if stored == nil || !stored.Timestamp.Equal(when) {

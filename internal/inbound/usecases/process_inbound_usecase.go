@@ -11,6 +11,8 @@ import (
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
 	"github.com/gsoultan/panmail/internal/inbound/repositories/entities"
 	"github.com/gsoultan/panmail/internal/inbound/repositories/stores"
+	"github.com/gsoultan/panmail/pkg/emailutil"
+	"github.com/gsoultan/panmail/pkg/tracking"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -22,6 +24,10 @@ type inboundUsecase struct {
 	// screener is optional. A nil one accepts every message, which is what a
 	// gateway with no inbound rules configured must do.
 	screener emailfilter.Screener
+
+	// bounceSigner verifies the reference a delivery report quotes back. Nil
+	// means no report is believed; see recordBounce.
+	bounceSigner *tracking.Signer
 }
 
 func NewInboundUsecase(repo stores.InboundRepository, eventUsecase eventusecases.ProcessEventUsecase, webhookTrigger WebhookTrigger) InboundUsecase {
@@ -39,7 +45,14 @@ func (u *inboundUsecase) WithScreener(s emailfilter.Screener) InboundUsecase {
 	return u
 }
 
-func (u *inboundUsecase) Process(ctx context.Context, email *panmailv1.InboundEmail) error {
+// WithBounceSigner installs the key bounce references are verified with: the
+// tracking signer the send path minted them with.
+func (u *inboundUsecase) WithBounceSigner(s *tracking.Signer) InboundUsecase {
+	u.bounceSigner = s
+	return u
+}
+
+func (u *inboundUsecase) Process(ctx context.Context, email *panmailv1.InboundEmail, report *DeliveryReport) error {
 	ts := time.Now()
 	if email.Timestamp != nil {
 		ts = email.Timestamp.AsTime()
@@ -76,8 +89,10 @@ func (u *inboundUsecase) Process(ctx context.Context, email *panmailv1.InboundEm
 		}
 	}
 
-	// Basic Bounce Detection
-	u.detectAndRecordBounce(ctx, email)
+	// Bounce detection. Only a report the transport found to be a delivery
+	// status notification is considered, and only what it can be tied to a
+	// message panmail sent is recorded; see recordBounce.
+	u.recordBounce(ctx, email, report)
 
 	// Filter rules run after de-duplication and before anything is surfaced.
 	//
@@ -152,56 +167,130 @@ func (u *inboundUsecase) Process(ctx context.Context, email *panmailv1.InboundEm
 	return err
 }
 
-func (u *inboundUsecase) detectAndRecordBounce(ctx context.Context, email *panmailv1.InboundEmail) {
-	subject := strings.ToLower(email.Subject)
-	isBounce := strings.Contains(subject, "delivery status notification") ||
-		strings.Contains(subject, "undeliverable") ||
-		strings.Contains(subject, "returned mail") ||
-		strings.Contains(subject, "failure notice")
-
-	if !isBounce {
+// recordBounce records what a delivery report says about the recipients it
+// names, for those it can be tied to a copy panmail actually sent.
+//
+// A recorded hard bounce suppresses the address for good, and the mailbox
+// these reports arrive in accepts mail from anyone. This used to decide on the
+// subject line and a few phrases in the body, so a plain message saying "user
+// unknown" with a Final-Recipient line suppressed whichever address it named.
+// Now a report counts only when both of these hold:
+//
+//   - it is structurally a delivery status notification: the receiving
+//     transport found a message/delivery-status part (see ParseDeliveryReport);
+//   - the original headers it hands back carry the X-Panmail-Ref panmail put on
+//     the copy, and that reference verifies for this tenant and for the
+//     address the report names, and the event store shows that message was
+//     handed to a provider for that address.
+//
+// The reference is signed per tenant, message and recipient, so another
+// tenant's message, an address the message never went to, or another
+// recipient of the same message all fail. Anything that fails is not recorded;
+// the message itself is still stored as inbound mail by the caller.
+func (u *inboundUsecase) recordBounce(ctx context.Context, email *panmailv1.InboundEmail, report *DeliveryReport) {
+	if report == nil {
 		return
 	}
-
-	// Lowered once, from a bounded prefix. This used to lower the whole of
-	// text+HTML afresh for each of four phrases, so a 25 MiB message that
-	// happened to have a bounce-like subject cost around 200 MiB of garbage.
-	// A report puts its status lines near the top; nothing past the prefix
-	// was going to change the verdict.
-	scan := bounceScanText(email.BodyText, email.BodyHtml)
-
-	// A simplified heuristic, deliberately: the classification only decides
-	// hard against soft, and the recipient below decides whether anything is
-	// recorded at all.
-	eventType := panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED
-	if strings.Contains(scan, "5.1.1") || strings.Contains(scan, "user unknown") {
-		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE
-	} else if strings.Contains(scan, "mailbox full") || strings.Contains(scan, "4.2.2") {
-		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SOFT_BOUNCE
-	}
-
-	// The bounced address comes from the report itself and from nowhere else.
-	//
-	// This used to fall back to the message's From when no Final-Recipient was
-	// found, and From is whoever sent the bounce -- usually MAILER-DAEMON, but
-	// on anything that is not a real mail server's report it is an address the
-	// sender chose. A hard bounce suppresses permanently, so the fallback let
-	// any message with the right subject and wording suppress any address the
-	// sender liked. With no recipient there is nothing to attribute the bounce
-	// to, and recording nothing is the honest outcome.
-	recipient := dsnRecipient(scan)
-	if recipient == "" {
-		slog.Debug("inbound bounce names no recipient; not recording it",
+	if u.bounceSigner == nil || !u.bounceSigner.HasKey() {
+		slog.Warn("cannot verify a delivery report without the tracking key; not recording it",
 			"id", email.Id, "tenant_id", email.TenantId)
 		return
 	}
 
-	metadata := map[string]any{
-		"bounce_subject": email.Subject,
-		"inbound_id":     email.Id,
+	refs := report.ReturnedHeaders.Values(tracking.BounceRefHeader)
+	if len(refs) == 0 {
+		slog.Info("delivery report quotes no panmail reference; not recording it",
+			"id", email.Id, "tenant_id", email.TenantId)
+		return
 	}
 
-	_ = u.eventUsecase.RecordEvent(ctx, email.TenantId, "", "", eventType, recipient, "", "", metadata)
+	for _, rcpt := range report.Recipients {
+		eventType, ok := reportedEventType(rcpt)
+		if !ok {
+			continue
+		}
+
+		messageID := ""
+		for _, ref := range refs {
+			if id, err := u.bounceSigner.VerifyBounceRef(ref, email.TenantId, rcpt.Address); err == nil {
+				messageID = id
+				break
+			}
+		}
+		if messageID == "" {
+			slog.Warn("delivery report names an address its reference does not cover; not recording it",
+				"id", email.Id, "tenant_id", email.TenantId)
+			continue
+		}
+
+		if !u.wasSentTo(ctx, email.TenantId, messageID, rcpt.Address) {
+			slog.Warn("delivery report refers to a message not sent to the address it names; not recording it",
+				"id", email.Id, "tenant_id", email.TenantId, "message_id", messageID)
+			continue
+		}
+
+		metadata := map[string]any{
+			"bounce_subject": email.Subject,
+			"inbound_id":     email.Id,
+			"dsn_status":     rcpt.Status,
+		}
+		_ = u.eventUsecase.RecordEvent(ctx, email.TenantId, "", messageID, eventType, rcpt.Address, "", rcpt.Diagnostic, metadata)
+	}
+}
+
+// wasSentTo reports whether the event store shows messageID handed to a
+// provider for address in this tenant. A store that cannot be read counts as
+// no: a bounce lost to an outage costs one more attempt later, a bounce
+// believed wrongly costs the address for good.
+func (u *inboundUsecase) wasSentTo(ctx context.Context, tenantID, messageID, address string) bool {
+	events, err := u.eventUsecase.ListByMessageID(ctx, tenantID, messageID)
+	if err != nil {
+		slog.Error("failed to read a message's events to verify a delivery report",
+			"error", err, "tenant_id", tenantID, "message_id", messageID)
+		return false
+	}
+	for _, e := range events {
+		switch e.Type {
+		case panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED:
+			if e.TenantId == tenantID && bareAddress(e.Recipient) == address {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// reportedEventType reads what one recipient section says happened. ok is
+// false for a section that reports a success (delivered, relayed, expanded),
+// which is not a bounce at all.
+func reportedEventType(r ReportedRecipient) (panmailv1.EmailEventType, bool) {
+	switch r.Action {
+	case "delivered", "relayed", "expanded":
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_UNSPECIFIED, false
+	}
+
+	if r.Action == "delayed" || strings.HasPrefix(r.Status, "4") {
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SOFT_BOUNCE, true
+	}
+	if r.Action != "failed" && !strings.HasPrefix(r.Status, "5") {
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED, true
+	}
+
+	// The status code first: it is the field the report exists to carry. The
+	// diagnostic is free text from the remote server and is read with the
+	// same classifier the send path uses on a synchronous refusal. Anything
+	// beyond hard, soft or rejected -- a complaint or an unsubscribe read out
+	// of a diagnostic -- is not something a delivery report can say.
+	if emailutil.ClassifyError(r.Status).Type == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE {
+		return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE, true
+	}
+	switch c := emailutil.ClassifyError(strings.TrimSpace(r.Diagnostic + " " + r.Status)); c.Type {
+	case panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE,
+		panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SOFT_BOUNCE,
+		panmailv1.EmailEventType_EMAIL_EVENT_TYPE_REJECTED:
+		return c.Type, true
+	}
+	return panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED, true
 }
 
 func (u *inboundUsecase) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*panmailv1.InboundEmail, string, error) {
@@ -240,78 +329,6 @@ func (u *inboundUsecase) toProto(e *entities.InboundEmail) *panmailv1.InboundEma
 		BodyText:  e.BodyText,
 		Timestamp: timestamppb.New(e.Timestamp),
 		Headers:   e.Headers,
-	}
-}
-
-// maxBounceScan bounds how much of a message bounce detection reads. A
-// delivery report is a few kilobytes; the bound is generous for one with the
-// original message quoted above its status lines.
-const maxBounceScan = 256 << 10
-
-// bounceScanText returns the lower-cased start of a message's text and HTML
-// parts, at most maxBounceScan bytes of the two together, text first.
-func bounceScanText(text, html string) string {
-	if len(text) > maxBounceScan {
-		text = text[:maxBounceScan]
-	}
-	if room := maxBounceScan - len(text); len(html) > room {
-		html = html[:room]
-	}
-	return strings.ToLower(text + "\n" + html)
-}
-
-// dsnRecipient returns the address a delivery status notification reports on,
-// or "" when it names none. It expects text already lower-cased, as
-// bounceScanText returns it; the address comes back lower-cased too, which is
-// how the event store keys a recipient anyway.
-//
-// RFC 3464 writes the field as `Final-Recipient: rfc822; user@example.com` --
-// an address type, a semicolon, then usually a space before the address. The
-// parser this replaces cut at the first whitespace after the semicolon, which
-// in the common spelling is immediately, so every real report yielded an empty
-// recipient. Original-Recipient is the fallback for a report that carries only
-// that.
-func dsnRecipient(body string) string {
-	for _, field := range []string{"final-recipient:", "original-recipient:"} {
-		if r := dsnField(body, field); r != "" {
-			return r
-		}
-	}
-	return ""
-}
-
-func dsnField(body, field string) string {
-	from := 0
-	for {
-		idx := strings.Index(body[from:], field)
-		if idx < 0 {
-			return ""
-		}
-		start := from + idx + len(field)
-		from = start
-
-		value := body[start:]
-		if end := strings.IndexAny(value, "\r\n"); end >= 0 {
-			value = value[:end]
-		}
-		// The address type is optional in practice even though the RFC
-		// requires it, so a value with no semicolon is taken as the address.
-		if _, after, found := strings.Cut(value, ";"); found {
-			value = after
-		}
-		value = strings.TrimSpace(value)
-		// Some servers bracket the address. Past it, an HTML part carries the
-		// line on with markup and a text one may carry a trailing comment;
-		// neither is part of the address.
-		if rest, ok := strings.CutPrefix(value, "<"); ok {
-			value, _, _ = strings.Cut(rest, ">")
-		}
-		if end := strings.IndexAny(value, " \t<"); end >= 0 {
-			value = value[:end]
-		}
-		if strings.Contains(value, "@") {
-			return value
-		}
 	}
 }
 

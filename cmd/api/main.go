@@ -533,6 +533,13 @@ func main() {
 	}); ok {
 		inboundUsecase = screenable.WithScreener(filterScreener)
 	}
+	// A delivery report read from a tenant's mailbox is believed only when it
+	// quotes back the reference the send path signed with this key.
+	if verifying, ok := inboundUsecase.(interface {
+		WithBounceSigner(*tracking.Signer) inboundusecases.InboundUsecase
+	}); ok {
+		inboundUsecase = verifying.WithBounceSigner(trackingSigner)
+	}
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
 	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase, providerRepo)
 

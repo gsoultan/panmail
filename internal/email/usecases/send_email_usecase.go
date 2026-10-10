@@ -700,6 +700,8 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 					"error", err, "id", messageID, "recipient", recipient)
 			}
 
+			u.setBounceRef(&msg, tenantID, messageID, recipient)
+
 			for _, a := range req.Attachments {
 				msg.Attachments = append(msg.Attachments, gsmail.Attachment{
 					Filename:    a.Filename,
@@ -833,6 +835,31 @@ func (u *sendEmailUsecase) setUnsubscribeHeaders(msg *gsmail.Email, tenantID, me
 	)
 
 	return msg.SetOneClickUnsubscribe(url)
+}
+
+// setBounceRef adds the signed reference a delivery report has to quote back
+// before inbound bounce detection believes it. See tracking.BounceRefHeader.
+//
+// It is signed over the bare address, which is what a report's
+// Final-Recipient names, rather than the display-name form the send path may
+// carry. Without a key there is no reference, and a report about this copy
+// will suppress no one: that is the price of not trusting unsigned reports.
+func (u *sendEmailUsecase) setBounceRef(msg *gsmail.Email, tenantID, messageID, recipient string) {
+	if u.trackingSigner == nil {
+		return
+	}
+	address := recipient
+	if parsed, err := gsmail.ParseEmailAddress(recipient); err == nil {
+		address = parsed.Address
+	}
+	ref := u.trackingSigner.BounceRef(tenantID, messageID, address)
+	if ref == "" {
+		return
+	}
+	if msg.Headers == nil {
+		msg.Headers = make(map[string]string, 1)
+	}
+	msg.Headers[tracking.BounceRefHeader] = ref
 }
 
 func (u *sendEmailUsecase) injectPixel(htmlContent, tenantID, messageID, recipient, recipientEncoded string) string {

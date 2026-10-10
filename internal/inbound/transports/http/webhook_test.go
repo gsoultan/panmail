@@ -16,6 +16,7 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	"github.com/gsoultan/panmail/internal/inbound/usecases"
 )
 
 const (
@@ -28,10 +29,12 @@ const (
 type stubUsecase struct {
 	err      error
 	received []*panmailv1.InboundEmail
+	reports  []*usecases.DeliveryReport
 }
 
-func (s *stubUsecase) Process(_ context.Context, e *panmailv1.InboundEmail) error {
+func (s *stubUsecase) Process(_ context.Context, e *panmailv1.InboundEmail, report *usecases.DeliveryReport) error {
 	s.received = append(s.received, e)
+	s.reports = append(s.reports, report)
 	return s.err
 }
 func (s *stubUsecase) List(context.Context, string, int, string) ([]*panmailv1.InboundEmail, string, error) {
@@ -355,4 +358,67 @@ func TestOnlyPostIsAccepted(t *testing.T) {
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET returned %d, want 405", rec.Code)
 	}
+}
+
+// --- delivery reports ---
+
+const rawDSN = "From: MAILER-DAEMON@mx.example.net\r\n" +
+	"Subject: Undelivered Mail Returned to Sender\r\n" +
+	"MIME-Version: 1.0\r\n" +
+	"Content-Type: multipart/report; report-type=delivery-status; boundary=\"B\"\r\n\r\n" +
+	"--B\r\nContent-Type: text/plain\r\n\r\nUser unknown\r\n" +
+	"--B\r\nContent-Type: message/delivery-status\r\n\r\n" +
+	"Reporting-MTA: dns; mx.example.net\r\n\r\n" +
+	"Final-Recipient: rfc822; gone@example.org\r\nAction: failed\r\nStatus: 5.1.1\r\n\r\n" +
+	"--B\r\nContent-Type: text/rfc822-headers\r\n\r\nX-Panmail-Ref: v1.m.s\r\n" +
+	"--B--\r\n"
+
+// The parsed fields an inbound-parse service posts are text: no report
+// structure survives in them, so they never yield a report however bounce-like
+// they read. Only the raw message, when the service posts it, can.
+func TestOnlyTheRawMessageCanCarryADeliveryReport(t *testing.T) {
+	t.Run("parsed fields only", func(t *testing.T) {
+		usecase := &stubUsecase{}
+		h := NewWebhookHandler(usecase, defaultProviders())
+		rec := signedJSON(t, h, `{"from":"MAILER-DAEMON@x","to":["box@example.org"],"subject":"Undeliverable",`+
+			`"text":"Final-Recipient: rfc822; victim@example.org\nAction: failed\nStatus: 5.1.1\n"}`)
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("status %d", rec.Code)
+		}
+		if len(usecase.reports) != 1 || usecase.reports[0] != nil {
+			t.Errorf("handed on report %+v, want none", usecase.reports)
+		}
+	})
+
+	t.Run("raw message in a form", func(t *testing.T) {
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		mw.WriteField("email", rawDSN)
+		mw.Close()
+		body := buf.Bytes()
+
+		usecase := &stubUsecase{}
+		h := NewWebhookHandler(usecase, defaultProviders())
+		req := httptest.NewRequest(http.MethodPost, inboundPath(tenantA, providerA), bytes.NewReader(body))
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		req.Header.Set(SignatureHeader, sign(secretA, body))
+
+		if rec := serve(h, req); rec.Code != http.StatusAccepted {
+			t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+		}
+		if len(usecase.reports) != 1 || usecase.reports[0] == nil {
+			t.Fatalf("handed on no report for a raw delivery status notification")
+		}
+		report := usecase.reports[0]
+		if len(report.Recipients) != 1 || report.Recipients[0].Address != "gone@example.org" {
+			t.Errorf("report recipients %+v", report.Recipients)
+		}
+		if report.ReturnedHeaders.Get("X-Panmail-Ref") != "v1.m.s" {
+			t.Errorf("returned headers %v", report.ReturnedHeaders)
+		}
+		// The raw message also fills the fields the service left out.
+		if usecase.received[0].Subject != "Undelivered Mail Returned to Sender" {
+			t.Errorf("subject %q", usecase.received[0].Subject)
+		}
+	})
 }

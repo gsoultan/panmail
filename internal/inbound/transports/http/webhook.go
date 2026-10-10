@@ -102,6 +102,14 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only the raw message, when the service posts it, can show a delivery
+	// report's structure: the parsed fields carry text, not parts. A post
+	// without it is stored as mail and never records a bounce.
+	var report *usecases.DeliveryReport
+	if payload.raw != nil {
+		report = usecases.ParseDeliveryReport(payload.raw.Attachments)
+	}
+
 	email := &panmailv1.InboundEmail{
 		Id:        uuid.New().String(),
 		TenantId:  tenantID,
@@ -114,7 +122,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Headers:   payload.Headers,
 	}
 
-	if err := h.usecase.Process(r.Context(), email); err != nil {
+	if err := h.usecase.Process(r.Context(), email, report); err != nil {
 		// Logged, not returned. Process writes to the inbound store, the outbox
 		// and any webhook subscriptions, so its error can carry filesystem
 		// paths, the database user and host, or an internal endpoint's address.
@@ -206,6 +214,44 @@ type inboundPayload struct {
 	HTML    string            `json:"html"`
 	Text    string            `json:"text"`
 	Headers map[string]string `json:"headers"`
+
+	// Raw is the whole message as received, which some services post
+	// alongside or instead of the parsed fields (SendGrid's "email" field
+	// with "send raw" on). It is the only source of a message's parts.
+	Raw string `json:"raw"`
+
+	// raw is Raw parsed, nil when there was none or it did not parse.
+	raw *gsmail.Email
+}
+
+// readRaw parses Raw and fills in any field the service did not post.
+func (p *inboundPayload) readRaw() {
+	if p.Raw == "" {
+		return
+	}
+	parsed, err := gsmail.ParseRawEmail([]byte(p.Raw))
+	if err != nil {
+		return
+	}
+	p.raw = &parsed
+	if p.From == "" {
+		p.From = parsed.From
+	}
+	if len(p.To) == 0 {
+		p.To = parsed.To
+	}
+	if p.Subject == "" {
+		p.Subject = parsed.Subject
+	}
+	if p.Text == "" {
+		p.Text = string(parsed.Body)
+	}
+	if p.HTML == "" {
+		p.HTML = string(parsed.HTMLBody)
+	}
+	if len(p.Headers) == 0 {
+		p.Headers = parsed.Headers
+	}
 }
 
 func (p *inboundPayload) empty() bool {
@@ -257,6 +303,7 @@ func parsePayload(contentType string, body []byte) (*inboundPayload, int, string
 		return nil, http.StatusUnsupportedMediaType, "unsupported Content-Type"
 	}
 
+	p.readRaw()
 	if p.empty() {
 		return nil, http.StatusBadRequest, "the post carried no message"
 	}
@@ -270,6 +317,7 @@ func (p *inboundPayload) fromForm(values url.Values) {
 	p.Subject = values.Get("subject")
 	p.Text = values.Get("text")
 	p.HTML = values.Get("html")
+	p.Raw = values.Get("email")
 
 	for _, field := range values["to"] {
 		for _, addr := range strings.Split(field, ",") {

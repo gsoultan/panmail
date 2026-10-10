@@ -665,9 +665,9 @@ The endpoint is authenticated with that provider's **webhook secret** (the same 
 
 The tenant is the one the provider belongs to; a `tenant_id` in the body is ignored. A post without valid credentials, to an unknown provider, or to a provider with no secret is refused with `401`. A SendGrid or SES provider cannot authenticate inbound mail, because what they store is a public key or a topic ARN rather than a secret: point inbound at a provider whose webhook secret is a shared secret instead.
 
-The body may be JSON (`from`, `to` as an array, `subject`, `text`, `html`, `headers` as an object), `multipart/form-data` or `application/x-www-form-urlencoded` (`from`, `to` comma-separated, `subject`, `text`, `html`, `headers` as a raw header block). A post that yields no message is refused with `400`, and an unsupported `Content-Type` with `415`.
+The body may be JSON (`from`, `to` as an array, `subject`, `text`, `html`, `headers` as an object, `raw` as the whole message), `multipart/form-data` or `application/x-www-form-urlencoded` (`from`, `to` comma-separated, `subject`, `text`, `html`, `headers` as a raw header block, `email` as the whole message — SendGrid's "send raw"). A post that yields no message is refused with `400`, and an unsupported `Content-Type` with `415`.
 
-A received message that looks like a bounce is recorded against the address its `Final-Recipient` (or `Original-Recipient`) line names. One that names neither is stored as mail but not recorded as a bounce.
+A received message is recorded as a bounce only when it is a real delivery status notification (a `multipart/report` with a `message/delivery-status` part) **and** the original headers it returns carry the `X-Panmail-Ref` header panmail put on that copy. The reference is signed with the tracking key over the tenant, the message and the one recipient, so it must verify for the tenant whose mailbox received the report and for the `Final-Recipient` (or `Original-Recipient`) the report names, and the event store must show that message was sent to that address. Anything else — a plain "user unknown" message, a report naming an address panmail never mailed, a report about another tenant's message — is stored as mail and suppresses no one. Over HTTP, only a post that includes the raw message can carry a report.
 
 ### UI Integration
 
