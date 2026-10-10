@@ -811,7 +811,9 @@ func main() {
 	// Goroutines, heap and the connection pool. Everything above measures the
 	// work; this measures whether the process doing it is growing, which is
 	// what decides whether it survives a month rather than an afternoon.
-	if err := metrics.ObserveProcess(conn.GetDB()); err != nil {
+	// The method, not its result: on a fresh install setup has not installed
+	// a database yet, and the pool gauges have to follow the one it installs.
+	if err := metrics.ObserveProcess(conn.GetDB); err != nil {
 		slog.Error("failed to register process metrics", "error", err)
 	}
 
@@ -1229,11 +1231,31 @@ func mountBackupEndpoint(
 			return
 		}
 
+		// The configuration as it is now, not as it was at boot. On a fresh
+		// install there was none at boot and setup wrote it later; reading the
+		// boot-time value dereferenced nil and the endpoint panicked on every
+		// request until the process was restarted.
+		current := cfg
+		if current == nil {
+			loaded, err := config.Load()
+			if err != nil {
+				slog.Error("backup could not read the configuration", "error", err)
+				http.Error(w, "could not read the configuration: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			current = loaded
+		}
+		sqlDB := conn.GetDB()
+		if current == nil || sqlDB == nil {
+			http.Error(w, "not configured yet: complete setup first, there is nothing to back up", http.StatusServiceUnavailable)
+			return
+		}
+
 		opts := backup.Options{
 			OutDir:     out,
-			SQLDB:      conn.GetDB(),
-			SQLEngine:  cfg.Database.Type,
-			SQLitePath: cfg.Database.FilePath,
+			SQLDB:      sqlDB,
+			SQLEngine:  current.Database.Type,
+			SQLitePath: current.Database.FilePath,
 			Version:    Version,
 			Stores:     map[string]backup.Checkpointer{},
 		}
