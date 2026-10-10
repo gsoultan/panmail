@@ -46,6 +46,13 @@ func NewUserUsecase(repo repositories.UserRepository, memberships repositories.M
 }
 
 func (u *userUsecase) CreateUser(ctx context.Context, tenantID, email, password, name, role string) (*entities.User, error) {
+	// The same rule as the first administrator. Every account here reaches
+	// the same admin API; there was no reason the second one could have a
+	// one-character password when the first could not.
+	if err := ValidatePassword(password); err != nil {
+		return nil, err
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err

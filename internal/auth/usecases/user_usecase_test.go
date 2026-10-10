@@ -230,3 +230,32 @@ func TestGetInTenantReportsTheLocalRole(t *testing.T) {
 		t.Errorf("role = %q, want viewer — the role held in the tenant being asked about", got.Role)
 	}
 }
+
+// CreateAdmin required twelve characters and CreateUser required nothing, so
+// every account after the first could have any password at all.
+func TestCreateUserAppliesThePasswordRule(t *testing.T) {
+	tests := []struct {
+		name     string
+		password string
+		wantErr  bool
+	}{
+		{"empty", "", true},
+		{"the console's old minimum", "secret", true},
+		{"one short", "12345678901", true},
+		{"exactly the minimum", "123456789012", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			users := newDeletingUserRepo()
+			uc := newUserUsecase(users, newFakeMembershipRepo())
+
+			_, err := uc.CreateUser(context.Background(), "home", "new@example.com", tc.password, "New", entities.RoleEditor)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("CreateUser() error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if tc.wantErr && !errors.Is(err, ErrPasswordTooShort) {
+				t.Errorf("err = %v, want ErrPasswordTooShort", err)
+			}
+		})
+	}
+}
