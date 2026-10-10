@@ -68,6 +68,22 @@ type ProcessEventUsecase interface {
 	SetSuppressor(s Suppressor)
 }
 
+// Lifecycle is the wiring-time side of the event usecase that its consumers
+// have no business with, kept off ProcessEventUsecase so the test doubles that
+// stand in for it do not have to grow these methods.
+type Lifecycle interface {
+	// AddDiskUsageSource counts another store in the disk usage the
+	// performance page reports. The event and inbound stores the usecase is
+	// built with are counted already.
+	AddDiskUsageSource(src DiskUsageSource)
+
+	// Close stops the background performance tracker. Called on shutdown,
+	// before the stores it samples into are closed.
+	Close() error
+}
+
+var _ Lifecycle = (*processEventUsecase)(nil)
+
 type WebhookTrigger interface {
 	Enqueue(tenantID string, event panmailv1.WebhookTriggerEvent, payload any)
 }

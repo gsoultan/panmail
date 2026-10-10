@@ -112,6 +112,26 @@ func TestAShadowThatCannotBePrunedIsReported(t *testing.T) {
 	}
 }
 
+type sizedPrimary struct {
+	primaryStub
+}
+
+func (sizedPrimary) DiskUsage() int64 { return 42 }
+
+// The wrapper reports the primary's size. It used to hide it, so the store
+// size metric and the performance page lost the events store as soon as the
+// shadow was switched on.
+func TestTheShadowWrapperReportsThePrimarysSize(t *testing.T) {
+	repo := stores.WithShadow(&sizedPrimary{}, &shadowStub{})
+	sized, ok := repo.(interface{ DiskUsage() int64 })
+	if !ok {
+		t.Fatal("the wrapper does not report a size")
+	}
+	if got := sized.DiskUsage(); got != 42 {
+		t.Errorf("DiskUsage = %d; want the primary's 42", got)
+	}
+}
+
 type closingPrimary struct {
 	primaryStub
 	closed bool

@@ -507,6 +507,14 @@ func main() {
 	runWorker(&workers, workerCtx, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
 
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
+	if lifecycle, ok := processEventUsecase.(eventusecases.Lifecycle); ok {
+		// Deferred after the event store's Close, so it runs before it: the
+		// tracker samples into that store.
+		defer func() { _ = lifecycle.Close() }()
+		if sized, ok := logStore.(eventusecases.DiskUsageSource); ok {
+			lifecycle.AddDiskUsageSource(sized)
+		}
+	}
 	// Stored message bodies are masked on the way out of the API, at whatever
 	// level the settings page currently says. Read through the provider so a
 	// change reaches every instance on its next refresh rather than at restart.

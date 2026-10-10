@@ -125,6 +125,16 @@ func (s *shadowed) pruneShadow(prune func(SharedPruner) (int64, error)) error {
 	return nil
 }
 
+// DiskUsage reports the primary's size, the store on this disk. Without it the
+// wrapper hid the primary's, and the store size metric and the performance
+// page both went blank for the events store once the shadow was switched on.
+func (s *shadowed) DiskUsage() int64 {
+	if sized, ok := s.EventRepository.(interface{ DiskUsage() int64 }); ok {
+		return sized.DiskUsage()
+	}
+	return 0
+}
+
 // Close flushes the shadow's writer and then closes the primary.
 //
 // The embedded primary's Close used to answer alone, so the shadow's batching
