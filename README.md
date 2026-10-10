@@ -701,23 +701,13 @@ Two things stay in CI and are deliberately not in `make check`: the second test 
 against PostgreSQL, which needs a server (`scripts/ci/services.sh up` starts one and
 exports `PANMAIL_TEST_POSTGRES`), and `govulncheck`, which needs the network.
 
-## ⬆️ Upgrading: changes that need attention
+## ⬆️ Upgrading
 
-The October 2026 hardening pass changed a few things an operator or integrator
-will notice. Everything else is a fix with no action needed.
-
-| Change | What to do |
-| :--- | :--- |
-| `/inbound/` now requires `/inbound/{tenant_id}/{provider_id}` and the provider's webhook secret | Repoint each inbound parse integration and set a shared secret on its provider (see [Inbound Processing](#inbound-processing)). Unsigned posts get `401`. |
-| Settings and the SMTP listener are Super Administrator only | Have a Super Administrator make those changes. |
-| Performance metrics (the dashboard's System Health tab and throughput) are Super Administrator only | Nothing; Administrators no longer see host-wide CPU, memory and send rate. Monitoring that called `GetPerformanceMetrics` with an Administrator's session needs a Super Administrator's. |
-| Administrators can no longer turn two-factor on or off for a guest member of their tenant | Ask an administrator of the guest's home tenant, or a Super Administrator. |
-| Passwords need at least 12 characters | Existing passwords keep working; new accounts and the setup wizard enforce it. |
-| Analytics buckets are UTC | Nothing; graphs on a non-UTC server shift once by the offset. |
-| A gateway that cannot reach its database at boot exits after about two minutes | Run it under a supervisor that restarts it (systemd, Kubernetes, Docker `restart:`). |
-| Shutdown waits `--shutdown-delay` (5s) before closing the port | Keep `terminationGracePeriodSeconds` at 30; use `--shutdown-delay=0` in development. |
-| Deleting a tenant that still has users, keys or providers is refused, with a list of what remains | Remove those first. |
-| Webhook deliveries follow redirects only within the subscription's own host | Point a subscription at its final URL. |
+Changes that need attention when you upgrade (inbound URL and secret,
+Super Administrator-only settings and metrics, 12-character passwords, the
+database at boot, `--shutdown-delay` and more) are listed per release in
+[docs/upgrading.md](docs/upgrading.md). Read every section between the version
+you run and the one you are moving to.
 
 ## 📜 License
 
