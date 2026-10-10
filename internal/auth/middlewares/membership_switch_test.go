@@ -3,6 +3,7 @@ package middlewares
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -198,5 +199,30 @@ func TestRepeatedSwitchesReuseTheCachedMembership(t *testing.T) {
 	}
 	if memberships.calls != 1 {
 		t.Errorf("membership was queried %d times across three requests, want 1", memberships.calls)
+	}
+}
+
+// The tenant id is whatever the caller's header says. Caching a refusal under
+// it let any viewer fill the shared cache with invented ids until it stopped
+// accepting entries, and real members' switches went back to the database.
+func TestRefusedTenantsDoNotFillTheCache(t *testing.T) {
+	memberships := &fakeMemberships{roles: map[string]string{"u1|guest": entities.RoleViewer}}
+	m, maker := newMembershipMiddleware(t, memberships)
+
+	for i := range 50 {
+		header := fmt.Sprintf("invented-%d", i)
+		if _, code := serveWithTenantHeader(t, m, maker, "u1", "home", entities.RoleAdmin, header); code != http.StatusUnauthorized {
+			t.Fatalf("status = %d for an invented tenant, want 401", code)
+		}
+	}
+	if got := m.resolvedRoles.Len(); got != 0 {
+		t.Errorf("%d refusals cached; only real memberships should occupy the cache", got)
+	}
+
+	if _, code := serveWithTenantHeader(t, m, maker, "u1", "home", entities.RoleAdmin, "guest"); code != http.StatusOK {
+		t.Fatalf("status = %d for a real membership, want 200", code)
+	}
+	if got := m.resolvedRoles.Len(); got != 1 {
+		t.Errorf("%d entries cached after one real switch, want 1", got)
 	}
 }
