@@ -523,10 +523,18 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		return nil, err
 	}
 
-	// Fetch existing events to ensure idempotency (prevent duplicate sends on retry)
+	// Fetch existing events to ensure idempotency (prevent duplicate sends on
+	// retry).
+	//
+	// Fails closed. This used to log the error and carry on with no history,
+	// which reads as "nobody has been sent to yet" -- so a retry of a partly
+	// delivered message sent a second copy to every recipient the first pass
+	// had reached. Returned instead, the worker defers the message and tries
+	// again once the history can be read.
 	existingEvents, err := u.eventUsecase.ListByMessageID(ctx, tenantID, messageID)
 	if err != nil {
-		slog.Error("failed to list existing events for message", "error", err, "id", messageID)
+		slog.Error("failed to list existing events for message; not sending", "error", err, "id", messageID)
+		return nil, fmt.Errorf("failed to read delivery history: %w", err)
 	}
 	// Recipients an earlier pass finished for good without delivering -- a
 	// hard bounce, a complaint, a drop -- are settled, and are not tried again
