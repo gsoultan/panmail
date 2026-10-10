@@ -16,8 +16,11 @@ type EmailProvider struct {
 	AllowedDomains []string // Domains this provider is authorized to send for
 
 	// WebhookSecret verifies delivery webhooks from this provider: SendGrid's
-	// ECDSA public key, Mailgun's signing key, or a shared HMAC secret.
-	// Encrypted at rest and never returned by the API.
+	// ECDSA public key, Mailgun's signing key, SES's SNS topic ARNs, or a
+	// shared HMAC secret. The same value authenticates posts to /inbound/;
+	// for SendGrid it may also carry an Inbound Parse credential (see
+	// SplitSendGridWebhookSecret). Encrypted at rest and never returned by
+	// the API.
 	WebhookSecret string
 
 	// SendRatePerMinute and SendBurst cap how fast this provider may be sent

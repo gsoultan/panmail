@@ -11,6 +11,7 @@ import (
 
 	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 	"github.com/gsoultan/panmail/internal/event/usecases"
 )
@@ -94,7 +95,10 @@ func (h *WebhookHandler) verify(r *http.Request, tenantID, providerID, webhookTy
 
 	switch webhookType {
 	case "sendgrid":
-		return verifySendGrid(secret,
+		// The same field may also carry the provider's Inbound Parse
+		// credential; only the key verifies events.
+		publicKey, _ := providerEntities.SplitSendGridWebhookSecret(secret)
+		return verifySendGrid(publicKey,
 			r.Header.Get("X-Twilio-Email-Event-Webhook-Signature"),
 			r.Header.Get("X-Twilio-Email-Event-Webhook-Timestamp"),
 			body)

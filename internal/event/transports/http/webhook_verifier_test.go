@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/hmac"
@@ -11,9 +12,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
+
+	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
+	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
 )
 
 // --- SendGrid ---------------------------------------------------------------
@@ -223,5 +230,32 @@ func TestCheckTimestampRejectsGarbage(t *testing.T) {
 				t.Errorf("checkTimestamp(%q) accepted a value it should not", raw)
 			}
 		})
+	}
+}
+
+type sendGridProviders struct {
+	providerStores.Repository
+	secret string
+}
+
+func (p sendGridProviders) GetByID(context.Context, string, string) (*providerEntities.EmailProvider, error) {
+	return &providerEntities.EmailProvider{Type: panmailv1.ProviderType_PROVIDER_TYPE_SENDGRID, WebhookSecret: p.secret}, nil
+}
+
+// A SendGrid provider's secret may now carry its Inbound Parse credential
+// beside the event key. Handed whole to the ECDSA parser it is not a key, and
+// every event from a provider that also receives mail would be refused.
+func TestSendGridEventsVerifyWhenTheSecretAlsoHoldsAnInboundCredential(t *testing.T) {
+	key, publicKey := sendGridKeypair(t)
+	body := []byte(`[{"email":"a@example.com","event":"delivered"}]`)
+	ts := nowStamp()
+
+	h := &WebhookHandler{providerRepo: sendGridProviders{secret: publicKey + " inbound=parse:s3cret"}}
+	r := httptest.NewRequest(http.MethodPost, "/webhooks/t/p/sendgrid", nil)
+	r.Header.Set("X-Twilio-Email-Event-Webhook-Signature", signSendGrid(t, key, ts, body))
+	r.Header.Set("X-Twilio-Email-Event-Webhook-Timestamp", ts)
+
+	if err := h.verify(r, "t", "p", "sendgrid", body); err != nil {
+		t.Fatalf("a genuine event was refused: %v", err)
 	}
 }
