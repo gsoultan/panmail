@@ -9,10 +9,13 @@ version you run and the one you are moving to. Migrations run on their own at
 startup, so a section only says something about the schema when it needs a
 decision from you.
 
-## Unreleased (after v1.6.1)
+## v2.0.0 (from v1.6.x)
 
-The October 2026 hardening pass. Most of it tightens who may do what and makes
-the gateway fail loudly where it used to fail late.
+The October 2026 hardening pass, and the major version marks it: an
+integration or deployment that worked on v1.6.x may need a change before it
+works on v2.0.0, so read the table below first. Most of it tightens who may do
+what and makes the gateway fail loudly where it used to fail late. The RPC API
+itself is unchanged apart from the new optional `idempotency_key`.
 
 ### Before you upgrade
 
