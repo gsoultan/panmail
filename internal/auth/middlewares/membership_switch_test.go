@@ -132,16 +132,22 @@ func TestSwitchingIntoAnUnassignedTenantIsRefused(t *testing.T) {
 
 // A membership lookup that fails is not permission. Treating an unreadable
 // answer as a grant would turn a database blip into a cross-tenant read.
-func TestAMembershipLookupFailureRefusesTheSwitch(t *testing.T) {
-	memberships := &fakeMemberships{err: errors.New("database is down")}
-	m, maker := newMembershipMiddleware(t, memberships)
+// A lookup that fails is an outage, not a verdict: nothing is served, but the
+// answer is 503 rather than 401. Every console request now asks this question,
+// home tenant included, and a 401 signs the console out, so a database blip
+// would otherwise sign out every user at once.
+func TestAMembershipLookupFailureIsUnavailableNotUnauthorized(t *testing.T) {
+	for _, header := range []string{"guest", ""} {
+		memberships := &fakeMemberships{err: errors.New("database is down")}
+		m, maker := newMembershipMiddleware(t, memberships)
 
-	seen, code := serveWithTenantHeader(t, m, maker, "u1", "home", entities.RoleAdmin, "guest")
-	if code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", code)
-	}
-	if seen != nil {
-		t.Fatal("the handler ran despite the membership lookup failing")
+		seen, code := serveWithTenantHeader(t, m, maker, "u1", "home", entities.RoleAdmin, header)
+		if code != http.StatusServiceUnavailable {
+			t.Fatalf("header %q: status = %d, want 503", header, code)
+		}
+		if seen != nil {
+			t.Fatalf("header %q: the handler ran despite the membership lookup failing", header)
+		}
 	}
 }
 

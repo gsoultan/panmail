@@ -3,6 +3,7 @@ package middlewares
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -82,6 +83,11 @@ func (m *AuthMiddleware) Handle(next http.Handler) http.Handler {
 		}
 
 		principal, err := m.identify(r)
+		if errors.Is(err, errAccountUnavailable) {
+			slog.Error("could not confirm the caller's account", "path", r.URL.Path, "error", err)
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		if err != nil {
 			slog.Warn("rejecting request with invalid credentials", "path", r.URL.Path, "error", err)
 			http.Error(w, "invalid credentials", http.StatusUnauthorized)
@@ -217,6 +223,10 @@ func logSuperAdminSwitch(principal *Principal, path string) {
 		"user_id", principal.UserID, "tenant_id", principal.TenantID, "path", path)
 }
 
+// errAccountUnavailable marks a session that could not be checked against its
+// account because the account could not be read.
+var errAccountUnavailable = errors.New("account could not be read")
+
 // resolveRole returns the role the user holds in the tenant, "" for none.
 //
 // Only a positive answer is cached. A negative one used to be cached as well,
@@ -232,10 +242,15 @@ func (m *AuthMiddleware) resolveRole(ctx context.Context, userID, tenantID strin
 	}
 
 	role, err := m.memberships.RoleIn(ctx, userID, tenantID)
-	if err != nil {
-		// A user that cannot be read is not a user that may act. Do not cache
-		// it: the next request should ask again rather than inherit a failure.
+	if errors.Is(err, usecases.ErrUserNotFound) {
+		// A user that no longer exists is not a user that may act.
 		return "", ErrTenantNotPermitted
+	}
+	if err != nil {
+		// The account could not be read. That is an outage, not a verdict:
+		// answering 401 would make the console sign everyone out during a
+		// database blip. Nothing is cached, so the next request asks again.
+		return "", fmt.Errorf("%w: %w", errAccountUnavailable, err)
 	}
 
 	if role != "" {
