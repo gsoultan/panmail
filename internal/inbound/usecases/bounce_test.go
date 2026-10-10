@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -124,5 +125,31 @@ func TestABounceThatNamesNoRecipientIsNotPinnedOnTheSender(t *testing.T) {
 	}
 	if len(events.recorded) != 0 {
 		t.Errorf("recorded %+v for a report that names nobody", events.recorded)
+	}
+}
+
+// Bounce detection used to lower-case the whole of text+HTML afresh for each
+// phrase it looked for, so a large message with a bounce-like subject cost
+// several times its own size in garbage: about 200 MiB for a 25 MiB body.
+func TestBounceDetectionDoesNotCopyALargeBodyRepeatedly(t *testing.T) {
+	const bodySize = 25 << 20
+	body := postfixDSN + strings.Repeat("x", bodySize)
+
+	u := NewInboundUsecase(newFakeRepo(), &recordingEvents{}, &fakeWebhooks{})
+	e := inbound("big-bounce", "Delivery Status Notification (Failure)")
+	e.BodyText = body
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	if err := u.Process(context.Background(), e); err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	runtime.ReadMemStats(&after)
+
+	// Well under one copy of the body. Anything proportional to the body is
+	// the regression.
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > bodySize/4 {
+		t.Errorf("processing a %d MiB bounce allocated %d MiB", bodySize>>20, allocated>>20)
 	}
 }

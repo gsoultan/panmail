@@ -163,14 +163,20 @@ func (u *inboundUsecase) detectAndRecordBounce(ctx context.Context, email *panma
 		return
 	}
 
-	// Try to find original recipient and type of bounce
-	// This is a simplified heuristic
+	// Lowered once, from a bounded prefix. This used to lower the whole of
+	// text+HTML afresh for each of four phrases, so a 25 MiB message that
+	// happened to have a bounce-like subject cost around 200 MiB of garbage.
+	// A report puts its status lines near the top; nothing past the prefix
+	// was going to change the verdict.
+	scan := bounceScanText(email.BodyText, email.BodyHtml)
+
+	// A simplified heuristic, deliberately: the classification only decides
+	// hard against soft, and the recipient below decides whether anything is
+	// recorded at all.
 	eventType := panmailv1.EmailEventType_EMAIL_EVENT_TYPE_BOUNCED
-	if strings.Contains(strings.ToLower(email.BodyText+email.BodyHtml), "5.1.1") ||
-		strings.Contains(strings.ToLower(email.BodyText+email.BodyHtml), "user unknown") {
+	if strings.Contains(scan, "5.1.1") || strings.Contains(scan, "user unknown") {
 		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE
-	} else if strings.Contains(strings.ToLower(email.BodyText+email.BodyHtml), "mailbox full") ||
-		strings.Contains(strings.ToLower(email.BodyText+email.BodyHtml), "4.2.2") {
+	} else if strings.Contains(scan, "mailbox full") || strings.Contains(scan, "4.2.2") {
 		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SOFT_BOUNCE
 	}
 
@@ -183,7 +189,7 @@ func (u *inboundUsecase) detectAndRecordBounce(ctx context.Context, email *panma
 	// any message with the right subject and wording suppress any address the
 	// sender liked. With no recipient there is nothing to attribute the bounce
 	// to, and recording nothing is the honest outcome.
-	recipient := dsnRecipient(email.BodyText + "\n" + email.BodyHtml)
+	recipient := dsnRecipient(scan)
 	if recipient == "" {
 		slog.Debug("inbound bounce names no recipient; not recording it",
 			"id", email.Id, "tenant_id", email.TenantId)
@@ -237,8 +243,27 @@ func (u *inboundUsecase) toProto(e *entities.InboundEmail) *panmailv1.InboundEma
 	}
 }
 
+// maxBounceScan bounds how much of a message bounce detection reads. A
+// delivery report is a few kilobytes; the bound is generous for one with the
+// original message quoted above its status lines.
+const maxBounceScan = 256 << 10
+
+// bounceScanText returns the lower-cased start of a message's text and HTML
+// parts, at most maxBounceScan bytes of the two together, text first.
+func bounceScanText(text, html string) string {
+	if len(text) > maxBounceScan {
+		text = text[:maxBounceScan]
+	}
+	if room := maxBounceScan - len(text); len(html) > room {
+		html = html[:room]
+	}
+	return strings.ToLower(text + "\n" + html)
+}
+
 // dsnRecipient returns the address a delivery status notification reports on,
-// or "" when it names none.
+// or "" when it names none. It expects text already lower-cased, as
+// bounceScanText returns it; the address comes back lower-cased too, which is
+// how the event store keys a recipient anyway.
 //
 // RFC 3464 writes the field as `Final-Recipient: rfc822; user@example.com` --
 // an address type, a semicolon, then usually a space before the address. The
@@ -256,10 +281,9 @@ func dsnRecipient(body string) string {
 }
 
 func dsnField(body, field string) string {
-	lower := strings.ToLower(body)
 	from := 0
 	for {
-		idx := strings.Index(lower[from:], field)
+		idx := strings.Index(body[from:], field)
 		if idx < 0 {
 			return ""
 		}
