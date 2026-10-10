@@ -2,10 +2,16 @@ package stores
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/gsoultan/panmail/internal/webhook/repositories/entities"
 )
+
+// ErrClaimLost is returned by Update when the row no longer carries the claim
+// the caller read it under: the lease ran out and another worker has it, or it
+// was never claimed. Nothing is written.
+var ErrClaimLost = errors.New("webhook delivery is no longer claimed by this worker")
 
 // DeliveryRepository stores webhook notifications until they are delivered or
 // give up.
@@ -20,6 +26,9 @@ type DeliveryRepository interface {
 	// and a consumer that creates a ticket per webhook creates two.
 	ClaimDue(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.WebhookDelivery, error)
 
+	// Update records an outcome for a notification the caller claimed, and
+	// releases the claim. It applies only while the row still carries
+	// d.ClaimToken, and returns ErrClaimLost otherwise.
 	Update(ctx context.Context, d *entities.WebhookDelivery) error
 	Delete(ctx context.Context, id string) error
 
