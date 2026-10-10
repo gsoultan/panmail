@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -102,6 +103,10 @@ type sendEmailUsecase struct {
 	// attemptTimeout is deliveryAttemptTimeout, held here so a test can use a
 	// timescale it can wait for.
 	attemptTimeout time.Duration
+
+	// now is the clock idempotency keys are stamped and expired by, held here
+	// so a test can step past the window.
+	now func() time.Time
 }
 
 // BaseURLSource supplies the public URL links are built from.
@@ -139,6 +144,7 @@ func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 		providerCache:   cache.New[[]*providerEntities.EmailProvider](providerCacheTTL),
 		templateCache:   cache.New[*templateEntities.Template](templateCacheTTL),
 		attemptTimeout:  deliveryAttemptTimeout,
+		now:             time.Now,
 	}
 }
 
@@ -181,6 +187,9 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 
 	if len(req.To) == 0 {
 		return nil, fmt.Errorf("at least one recipient is required")
+	}
+	if err := ValidateIdempotencyKey(req.IdempotencyKey); err != nil {
+		return nil, err
 	}
 
 	// Reject malformed addresses here rather than letting the SMTP server do
@@ -239,6 +248,26 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	}
 
 	// 2. Client mode (Async Queuing)
+
+	// A repeat of a send already accepted is answered before anything else is
+	// decided: it is not charged against the rate, and a suppression added
+	// since does not turn the first send's acceptance into a refusal. Only in
+	// client mode -- the worker's pass carries the key in the stored request,
+	// and must deliver rather than find itself already accepted.
+	var keyHash string
+	if req.IdempotencyKey != "" {
+		keyHash, err = requestHash(req)
+		if err != nil {
+			return nil, err
+		}
+		res, err := u.replay(ctx, tenantID, req.IdempotencyKey, keyHash)
+		if err != nil || res != nil {
+			if res != nil {
+				slog.Info("email send replayed from its idempotency key", "id", res.MessageId, "tenant_id", tenantID)
+			}
+			return res, err
+		}
+	}
 
 	// Refuse a From domain the provider is not authorized for while the
 	// caller is still waiting. This used to be checked only at delivery, so a
@@ -383,23 +412,6 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		}
 	}
 
-	// Save message content for analytics (before tracking injection for clean preview)
-	if err := u.eventUsecase.SaveMessage(ctx, &panmailv1.EmailMessage{
-		Id:          messageID,
-		TenantId:    tenantID,
-		ProviderId:  req.ProviderId,
-		From:        req.From,
-		To:          req.To,
-		Cc:          req.Cc,
-		Bcc:         req.Bcc,
-		Subject:     subject,
-		BodyHtml:    bodyHTML,
-		BodyText:    bodyText,
-		Attachments: req.Attachments,
-	}); err != nil {
-		slog.Error("failed to save message for analytics", "error", err, "id", messageID)
-	}
-
 	// Save to outbox for the worker to pick up
 	reqBytes, err := protojson.Marshal(req)
 	if err != nil {
@@ -416,9 +428,47 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	if err := u.outboxRepo.Create(ctx, outboxEmail); err != nil {
+	if req.IdempotencyKey == "" {
+		err = u.outboxRepo.Create(ctx, outboxEmail)
+	} else {
+		now := u.now()
+		err = u.outboxRepo.CreateWithIdempotencyKey(ctx, outboxEmail, &entities.IdempotencyKey{
+			TenantID:    tenantID,
+			Key:         req.IdempotencyKey,
+			RequestHash: keyHash,
+			MessageID:   messageID,
+			CreatedAt:   now,
+		}, now.Add(-IdempotencyKeyWindow))
+		if errors.Is(err, stores.ErrIdempotencyKeyTaken) {
+			// A concurrent request with the same key was accepted between the
+			// replay check above and this write. Nothing was queued for this
+			// one; the answer is the winner's.
+			return u.lostKeyRace(ctx, tenantID, req.IdempotencyKey, keyHash)
+		}
+	}
+	if err != nil {
 		slog.Error("failed to create outbox email", "error", err, "id", messageID)
 		return nil, fmt.Errorf("failed to enqueue email: %w", err)
+	}
+
+	// Save message content for analytics (before tracking injection for clean
+	// preview). After the outbox write rather than before it, so a send that
+	// was not queued -- a lost idempotency race, a failed write -- leaves no
+	// message behind for an id nobody was given.
+	if err := u.eventUsecase.SaveMessage(ctx, &panmailv1.EmailMessage{
+		Id:          messageID,
+		TenantId:    tenantID,
+		ProviderId:  req.ProviderId,
+		From:        req.From,
+		To:          req.To,
+		Cc:          req.Cc,
+		Bcc:         req.Bcc,
+		Subject:     subject,
+		BodyHtml:    bodyHTML,
+		BodyText:    bodyText,
+		Attachments: req.Attachments,
+	}); err != nil {
+		slog.Error("failed to save message for analytics", "error", err, "id", messageID)
 	}
 
 	// PENDING only now that the message is durably queued. Recorded any

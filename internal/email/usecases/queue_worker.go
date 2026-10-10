@@ -520,16 +520,13 @@ func (w *queueWorker) getRetryPattern(ctx context.Context, tenantID string) []st
 // How often the terminal-row sweep runs, at most.
 const prunePeriod = time.Hour
 
-// pruneIfDue removes failed messages older than the configured retention.
+// pruneIfDue removes failed messages older than the configured retention, and
+// idempotency keys past their window.
 //
 // Runs on the worker rather than as its own goroutine so it cannot overlap a
 // send batch, and only when the queue is already drained: housekeeping must
 // never be the reason mail is late.
 func (w *queueWorker) pruneIfDue(ctx context.Context) {
-	retention := time.Duration(w.retention.Load())
-	if retention <= 0 {
-		return
-	}
 	if !w.lastPrune.IsZero() && time.Since(w.lastPrune) < prunePeriod {
 		return
 	}
@@ -538,6 +535,20 @@ func (w *queueWorker) pruneIfDue(ctx context.Context) {
 	pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bookkeepingTimeout)
 	defer cancel()
 
+	// Whatever the failed-message retention says, including off: a key's
+	// lifetime is part of the API's contract, not an operator's policy, and an
+	// expired one already answers nothing.
+	keyCutoff := time.Now().Add(-IdempotencyKeyWindow)
+	if removed, err := w.outboxRepo.PruneIdempotencyKeys(pruneCtx, keyCutoff); err != nil {
+		slog.Warn("failed to prune expired idempotency keys", "error", err, "cutoff", keyCutoff)
+	} else if removed > 0 {
+		slog.Info("pruned expired idempotency keys", "removed", removed, "older_than", keyCutoff)
+	}
+
+	retention := time.Duration(w.retention.Load())
+	if retention <= 0 {
+		return
+	}
 	cutoff := time.Now().Add(-retention)
 	removed, err := w.outboxRepo.PruneTerminal(pruneCtx, cutoff)
 	if err != nil {

@@ -16,6 +16,10 @@ type Message struct {
 	// username in that case.
 	ProviderID string
 
+	// MessageID is the Message-ID header as submitted, trimmed, empty when
+	// there was none. The session derives the send's idempotency key from it.
+	MessageID string
+
 	// Request is everything the send usecase needs except the provider and
 	// the envelope recipients, which the session fills in from the SMTP
 	// conversation.

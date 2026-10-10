@@ -24,6 +24,9 @@ type workerMockOutboxRepo struct {
 	// renew answers RenewClaim when set; unset, every claim is still ours.
 	renew    func() (bool, error)
 	renewals atomic.Int64
+
+	// keyPrunes records the cutoff of each idempotency key prune.
+	keyPrunes []time.Time
 }
 
 func (m *workerMockOutboxRepo) Create(ctx context.Context, e *entities.OutboxEmail) error {
@@ -254,6 +257,17 @@ func (m *workerMockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time
 
 func (m *workerMockOutboxRepo) PruneHeld(context.Context, time.Time) (int64, error) { return 0, nil }
 
+func (m *workerMockOutboxRepo) CreateWithIdempotencyKey(ctx context.Context, e *entities.OutboxEmail, _ *entities.IdempotencyKey, _ time.Time) error {
+	return m.Create(ctx, e)
+}
+func (m *workerMockOutboxRepo) GetIdempotencyKey(context.Context, string, string, time.Time) (*entities.IdempotencyKey, error) {
+	return nil, nil
+}
+func (m *workerMockOutboxRepo) PruneIdempotencyKeys(_ context.Context, olderThan time.Time) (int64, error) {
+	m.keyPrunes = append(m.keyPrunes, olderThan)
+	return 0, nil
+}
+
 func (m *workerMockOutboxRepo) Stats(context.Context) (int64, time.Time, error) {
 	oldest := time.Now()
 	for _, e := range m.emails {
@@ -321,5 +335,29 @@ func TestAPermanentRefusalSurvivesWrapping(t *testing.T) {
 
 	if outboxRepo.lastUpdate == nil || outboxRepo.lastUpdate.Status != entities.OutboxStatusFailed {
 		t.Fatalf("a wrapped permanent refusal was retried: %+v", outboxRepo.lastUpdate)
+	}
+}
+
+// Expired idempotency keys are pruned whatever the failed-message retention
+// is, including off: the key's window is the API's, not an operator's policy.
+func TestThePrunePassRemovesExpiredIdempotencyKeysWithRetentionOff(t *testing.T) {
+	outbox := &workerMockOutboxRepo{}
+	w := NewQueueWorker(outbox, nil, &mockSuppressionUsecase{}, &mockTenantUsecase{}, time.Second).(*queueWorker)
+
+	before := time.Now()
+	w.pruneIfDue(context.Background())
+
+	if len(outbox.keyPrunes) != 1 {
+		t.Fatalf("pruned keys %d times; want once", len(outbox.keyPrunes))
+	}
+	cutoff := outbox.keyPrunes[0]
+	if want := before.Add(-IdempotencyKeyWindow); cutoff.Before(want) || cutoff.After(time.Now().Add(-IdempotencyKeyWindow)) {
+		t.Errorf("cutoff = %v; want a day ago", cutoff)
+	}
+
+	// Hourly, like the rest of the sweep.
+	w.pruneIfDue(context.Background())
+	if len(outbox.keyPrunes) != 1 {
+		t.Errorf("pruned again within the period: %d", len(outbox.keyPrunes))
 	}
 }

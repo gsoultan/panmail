@@ -283,7 +283,7 @@ log.Printf("queued as %s", result.MessageID)
 
 None of the SDKs depends on this repo — they speak the wire protocol directly, which is written down in full in [`docs/WIRE.md`](https://github.com/gsoultan/panmail-sdk/blob/main/docs/WIRE.md). That document is also what you want if you would rather not take a dependency at all: it covers the JSON contract *and* the SMTP door below.
 
-**No SDK retries a send whose outcome it does not know.** Sending is not idempotent and there is no de-duplication key, so retrying after a timeout is retrying a message that may already be on its way. The one safe case is a refusal, where the gateway says plainly that it did not accept the message — `WithRateLimitRetries(n)` and its equivalents turn that on.
+**No SDK retries a send whose outcome it does not know — unless the send carries an idempotency key.** Without one, retrying after a timeout is retrying a message that may already be on its way. The other safe case is a refusal, where the gateway says plainly that it did not accept the message — `WithRateLimitRetries(n)` and its equivalents turn that on.
 
 > The in-repo `pkg/panmail` was the SDK's predecessor. It was deprecated when the clients moved out and is **removed** as of v1.4.0 — use `github.com/gsoultan/panmail-sdk`, which resolves today.
 
@@ -322,6 +322,24 @@ curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
   }'
 ```
 
+#### Retrying safely: idempotency keys
+
+Set `idempotency_key` in the request (or send it as an `Idempotency-Key` header) and a send becomes safe to repeat:
+
+```bash
+curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: pm_your_api_key_here" \
+  -H "Idempotency-Key: order-1042-receipt" \
+  -d '{ "provider_id": "...", "from": "...", "to": ["..."], "subject": "...", "body_text": "..." }'
+```
+
+- A repeat **from the same tenant** with the same key within **24 hours** of the first being accepted gets the first response back — the same `message_id`, status `PENDING` — and nothing new is queued. It is not charged against the send rate.
+- The same key with a **different request** is refused with `already_exists` ("idempotency key reused with a different request"). The request is compared by a hash of everything in it except the key.
+- Two requests with one key **at the same moment** queue once: a unique constraint decides, and the loser is answered with the winner's message. If the winner's outcome cannot be read yet the loser gets `aborted`, which is safe to retry.
+- Only **accepted** sends are remembered. A refusal — rate limit, suppression, invalid request — stores nothing, so retrying after one is decided afresh.
+- A key is at most 255 printable ASCII characters. If both the field and the header are set they must match; otherwise `invalid_argument`.
+
 #### What the refusals mean
 
 | Response | Meaning | What to do |
@@ -329,7 +347,9 @@ curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
 | `resource_exhausted` **with** `Retry-After` | Over the tenant's configured send rate. Not accepted. | Wait the stated delay and send again. Safe to repeat. |
 | `resource_exhausted` **without** `Retry-After` | The tenant's queue is already deeper than its rate can drain. Not accepted. | Stop sending. There is no delay to wait out, and retrying makes the wait longer for everything queued. |
 | `failed_precondition` | A recipient is on the tenant's suppression list. The **whole** message is refused, not just that recipient's copy. | Remove the address from the send, or lift the suppression. Retrying changes nothing until one of those happens. |
-| `invalid_argument` | The provider or template named does not exist, or the template will not render against the data sent. | Fix the request. Retrying never helps. |
+| `invalid_argument` | The provider or template named does not exist, the template will not render against the data sent, or the idempotency key is unusable. | Fix the request. Retrying never helps. |
+| `already_exists` | The idempotency key was already used, within 24 hours, for a different request. Not accepted. | Use a new key, or resend exactly what was sent the first time. |
+| `aborted` | A concurrent request with the same idempotency key is still being decided. Not accepted. | Retry with the same key; it will return that request's message. |
 | `unauthenticated` | Key missing, unknown or revoked. | Fix the key. Retrying never helps. |
 | `permission_denied` | The key lacks the `email:send` scope. | Add the scope. |
 | `unknown` | Something failed rather than refused — storage, a provider connection. | Retry with backoff. |
@@ -430,11 +450,16 @@ Every failure code above is returned *before* the message is written to the
 outbox, so a client that retries one cannot produce a duplicate send. The `250`
 is written only after the message is queued.
 
-One caveat inherent to SMTP: if the connection drops in the moment between
-panmail queueing a message and the `250` reaching the client, the client will
-retry and the message will be sent twice. SMTP carries no idempotency key for
-panmail to de-duplicate on. The RPC API has the same property, which is why the
-Go client [never retries a send whose outcome it does not know](#what-the-refusals-mean).
+If the connection drops in the moment between panmail queueing a message and
+the `250` reaching the client, the client will resubmit. A submission that
+carries a `Message-ID` header is de-duplicated: its Message-ID together with
+the envelope recipients is the send's [idempotency key](#retrying-safely-idempotency-keys),
+so a resubmission within 24 hours gets a `250` for the message already queued
+rather than a second copy. A relay that splits one message into several
+transactions for different recipients still has each of them queued. The same
+Message-ID to the same recipients with *different* content is refused with
+`550 5.7.1`. A submission without a Message-ID cannot be de-duplicated, and a
+resubmission of it is sent twice.
 
 ### 🧬 Advanced Templating
 

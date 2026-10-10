@@ -85,6 +85,17 @@ func submissionError(err error) *gosmtp.SMTPError {
 		)
 	}
 
+	// Permanent: the same Message-ID to the same recipients was accepted as a
+	// different message within the day, and resubmitting this one will be
+	// refused identically until the window passes.
+	var reused *usecases.IdempotencyKeyConflictError
+	if errors.As(err, &reused) {
+		return permanentError(
+			codeNotAuthorized, enhancedNotAuthorized,
+			"A different message with this Message-ID was already accepted as %s", reused.MessageID,
+		)
+	}
+
 	var full *usecases.BacklogFullError
 	if errors.As(err, &full) {
 		return temporaryError(

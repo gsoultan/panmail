@@ -15,7 +15,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/email_service.proto.
  */
 export const file_panmail_v1_email_service: GenFile = /*@__PURE__*/
-  fileDesc("Ch5wYW5tYWlsL3YxL2VtYWlsX3NlcnZpY2UucHJvdG8SCnBhbm1haWwudjEiqgIKEFNlbmRFbWFpbFJlcXVlc3QSEwoLcHJvdmlkZXJfaWQYASABKAkSDAoEZnJvbRgCIAEoCRIKCgJ0bxgDIAMoCRIKCgJjYxgMIAMoCRILCgNiY2MYDSADKAkSDwoHc3ViamVjdBgEIAEoCRIQCgRib2R5GAUgASgJQgIYARITCgdpc19odG1sGAYgASgIQgIYARIRCglib2R5X2h0bWwYCSABKAkSEQoJYm9keV90ZXh0GAogASgJEhMKC3RlbXBsYXRlX2lkGAcgASgJEi4KDXRlbXBsYXRlX2RhdGEYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKC2F0dGFjaG1lbnRzGAsgAygLMhYucGFubWFpbC52MS5BdHRhY2htZW50ImIKEVNlbmRFbWFpbFJlc3BvbnNlEhIKCm1lc3NhZ2VfaWQYASABKAkSKgoGc3RhdHVzGAIgASgOMhoucGFubWFpbC52MS5FbWFpbEV2ZW50VHlwZRINCgVlcnJvchgDIAEoCTJYCgxFbWFpbFNlcnZpY2USSAoJU2VuZEVtYWlsEhwucGFubWFpbC52MS5TZW5kRW1haWxSZXF1ZXN0Gh0ucGFubWFpbC52MS5TZW5kRW1haWxSZXNwb25zZUKiAQoOY29tLnBhbm1haWwudjFCEUVtYWlsU2VydmljZVByb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z", [file_panmail_v1_event, file_panmail_v1_common, file_google_protobuf_struct]);
+  fileDesc("Ch5wYW5tYWlsL3YxL2VtYWlsX3NlcnZpY2UucHJvdG8SCnBhbm1haWwudjEiwwIKEFNlbmRFbWFpbFJlcXVlc3QSEwoLcHJvdmlkZXJfaWQYASABKAkSDAoEZnJvbRgCIAEoCRIKCgJ0bxgDIAMoCRIKCgJjYxgMIAMoCRILCgNiY2MYDSADKAkSDwoHc3ViamVjdBgEIAEoCRIQCgRib2R5GAUgASgJQgIYARITCgdpc19odG1sGAYgASgIQgIYARIRCglib2R5X2h0bWwYCSABKAkSEQoJYm9keV90ZXh0GAogASgJEhMKC3RlbXBsYXRlX2lkGAcgASgJEi4KDXRlbXBsYXRlX2RhdGEYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKC2F0dGFjaG1lbnRzGAsgAygLMhYucGFubWFpbC52MS5BdHRhY2htZW50EhcKD2lkZW1wb3RlbmN5X2tleRgOIAEoCSJiChFTZW5kRW1haWxSZXNwb25zZRISCgptZXNzYWdlX2lkGAEgASgJEioKBnN0YXR1cxgCIAEoDjIaLnBhbm1haWwudjEuRW1haWxFdmVudFR5cGUSDQoFZXJyb3IYAyABKAkyWAoMRW1haWxTZXJ2aWNlEkgKCVNlbmRFbWFpbBIcLnBhbm1haWwudjEuU2VuZEVtYWlsUmVxdWVzdBodLnBhbm1haWwudjEuU2VuZEVtYWlsUmVzcG9uc2VCogEKDmNvbS5wYW5tYWlsLnYxQhFFbWFpbFNlcnZpY2VQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw", [file_panmail_v1_event, file_panmail_v1_common, file_google_protobuf_struct]);
 
 /**
  * @generated from message panmail.v1.SendEmailRequest
@@ -87,6 +87,17 @@ export type SendEmailRequest = Message<"panmail.v1.SendEmailRequest"> & {
    * @generated from field: repeated panmail.v1.Attachment attachments = 11;
    */
   attachments: Attachment[];
+
+  /**
+   * Makes a retried send safe. A second request from the same tenant with the
+   * same key within 24 hours of the first being accepted is answered with the
+   * first one's response and queues nothing; the same key with a different
+   * request is refused with ALREADY_EXISTS. At most 255 printable ASCII
+   * characters. May be sent as the Idempotency-Key HTTP header instead.
+   *
+   * @generated from field: string idempotency_key = 14;
+   */
+  idempotencyKey: string;
 };
 
 /**

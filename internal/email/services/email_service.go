@@ -23,8 +23,29 @@ func NewEmailService(sendEmailUsecase usecases.SendEmailUsecase) panmailv1connec
 	}
 }
 
+// IdempotencyKeyHeader carries a send's idempotency key for a client that
+// would rather not put it in the body. The field is the canonical place; the
+// header exists because it is where HTTP APIs conventionally take one, and a
+// generic retrying HTTP client can add it without understanding the message.
+const IdempotencyKeyHeader = "Idempotency-Key"
+
 func (s *emailService) SendEmail(ctx context.Context, req *connect.Request[panmailv1.SendEmailRequest]) (*connect.Response[panmailv1.SendEmailResponse], error) {
 	tenantID := middlewares.GetTenantID(ctx)
+
+	// The header fills an empty field, and must agree with a set one. Two
+	// different keys on one request have no reading that is safe to guess at:
+	// picking either could replay a message the caller did not mean.
+	if header := req.Header().Get(IdempotencyKeyHeader); header != "" {
+		switch req.Msg.IdempotencyKey {
+		case "":
+			req.Msg.IdempotencyKey = header
+		case header:
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				errors.New("idempotency_key and the Idempotency-Key header disagree"))
+		}
+	}
+
 	res, err := s.sendEmailUsecase.SendEmail(ctx, tenantID, req.Msg)
 	if err != nil {
 		// Over the send rate is a distinct outcome from a failed send, and a
@@ -77,6 +98,27 @@ func (s *emailService) SendEmail(ctx context.Context, req *connect.Request[panma
 		var noProvider *usecases.ProviderNotFoundError
 		if errors.As(err, &noProvider) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, noProvider)
+		}
+
+		var badKey *usecases.InvalidIdempotencyKeyError
+		if errors.As(err, &badKey) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, badKey)
+		}
+
+		// AlreadyExists: the key names a send that exists and is not this
+		// one. Not retryable as it stands -- the caller has to use a new key,
+		// or send what it sent the first time.
+		var reused *usecases.IdempotencyKeyConflictError
+		if errors.As(err, &reused) {
+			return nil, connect.NewError(connect.CodeAlreadyExists, reused)
+		}
+
+		// Aborted, which clients treat as retryable: a concurrent request with
+		// the same key won and its outcome could not be read yet. Asking again
+		// finds it.
+		var inFlight *usecases.IdempotencyKeyInFlightError
+		if errors.As(err, &inFlight) {
+			return nil, connect.NewError(connect.CodeAborted, inFlight)
 		}
 
 		var badTemplate *usecases.TemplateRefusedError

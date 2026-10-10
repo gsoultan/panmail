@@ -65,9 +65,11 @@ Administrator.
 - MySQL/MariaDB. The query layer uses PostgreSQL-style placeholders, so a
   `mysql` or `mariadb` database type is refused at startup and by the setup
   wizard, with an error naming PostgreSQL and SQLite.
-- Exactly-once delivery. Neither SMTP nor the RPC carries an idempotency key,
-  so a lost acknowledgement can produce a duplicate. Clients are told never
-  to retry an unknown outcome.
+- Exactly-once delivery to the recipient. An idempotency key (S8) makes
+  *submission* safe to retry, but a send without a key — or an SMTP
+  submission without a Message-ID — can still be duplicated by a lost
+  acknowledgement, and a provider that accepts a message and then times out
+  can still deliver it twice.
 
 ## 4. Functional requirements
 
@@ -78,10 +80,11 @@ Administrator.
 | S1 | `EmailService.SendEmail` over ConnectRPC/gRPC/JSON, authenticated by an API key with the `email:send` scope, or by a console session. |
 | S2 | An SMTP submission listener (off by default) feeding the same pipeline, with AUTH only over TLS on any non-loopback listener. |
 | S3 | `provider_id` is required; panmail never guesses which provider a message leaves through. A `From` outside the provider's `AllowedDomains` is refused. |
-| S4 | Refusals are decisions with stable codes (rate limited, backlog full, suppressed, invalid, unauthenticated, permission denied) and are made **before** anything is queued or recorded. Only `unknown` is worth retrying. |
+| S4 | Refusals are decisions with stable codes (rate limited, backlog full, suppressed, invalid, unauthenticated, permission denied) and are made **before** anything is queued or recorded. Only `unknown` and `aborted` (S8) are worth retrying. |
 | S5 | Each recipient receives its own copy (personal tracking), with the full visible To/Cc audience in the headers and only that recipient in the envelope. Bcc is never a header. |
 | S6 | Handlebars and Go `html/template` bodies, with date formatting and time zones; a template that will not render is refused, not sent blank. |
 | S7 | Attachments up to the configured request bound. |
+| S8 | An optional idempotency key per send (`idempotency_key`, or the `Idempotency-Key` header; they must agree if both are set), at most 255 printable ASCII characters. Scoped to the tenant and remembered for 24 hours from acceptance, written in the same transaction as the outbox row. A repeat with the same request returns the first response and queues nothing; the same key with a different request is `already_exists`. Concurrent repeats queue once (unique key); a loser whose winner cannot be read yet gets `aborted`. Refusals store nothing. SMTP submissions use their Message-ID plus envelope recipients as the key. Expired keys are pruned by the outbox worker. |
 
 ### 4.2 Delivery
 
@@ -192,8 +195,8 @@ The Go and PHP clients live in
 [gsoultan/panmail-sdk](https://github.com/gsoultan/panmail-sdk). Requirements
 they share:
 
-- One call to send; typed refusals; no retry of an unknown outcome; an opt-in
-  retry of rate-limit refusals only.
+- One call to send; typed refusals; no retry of an unknown outcome unless the
+  send carries an idempotency key (S8); an opt-in retry of rate-limit refusals.
 - Bounded responses: at most 1 MiB is read, at most 64 KiB more is discarded,
   and refusal messages are cut to 4 KiB.
 - Refusals are classified from status and code even when the body was cut
@@ -209,6 +212,9 @@ they share:
   intact hands over the means to bounce their own address, and only theirs.
 - The HTTP inbound endpoint has no idempotency key, so a provider that retries
   the same post stores it twice.
+- A send that loses an idempotency-key race (S8) has already been charged
+  against the tenant's send rate, and a `tag` filter rule may have recorded it,
+  though nothing was queued for it.
 - A single slow webhook endpoint can still fill a batch when it owns more than
   a batch's worth of the oldest due notifications.
 - Webhook URLs may target private addresses by design (self-hosted targets);
