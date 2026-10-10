@@ -73,6 +73,13 @@ func (s *outboxStore) GetByID(ctx context.Context, id string) (*entities.OutboxE
 	e := &entities.OutboxEmail{}
 	var lastError sql.NullString
 	err = db.QueryRowContext(ctx, getOutboxByIDQuery, id).Scan(&e.ID, &e.TenantID, &e.Request, &e.Status, &e.RetryCount, &e.NextRetryAt, &lastError, &e.CreatedAt, &e.UpdatedAt)
+	// Absent is (nil, nil), as the interface promises. Returning the driver's
+	// ErrNoRows made every caller's "no longer here" branch unreachable: a
+	// discard retried after the row had gone failed instead of reporting the
+	// work already done.
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
