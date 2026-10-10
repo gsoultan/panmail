@@ -126,7 +126,7 @@ Administrator.
 | A1 | Four roles (Super Administrator, Administrator, Editor, Viewer). One account may belong to several tenants, with a role per tenant. |
 | A2 | A session's role and tenant are re-read from the account (cached a few seconds), so deletion and demotion take effect promptly. If the account cannot be read, the request is answered 503, not 401. |
 | A3 | Administrators cannot demote, delete or disable two-factor for a Super Administrator, nor act on users outside their tenant. |
-| A4 | System settings and the SMTP listener are Super Administrator only. Application logs are scoped: a tenant sees only entries that name it; only a Super Administrator sees the unfiltered log. |
+| A4 | System settings, the SMTP listener and the host's performance metrics are Super Administrator only. Application logs are scoped: a tenant sees only entries that name it; only a Super Administrator sees the unfiltered log. |
 | A5 | Passwords are at least 12 characters, for the first admin and every later account. TOTP two-factor; sign-in and TOTP attempts are limited per account and hold under concurrent bursts and floods. |
 | A6 | First-run setup writes its config only after the admin exists, so a failed setup can be retried. |
 | A7 | A tenant that still holds data cannot be deleted; the refusal says what remains. |
@@ -205,7 +205,6 @@ they share:
   the same post stores it twice.
 - A single slow webhook endpoint can still fill a batch when it owns more than
   a batch's worth of the oldest due notifications.
-- `GetPerformanceMetrics` is Administrator-level but reports host-wide figures.
 - An Administrator can disable two-factor for a guest member of their tenant,
   which affects that person's whole account.
 - Webhook URLs may target private addresses by design (self-hosted targets);

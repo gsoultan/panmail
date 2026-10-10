@@ -710,6 +710,7 @@ will notice. Everything else is a fix with no action needed.
 | :--- | :--- |
 | `/inbound/` now requires `/inbound/{tenant_id}/{provider_id}` and the provider's webhook secret | Repoint each inbound parse integration and set a shared secret on its provider (see [Inbound Processing](#inbound-processing)). Unsigned posts get `401`. |
 | Settings and the SMTP listener are Super Administrator only | Have a Super Administrator make those changes. |
+| Performance metrics (the dashboard's System Health tab and throughput) are Super Administrator only | Nothing; Administrators no longer see host-wide CPU, memory and send rate. Monitoring that called `GetPerformanceMetrics` with an Administrator's session needs a Super Administrator's. |
 | Passwords need at least 12 characters | Existing passwords keep working; new accounts and the setup wizard enforce it. |
 | Analytics buckets are UTC | Nothing; graphs on a non-UTC server shift once by the offset. |
 | A gateway that cannot reach its database at boot exits after about two minutes | Run it under a supervisor that restarts it (systemd, Kubernetes, Docker `restart:`). |

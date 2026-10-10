@@ -8,16 +8,19 @@ describe('accessFor', () => {
       administerTenant: true,
       configureDeployment: true,
       manageTenants: true,
+      viewHostMetrics: true,
     });
   });
 
-  // System settings are deployment-wide. The server refuses an administrator
-  // since they became super-admin only, so the console must not offer them.
+  // System settings and host metrics are deployment-wide. The server refuses
+  // an administrator since they became super-admin only, so the console must
+  // not offer them.
   test('an administrator runs their tenant but not the deployment', () => {
     expect(accessFor(UserRole.ADMIN)).toEqual({
       administerTenant: true,
       configureDeployment: false,
       manageTenants: false,
+      viewHostMetrics: false,
     });
   });
 
@@ -28,6 +31,7 @@ describe('accessFor', () => {
         administerTenant: false,
         configureDeployment: false,
         manageTenants: false,
+        viewHostMetrics: false,
       });
     },
   );

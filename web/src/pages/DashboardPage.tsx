@@ -6,6 +6,8 @@ import { AreaChart, BarChart } from '@mantine/charts';
 import { useQuery } from '@tanstack/react-query';
 import { analyticsService } from '../features/analytics/services/analytics';
 import { EmailEventType } from '../api/panmail/v1/event_pb';
+import { useAuthStore } from '../store/authStore';
+import { accessFor } from '../lib/access';
 
 interface StatCardProps {
   title: string;
@@ -62,6 +64,11 @@ export const DashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string | null>('delivery');
   const [customRange, setCustomRange] = useState<[Date | null, Date | null]>([null, null]);
   const [customModalOpened, setCustomModalOpened] = useState(false);
+  // Performance metrics describe the host and every tenant's send rate, so
+  // the server answers them for a super admin only. Nobody else is asked for
+  // them, and nobody else is shown the tab or the throughput card.
+  const { user } = useAuthStore();
+  const viewHostMetrics = accessFor(user?.role).viewHostMetrics;
 
   const { startTime, endTime, granularity } = useMemo(() => {
     if (timeRange === 'custom') {
@@ -95,6 +102,7 @@ export const DashboardPage: React.FC = () => {
   const { data: perfData } = useQuery({
     queryKey: ['performanceMetrics'],
     queryFn: () => analyticsService.getPerformanceMetrics(),
+    enabled: viewHostMetrics,
     refetchInterval: 2000,
   });
 
@@ -192,12 +200,14 @@ export const DashboardPage: React.FC = () => {
           <Tabs.List mb="md">
             <Tabs.Tab value="delivery" leftSection={<IconSend size={16} />}>Delivery</Tabs.Tab>
             <Tabs.Tab value="inbound" leftSection={<IconDownload size={16} />}>Inbound</Tabs.Tab>
-            <Tabs.Tab value="system" leftSection={<IconActivity size={16} />}>System Health</Tabs.Tab>
+            {viewHostMetrics && (
+              <Tabs.Tab value="system" leftSection={<IconActivity size={16} />}>System Health</Tabs.Tab>
+            )}
           </Tabs.List>
 
           <Tabs.Panel value="delivery">
             <Stack gap="md">
-              <SimpleGrid cols={{ base: 1, sm: 2, md: 5 }} spacing="md">
+              <SimpleGrid cols={{ base: 1, sm: 2, md: viewHostMetrics ? 5 : 4 }} spacing="md">
                 {outboundMetrics.slice(0, 4).map(m => (
                   <StatCard
                     key={m.key}
@@ -208,13 +218,15 @@ export const DashboardPage: React.FC = () => {
                     description={m.description}
                   />
                 ))}
-                <StatCard
-                  title="Throughput"
-                  value={`${perfData?.sentPerSecond?.toFixed(2) || '0.00'} /s`}
-                  icon={IconActivity}
-                  color="indigo"
-                  description="Real-time emails sent per second."
-                />
+                {viewHostMetrics && (
+                  <StatCard
+                    title="Throughput"
+                    value={`${perfData?.sentPerSecond?.toFixed(2) || '0.00'} /s`}
+                    icon={IconActivity}
+                    color="indigo"
+                    description="Real-time emails sent per second."
+                  />
+                )}
               </SimpleGrid>
 
               <Grid>
@@ -331,6 +343,7 @@ export const DashboardPage: React.FC = () => {
              </Stack>
           </Tabs.Panel>
 
+          {viewHostMetrics && (
           <Tabs.Panel value="system">
              <Stack gap="md">
                 <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
@@ -476,6 +489,7 @@ export const DashboardPage: React.FC = () => {
                 </Grid>
              </Stack>
           </Tabs.Panel>
+          )}
         </Tabs>
       </Stack>
     </Container>
