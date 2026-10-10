@@ -321,15 +321,11 @@ func main() {
 	}
 
 	if cfg != nil {
-		sqlDB, err := db.Connect(cfg.Database)
-		if err != nil {
-			slog.Error("failed to connect to db from config", "error", err)
-		} else {
-			conn.SetDB(sqlDB)
-			// Run migration if connected
-			if err := migrate(conn, cfg.Database.Type); err != nil {
-				slog.Error("failed to migrate db", "error", err)
-			}
+		// Fatal, unlike before setup: a configured gateway without its database
+		// can do nothing, and exiting is what gets it restarted. See boot.go.
+		if err := openConfiguredDatabase(cfg.Database, conn, db.Connect, migrate, defaultBootRetry()); err != nil {
+			slog.Error("refusing to start", "error", err)
+			os.Exit(1)
 		}
 	} else {
 		slog.Info("First run detected: no configuration found. Waiting for setup.")
