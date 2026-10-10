@@ -154,4 +154,4 @@ message its own Message-ID.
 | Deleting a tenant that still has users, keys or providers is refused, with a list of what remains | Remove those first. |
 | Webhook deliveries follow redirects only within the subscription's own host | Point a subscription at its final URL. |
 | `--webhook-block-private-targets` (off by default) keeps outbound webhooks off private, loopback, link-local and other reserved addresses | Set it on every instance if tenants should not reach your network. With it on, webhooks do not use `HTTP_PROXY`/`HTTPS_PROXY`. |
-| An unreachable webhook endpoint is backed off as a whole: after two timeouts or refused connections in a row, all its waiting notifications wait for the next retry (migration `0023` adds an index) | Nothing; a dead endpoint's backlog is retried in bursts. |
+| An unreachable webhook endpoint is backed off as a whole: after two timeouts or refused connections in a row, all its waiting notifications wait for the next retry (migration `0022` adds an index) | Nothing; a dead endpoint's backlog is retried in bursts. |
