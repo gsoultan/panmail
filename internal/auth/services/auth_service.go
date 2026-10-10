@@ -192,12 +192,13 @@ func (s *AuthService) DisableTwoFactor(
 		// The write below is keyed on the user id alone, so without this an
 		// administrator of one tenant could strip the second factor from any
 		// account in any tenant — a super admin's included — by naming its
-		// id. Resolve the target where the caller is acting, and keep super
-		// admins out of an administrator's reach, as UpdateUserTwoFactor does.
+		// id. Resolve the target where the caller is acting, keep super admins
+		// out of an administrator's reach, and keep a guest's account with
+		// their home tenant, as UpdateUserTwoFactor does.
 		if s.users == nil {
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 		}
-		if err := guardTargetInTenant(ctx, s.users, middlewares.GetTenantID(ctx), targetUserID); err != nil {
+		if err := guardTwoFactorTarget(ctx, s.users, middlewares.GetTenantID(ctx), targetUserID); err != nil {
 			return nil, err
 		}
 	}

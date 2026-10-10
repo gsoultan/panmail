@@ -20,6 +20,10 @@ type tenantUsers struct {
 	usecases.UserUsecase // unused methods panic, which is what a test wants
 
 	users map[string]*entities.User
+	// guestIn names, per user id, a tenant that user is a guest member of.
+	// GetInTenant finds them there as the real usecase does, with their home
+	// tenant left on the record.
+	guestIn map[string]string
 
 	roleChanged []string
 	deleted     []string
@@ -36,7 +40,7 @@ func newTenantUsers(users ...*entities.User) *tenantUsers {
 
 func (t *tenantUsers) GetInTenant(ctx context.Context, tenantID, id string) (*entities.User, error) {
 	u, ok := t.users[id]
-	if !ok || u.TenantID != tenantID {
+	if !ok || (u.TenantID != tenantID && t.guestIn[id] != tenantID) {
 		return nil, usecases.ErrUserNotFound
 	}
 	copied := *u
@@ -79,6 +83,21 @@ func guardFixtures() *tenantUsers {
 	)
 }
 
+// twoFactorCases add a guest to the common cases: "guest" is homed in t2 and a
+// member of t1. Two-factor guards the whole account, so it is not a tenant
+// administrator's to change for somebody whose account lives elsewhere.
+var twoFactorCases = append(append([]guardCase{}, guardCases...),
+	guardCase{"admin on a guest member of their tenant", entities.RoleAdmin, "guest", connect.CodePermissionDenied},
+	guardCase{"super admin on a guest member", entities.RoleSuperAdmin, "guest", 0},
+)
+
+func twoFactorFixtures() *tenantUsers {
+	users := guardFixtures()
+	users.users["guest"] = &entities.User{ID: "guest", TenantID: "t2", Role: entities.RoleViewer}
+	users.guestIn = map[string]string{"guest": "t1"}
+	return users
+}
+
 type guardCase struct {
 	name     string
 	caller   string // role
@@ -114,10 +133,10 @@ func checkGuard(t *testing.T, tc guardCase, err error, reached []string) {
 }
 
 func TestDisableTwoFactorForSomebodyElseIsConfinedToTheTenant(t *testing.T) {
-	for _, tc := range guardCases {
+	for _, tc := range twoFactorCases {
 		t.Run(tc.name, func(t *testing.T) {
 			auth := &disablingAuth{}
-			svc := NewAuthService(auth, nil, guardFixtures())
+			svc := NewAuthService(auth, nil, twoFactorFixtures())
 
 			_, err := svc.DisableTwoFactor(callerContext("caller", tc.caller),
 				connect.NewRequest(&panmailv1.DisableTwoFactorRequest{UserId: tc.target}))
@@ -140,10 +159,10 @@ func TestDisableTwoFactorForYourselfNeedsNoLookup(t *testing.T) {
 	}
 }
 
-func TestUpdateUserTwoFactorGuardsSuperAdmins(t *testing.T) {
-	for _, tc := range guardCases {
+func TestUpdateUserTwoFactorGuardsSuperAdminsAndGuests(t *testing.T) {
+	for _, tc := range twoFactorCases {
 		t.Run(tc.name, func(t *testing.T) {
-			users := guardFixtures()
+			users := twoFactorFixtures()
 			svc := NewUserService(users, nil)
 
 			_, err := svc.UpdateUserTwoFactor(callerContext("caller", tc.caller),

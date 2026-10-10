@@ -287,12 +287,14 @@ export const UsersPage: React.FC = () => {
                       </Badge>
                     </Table.Td>
                     <Table.Td>
+                      {/* Two-factor guards the whole account, so only the
+                          guest's home tenant or a super admin may change it. */}
                       <Switch
                         checked={u.twoFactorEnabled}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => update2FAMutation.mutate({ id: u.id, enabled: e.currentTarget.checked })}
                         color="green"
                         size="sm"
-                        disabled={update2FAMutation.isPending}
+                        disabled={update2FAMutation.isPending || (isGuest && !isSuperAdmin)}
                       />
                     </Table.Td>
                     <Table.Td>
