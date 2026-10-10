@@ -531,13 +531,13 @@ func main() {
 	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase, providerRepo)
 
 	warnIfUnsubscribeLinksWillNotWork(settingsProvider.BaseURL())
-	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo)
-	templateRenderer := emailusecases.NewTemplateRenderer()
 	// One limiter shared by the API path and the outbox worker, so a tenant
 	// cannot get twice its allowance by using both. Its state is per process;
 	// see the package comment for what that means for a multi-instance
 	// deployment.
 	sendLimiter := ratelimit.New()
+	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo, sendLimiter)
+	templateRenderer := emailusecases.NewTemplateRenderer()
 
 	sendEmailUsecase := emailusecases.NewSendEmailUsecase(emailusecases.SendEmailDeps{
 		ProviderRepo:    providerRepo,
