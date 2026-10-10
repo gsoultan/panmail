@@ -25,10 +25,15 @@ type AuthService struct {
 	// leaves GetCurrentUser reporting the user alone, which is what an
 	// instance wired without membership should do.
 	memberships usecases.MembershipUsecase
+
+	// users resolves the target of an administrator's DisableTwoFactor inside
+	// the tenant the administrator is acting in. Nil refuses every such call
+	// rather than letting one through unchecked.
+	users usecases.UserUsecase
 }
 
-func NewAuthService(u usecases.AuthUsecase, memberships usecases.MembershipUsecase) *AuthService {
-	return &AuthService{usecase: u, memberships: memberships}
+func NewAuthService(u usecases.AuthUsecase, memberships usecases.MembershipUsecase, users usecases.UserUsecase) *AuthService {
+	return &AuthService{usecase: u, memberships: memberships, users: users}
 }
 
 func (s *AuthService) SignIn(
@@ -180,8 +185,21 @@ func (s *AuthService) DisableTwoFactor(
 		targetUserID = currentUserID
 	}
 
-	if targetUserID != currentUserID && currentUserRole != roleSuperAdmin && currentUserRole != roleAdmin {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
+	if targetUserID != currentUserID {
+		if currentUserRole != roleSuperAdmin && currentUserRole != roleAdmin {
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
+		}
+		// The write below is keyed on the user id alone, so without this an
+		// administrator of one tenant could strip the second factor from any
+		// account in any tenant — a super admin's included — by naming its
+		// id. Resolve the target where the caller is acting, and keep super
+		// admins out of an administrator's reach, as UpdateUserTwoFactor does.
+		if s.users == nil {
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
+		}
+		if err := guardTargetInTenant(ctx, s.users, middlewares.GetTenantID(ctx), targetUserID); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.usecase.DisableTwoFactor(ctx, targetUserID); err != nil {
