@@ -801,9 +801,25 @@ func (s *store) GetMetrics(ctx context.Context, tenantID string, startTime, endT
 		return res, nil
 	}
 
-	// Calculate metrics using aggregated minute timeseries for better performance and persistence
-	ts, err := s.GetTimeSeriesMetrics(ctx, tenantID, startTime, endTime, "minute")
-	if err == nil && len(ts) > 0 {
+	// A closed range is summed from the coarsest counters that tile it: whole
+	// days from day counters, and only the ragged edges from hour and minute
+	// ones. See rangeCounters.
+	if !startTime.IsZero() && !endTime.IsZero() {
+		// Empty, and said so here: the fallback below would hand Pebble a
+		// lower bound above its upper one.
+		if endTime.Before(startTime) {
+			return map[string]int64{}, nil
+		}
+		res, err := s.rangeCounters(tenantID, startTime, endTime)
+		if err != nil {
+			return nil, err
+		}
+		if len(res) > 0 {
+			return res, nil
+		}
+	} else if ts, err := s.GetTimeSeriesMetrics(ctx, tenantID, startTime, endTime, "minute"); err == nil && len(ts) > 0 {
+		// Open at one end, which nothing in the dashboard asks for: there is
+		// no edge to tile from, so this keeps summing minutes.
 		res := make(map[string]int64)
 		for _, minMetrics := range ts {
 			for eventType, count := range minMetrics {
