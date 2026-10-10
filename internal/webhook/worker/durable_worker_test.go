@@ -134,7 +134,7 @@ const wTenant = "11111111-1111-1111-1111-111111111111"
 
 func newWorker(deliveries stores.DeliveryRepository, subs usecases.WebhookUsecase) *DurableWorker {
 	w := NewDurableWorker(deliveries, subs)
-	w.client = &http.Client{Timeout: 2 * time.Second}
+	w.client.Timeout = 2 * time.Second
 	return w
 }
 
