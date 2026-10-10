@@ -21,6 +21,14 @@ type RetentionRepository interface {
 	TruncateBefore(ctx context.Context, before time.Time) (int64, error)
 	TruncateMessagesBefore(ctx context.Context, before time.Time) (int64, error)
 	PruneArchivesBefore(ctx context.Context, before time.Time) (int64, error)
+
+	// The two classes with a fixed horizon rather than a policy: per-minute
+	// counters and resource samples. Both are written for the life of the
+	// process, and neither is read beyond a short window, so nobody is asked
+	// how long to keep them. Day and hour counters are deliberately absent:
+	// they are what a long chart is drawn from, and are kept for good.
+	PruneMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error)
+	PruneResourceHistoryBefore(ctx context.Context, before time.Time) (int64, error)
 }
 
 // ArchivedElsewhere reports which of the given event ids another store holds
@@ -38,4 +46,5 @@ type ArchivedElsewhere func(ctx context.Context, ids []string) (map[string]bool,
 type SharedPruner interface {
 	DeleteEventsBefore(ctx context.Context, before time.Time) (int64, error)
 	DeleteMessagesBefore(ctx context.Context, before time.Time) (int64, error)
+	DeleteMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error)
 }

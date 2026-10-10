@@ -24,6 +24,8 @@ func TestSharedRetentionPrunesTheLocalStoreToo(t *testing.T) {
 	}{
 		{"events", func(s *Store) (int64, error) { return s.TruncateBefore(t.Context(), cutoff) }, "events"},
 		{"messages", func(s *Store) (int64, error) { return s.TruncateMessagesBefore(t.Context(), cutoff) }, "messages"},
+		{"minute series", func(s *Store) (int64, error) { return s.PruneMinuteSeriesBefore(t.Context(), cutoff) }, "minute_series"},
+		{"resource history", func(s *Store) (int64, error) { return s.PruneResourceHistoryBefore(t.Context(), cutoff) }, "resource_history"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -102,5 +104,44 @@ func TestDeleteEventsBeforeDoesNotArchive(t *testing.T) {
 	}
 	if len(left) != 1 || left[0].ID != storetest.ID("fresh") {
 		t.Errorf("%d events left; want only the fresh one", len(left))
+	}
+}
+
+// Minute rows past the horizon go; day and hour rows stay for good, since a
+// long chart is drawn from them and migration 0015 exists because losing them
+// emptied it.
+func TestMinutePruneKeepsDayAndHourRows(t *testing.T) {
+	s, w := newStore(t)
+	old := time.Now().UTC().AddDate(0, 0, -45).Truncate(time.Minute)
+	now := time.Now().UTC()
+	writeEvents(t, s, w,
+		ev("old", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, old),
+		ev("new", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, now))
+
+	removed, err := s.DeleteMinuteSeriesBefore(t.Context(), now.AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("DeleteMinuteSeriesBefore: %v", err)
+	}
+	if removed != 1 {
+		t.Errorf("removed %d rows; want the old minute", removed)
+	}
+
+	for _, tt := range []struct {
+		granularity string
+		bucket      string
+		want        int64
+	}{
+		{"minute", old.Format("2006-01-02 15:04"), 0},
+		{"minute", now.Format("2006-01-02 15:04"), 1},
+		{"hour", old.Format("2006-01-02 15"), 1},
+		{"day", old.Format("2006-01-02"), 1},
+	} {
+		got, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, tt.granularity)
+		if err != nil {
+			t.Fatalf("%s series: %v", tt.granularity, err)
+		}
+		if got[tt.bucket]["SENT"] != tt.want {
+			t.Errorf("%s %s = %d; want %d", tt.granularity, tt.bucket, got[tt.bucket]["SENT"], tt.want)
+		}
 	}
 }

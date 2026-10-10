@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -50,6 +51,45 @@ func (s *Store) DeleteEventsBefore(ctx context.Context, before time.Time) (int64
 			return total, nil
 		}
 	}
+}
+
+// PruneMinuteSeriesBefore deletes per-minute counters for buckets before the
+// cutoff, from the database and from the local store, which keeps its own.
+func (s *Store) PruneMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error) {
+	n, err := s.local.PruneMinuteSeriesBefore(ctx, before)
+	logMirrorPrune("minute_series", n)
+	if err != nil {
+		return 0, fmt.Errorf("local store: %w", err)
+	}
+	return s.DeleteMinuteSeriesBefore(ctx, before)
+}
+
+// DeleteMinuteSeriesBefore deletes per-minute counters for buckets before the
+// cutoff from the database alone.
+//
+// Minute rows only. Day and hour rows are what a long chart is drawn from, and
+// migration 0015 exists because losing them emptied it; they are kept for
+// good. The bucket is ISO-ordered text in UTC, so formatting the cutoff the
+// same way makes a string comparison a time comparison.
+func (s *Store) DeleteMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error) {
+	conn, err := s.db()
+	if err != nil {
+		return 0, err
+	}
+	_, layout := timeseriesFamily("minute")
+	res, err := conn.ExecContext(ctx,
+		`DELETE FROM email_event_timeseries WHERE granularity = $1 AND bucket < $2`,
+		"minute", before.UTC().Format(layout))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// PruneResourceHistoryBefore is local: resource samples describe this process
+// and are only ever kept in the local store.
+func (s *Store) PruneResourceHistoryBefore(ctx context.Context, before time.Time) (int64, error) {
+	return s.local.PruneResourceHistoryBefore(ctx, before)
 }
 
 // logMirrorPrune reports what retention removed from the local store.
