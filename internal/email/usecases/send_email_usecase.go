@@ -807,20 +807,31 @@ func (u *sendEmailUsecase) injectPixel(htmlContent, tenantID, messageID, recipie
 	return htmlContent + pixel
 }
 
+// rewriteLinks routes every web link through the click endpoint.
+//
+// One pass over the body, using the match indexes. This used to be
+// ReplaceAllStringFunc with a FindStringSubmatch inside it, which ran the
+// pattern a second time over every match to recover the submatch the first run
+// had already found -- per link, per recipient, so its cost grew with the size
+// of a send.
 func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipient, recipientEncoded string) string {
-	return hrefRegexp.ReplaceAllStringFunc(htmlContent, func(match string) string {
-		submatch := hrefRegexp.FindStringSubmatch(match)
-		if len(submatch) < 2 {
-			return match
-		}
+	matches := hrefRegexp.FindAllStringSubmatchIndex(htmlContent, -1)
+	if len(matches) == 0 {
+		return htmlContent
+	}
 
-		originalURL := tracking.UnescapeHrefValue(submatch[1])
+	baseURL := u.baseURL()
+	var out strings.Builder
+	last := 0
+	for _, m := range matches {
+		// m[0]:m[1] is the attribute, m[2]:m[3] the value inside its quotes.
+		originalURL := tracking.UnescapeHrefValue(htmlContent[m[2]:m[3]])
 
 		// Anything that is not an ordinary web link is left alone: anchors and
 		// mailto: links have nothing to track, and other schemes must never be
 		// reachable through the gateway's own domain.
 		if tracking.ValidateTarget(originalURL) != nil {
-			return match
+			continue
 		}
 
 		signature := u.trackingSigner.Sign(tracking.Link{
@@ -831,10 +842,36 @@ func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipi
 			TargetURL: originalURL,
 		})
 
-		return fmt.Sprintf(`href="%s/track/click/%s/%s/%s?url=%s&amp;%s=%s"`,
-			u.baseURL(), tenantID, messageID, recipientEncoded,
-			url.QueryEscape(originalURL), tracking.SignatureParam, signature)
-	})
+		if last == 0 {
+			out.Grow(len(htmlContent) + len(matches)*(len(baseURL)+256))
+		}
+		// Written piece by piece rather than through Sprintf, which boxed seven
+		// arguments per link. The output is byte-for-byte what it formatted:
+		// href="<base>/track/click/<tenant>/<message>/<recipient>?url=<target>&amp;<sig>=<signature>"
+		out.WriteString(htmlContent[last:m[0]])
+		out.WriteString(`href="`)
+		out.WriteString(baseURL)
+		out.WriteString("/track/click/")
+		out.WriteString(tenantID)
+		out.WriteByte('/')
+		out.WriteString(messageID)
+		out.WriteByte('/')
+		out.WriteString(recipientEncoded)
+		out.WriteString("?url=")
+		out.WriteString(url.QueryEscape(originalURL))
+		out.WriteString("&amp;")
+		out.WriteString(tracking.SignatureParam)
+		out.WriteByte('=')
+		out.WriteString(signature)
+		out.WriteByte('"')
+		last = m[1]
+	}
+	if last == 0 {
+		// Nothing was worth tracking; the body is unchanged.
+		return htmlContent
+	}
+	out.WriteString(htmlContent[last:])
+	return out.String()
 }
 
 func (u *sendEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient, subject, errorMessage string, metadata map[string]any) error {
