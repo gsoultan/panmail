@@ -19,6 +19,7 @@ the gateway fail loudly where it used to fail late.
 | Change | What to do |
 | :--- | :--- |
 | `/inbound/` needs `/inbound/{tenant_id}/{provider_id}` and the provider's webhook secret | Repoint each inbound parse integration and set a shared secret on its provider. Unsigned posts get `401`. |
+| Inbound bounces count only when they are signed delivery reports, and inbound-parse services must post the raw message | Turn on "send raw" (SendGrid) or post `raw`; see [Bounces count only when they are real and signed](#bounces-count-only-when-they-are-real-and-signed). |
 | A `mysql` or `mariadb` database type is refused at startup | Move to PostgreSQL or SQLite first. Those engines never worked past setup, so nothing on them was usable. |
 | A gateway that cannot reach its database at boot exits after about two minutes | Run it under a supervisor that restarts it (systemd, Kubernetes, Docker `restart:`). |
 | Shutdown waits `--shutdown-delay` (5s) before closing the port | Keep `terminationGracePeriodSeconds` at 30; use `--shutdown-delay=0` in development. |
@@ -97,9 +98,60 @@ connections are refused. HTTP and workers then drain within the 30-second
 termination grace. Keep `terminationGracePeriodSeconds` at 30 or more; set
 `--shutdown-delay=0` for local development.
 
+### Bounces count only when they are real and signed
+
+A bounce read from an IMAP/POP3 mailbox or posted to `/inbound/` used to be
+recognised by its wording, so anyone who could mail the mailbox could get any
+address suppressed. A bounce now counts only when it is a delivery status
+notification (a `message/delivery-status` part) whose returned headers carry
+the `X-Panmail-Ref` header panmail signs onto every copy it sends, and the
+event store shows that message sent to that address.
+
+- Reports about mail sent before the upgrade carry no reference; they are
+  stored as mail but suppress no one.
+- A gateway with no auth key configured records no inbox bounces.
+- An inbound-parse service must post the raw message (`email` form field, or
+  `raw` in JSON) for a bounce to count. SES through SNS does this on its own.
+
+### Inbound posts are deduplicated, and SendGrid and SES can sign in again
+
+Migration `0020` adds `inbound_receipts`. A retried post to `/inbound/` is
+stored once, keyed on the poster's `event_id`, else on the Message-ID and a
+digest of the message. A retry while the first post is still being processed
+gets `503` with `Retry-After`. A relay that posts mail without a Message-ID
+should send an `event_id` to be retry-safe. Receipts are kept 7 days.
+
+SendGrid and SES providers, refused on `/inbound/` since the hardening pass,
+can authenticate again:
+
+- **SendGrid:** add ` inbound=<user>:<pass>` after the event key in the
+  provider's webhook secret, and put those credentials in the Inbound Parse
+  URL (`https://<user>:<pass>@<your-gateway>/inbound/...`).
+- **SES:** add the inbound SNS topic's ARN to the provider's webhook secret and
+  subscribe the `/inbound/` URL to that topic; panmail confirms the
+  subscription itself. Mail over 150 KB that SES stores in S3 arrives as its
+  headers plus `X-Panmail-Ses-S3-Bucket` and `X-Panmail-Ses-S3-Object-Key`;
+  panmail does not fetch it. SNS raw message delivery is refused.
+
+### Sends can carry an idempotency key
+
+Migration `0021` adds `send_idempotency_keys`. `SendEmail` accepts an
+`idempotency_key` field or an `Idempotency-Key` header. A repeat with the same
+key and request within 24 hours returns the first message id and queues
+nothing; the same key with a different request is refused with
+`already_exists`, and a repeat racing the first gets `aborted`, which is safe
+to retry. Existing clients need do nothing.
+
+SMTP submissions are de-duplicated on their Message-ID and envelope
+recipients. A client that reuses one Message-ID for different messages to the
+same recipients now gets `550 5.7.1` within a day of the first; give each
+message its own Message-ID.
+
 ### Smaller changes you may notice
 
 | Change | What to do |
 | :--- | :--- |
 | Deleting a tenant that still has users, keys or providers is refused, with a list of what remains | Remove those first. |
 | Webhook deliveries follow redirects only within the subscription's own host | Point a subscription at its final URL. |
+| `--webhook-block-private-targets` (off by default) keeps outbound webhooks off private, loopback, link-local and other reserved addresses | Set it on every instance if tenants should not reach your network. With it on, webhooks do not use `HTTP_PROXY`/`HTTPS_PROXY`. |
+| An unreachable webhook endpoint is backed off as a whole: after two timeouts or refused connections in a row, all its waiting notifications wait for the next retry (migration `0023` adds an index) | Nothing; a dead endpoint's backlog is retried in bursts. |
