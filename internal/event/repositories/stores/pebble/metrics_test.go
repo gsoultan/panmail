@@ -85,7 +85,7 @@ func TestMetricsRealtimeAccurate(t *testing.T) {
 		t.Fatalf("failed to get timeseries metrics: %v", err)
 	}
 
-	dateStr := time.Now().Format("2006-01-02")
+	dateStr := time.Now().UTC().Format("2006-01-02")
 	dayMetrics := tsMetrics[dateStr]
 	if dayMetrics == nil {
 		t.Fatalf("no metrics for today %s", dateStr)
@@ -100,12 +100,12 @@ func TestMetricsRealtimeAccurate(t *testing.T) {
 	for range 10 {
 		minTsMetrics, err = store.GetTimeSeriesMetrics(ctx, tenantID, time.Now().Add(-1*time.Minute), time.Now().Add(1*time.Minute), "minute")
 		if err == nil {
-			minuteStr := time.Now().Format("2006-01-02 15:04")
+			minuteStr := time.Now().UTC().Format("2006-01-02 15:04")
 			if minTsMetrics[minuteStr] != nil && minTsMetrics[minuteStr]["SENT"] == 2 {
 				break
 			}
 			// Also check previous minute in case boundary crossed
-			minuteStr = time.Now().Add(-1 * time.Minute).Format("2006-01-02 15:04")
+			minuteStr = time.Now().UTC().Add(-1 * time.Minute).Format("2006-01-02 15:04")
 			if minTsMetrics[minuteStr] != nil && minTsMetrics[minuteStr]["SENT"] == 2 {
 				break
 			}
@@ -117,10 +117,10 @@ func TestMetricsRealtimeAccurate(t *testing.T) {
 		t.Fatalf("failed to get minute timeseries metrics: %v", err)
 	}
 
-	minuteStr := time.Now().Format("2006-01-02 15:04")
+	minuteStr := time.Now().UTC().Format("2006-01-02 15:04")
 	minuteMetrics := minTsMetrics[minuteStr]
 	if minuteMetrics == nil {
-		minuteStr = time.Now().Add(-1 * time.Minute).Format("2006-01-02 15:04")
+		minuteStr = time.Now().UTC().Add(-1 * time.Minute).Format("2006-01-02 15:04")
 		minuteMetrics = minTsMetrics[minuteStr]
 	}
 

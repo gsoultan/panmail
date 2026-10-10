@@ -263,8 +263,11 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 	copy(metricKey, buf)
 	_ = s.incrementCounter(batch, metricKey)
 
+	// The buckets are UTC, on both sides: see bucketTime.
+	at := bucketTime(e.Timestamp)
+
 	// Daily timeseries
-	dateStr := e.Timestamp.Format("2006-01-02")
+	dateStr := at.Format(dayLayout)
 	buf = buf[:0]
 	buf = append(buf, "timeseries:"...)
 	buf = append(buf, e.TenantID...)
@@ -277,7 +280,7 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 	_ = s.incrementCounter(batch, tsKey)
 
 	// Hourly timeseries
-	hourStr := e.Timestamp.Format("2006-01-02 15")
+	hourStr := at.Format(hourLayout)
 	buf = buf[:0]
 	buf = append(buf, "timeseries:hour:"...)
 	buf = append(buf, e.TenantID...)
@@ -290,7 +293,7 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 	_ = s.incrementCounter(batch, hourKey)
 
 	// Minute timeseries
-	minuteStr := e.Timestamp.Format("2006-01-02 15:04")
+	minuteStr := at.Format(minuteLayout)
 	buf = buf[:0]
 	buf = append(buf, "timeseries:minute:"...)
 	buf = append(buf, e.TenantID...)
@@ -872,7 +875,7 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 			} else if granularity == "minute" {
 				format = "2006-01-02 15:04"
 			}
-			lowerBound = []byte(fmt.Sprintf("%s%s:%s", prefixStr, tenantID, startTime.Format(format)))
+			lowerBound = []byte(fmt.Sprintf("%s%s:%s", prefixStr, tenantID, bucketTime(startTime).Format(format)))
 		}
 
 		if !endTime.IsZero() {
@@ -882,7 +885,7 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 			} else if granularity == "minute" {
 				format = "2006-01-02 15:04"
 			}
-			upperBound = []byte(fmt.Sprintf("%s%s:%s\xff", prefixStr, tenantID, endTime.Format(format)))
+			upperBound = []byte(fmt.Sprintf("%s%s:%s\xff", prefixStr, tenantID, bucketTime(endTime).Format(format)))
 		}
 
 		iter, err := s.db.NewIter(&pebble.IterOptions{
@@ -964,13 +967,13 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 		var timeKey string
 		switch granularity {
 		case "minute":
-			timeKey = e.Timestamp.Format("2006-01-02 15:04")
+			timeKey = bucketTime(e.Timestamp).Format("2006-01-02 15:04")
 		case "hour":
-			timeKey = e.Timestamp.Format("2006-01-02 15:00")
+			timeKey = bucketTime(e.Timestamp).Format("2006-01-02 15:00")
 		case "day":
-			timeKey = e.Timestamp.Format("2006-01-02")
+			timeKey = bucketTime(e.Timestamp).Format("2006-01-02")
 		default:
-			timeKey = e.Timestamp.Format("2006-01-02")
+			timeKey = bucketTime(e.Timestamp).Format("2006-01-02")
 		}
 
 		typeStr := strings.TrimPrefix(e.Type.String(), "EMAIL_EVENT_TYPE_")
