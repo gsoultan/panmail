@@ -42,7 +42,7 @@ func asConnectError(err error) error {
 		return nil
 	case errors.Is(err, usecases.ErrUserNotFound), errors.Is(err, usecases.ErrTenantNotFound), errors.Is(err, usecases.ErrNotAMember):
 		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, usecases.ErrRoleNotAssignable):
+	case errors.Is(err, usecases.ErrRoleNotAssignable), errors.Is(err, usecases.ErrPasswordTooShort):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, usecases.ErrHomeTenantRemoval),
 		errors.Is(err, usecases.ErrHomeTenantOnlyDeletion),
