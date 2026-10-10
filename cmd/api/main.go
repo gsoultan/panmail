@@ -619,7 +619,7 @@ func main() {
 	// filter out.
 	warnAboutUnboundedRetention(settingsRepo)
 
-	settingsUsecase := settingsusecases.NewSettingsUsecase(settingsRepo, retentionWorker)
+	settingsUsecase := settingsusecases.NewSettingsUsecase(settingsRepo, retentionWorker, settingsProvider)
 	// settingsService is built further down, once the SMTP submission usecase
 	// it reports through exists: that one needs the API-key and send usecases,
 	// which are not constructed until the transports are wired.
