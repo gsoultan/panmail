@@ -617,7 +617,22 @@ Only the two defaults that panmail has always enforced are non-zero, so upgradin
 
 ### Inbound Processing
 
-Receive and parse incoming emails by configuring Inbound Parse in your provider and pointing it to your gateway's inbound endpoint.
+Receive and parse incoming emails by configuring Inbound Parse in your provider and pointing it to your gateway's inbound endpoint:
+
+```
+POST https://<your-gateway>/inbound/{tenant_id}/{provider_id}
+```
+
+The endpoint is authenticated with that provider's **webhook secret** (the same field that verifies its delivery-event webhooks, set on the provider's page). Present it in either of two ways:
+
+- **HMAC signature** — `X-Panmail-Signature: sha256=<hex HMAC-SHA256 of the raw request body, keyed with the secret>`, for a relay you control.
+- **HTTP Basic** — for a service that can only be given a URL: `https://:<secret>@<your-gateway>/inbound/...`, or `https://<user>:<pass>@...` when the secret is stored as `user:pass`.
+
+The tenant is the one the provider belongs to; a `tenant_id` in the body is ignored. A post without valid credentials, to an unknown provider, or to a provider with no secret is refused with `401`. A SendGrid or SES provider cannot authenticate inbound mail, because what they store is a public key or a topic ARN rather than a secret: point inbound at a provider whose webhook secret is a shared secret instead.
+
+The body may be JSON (`from`, `to` as an array, `subject`, `text`, `html`, `headers` as an object), `multipart/form-data` or `application/x-www-form-urlencoded` (`from`, `to` comma-separated, `subject`, `text`, `html`, `headers` as a raw header block). A post that yields no message is refused with `400`, and an unsupported `Content-Type` with `415`.
+
+A received message that looks like a bounce is recorded against the address its `Final-Recipient` (or `Original-Recipient`) line names. One that names neither is stored as mail but not recorded as a bounce.
 
 ### UI Integration
 
