@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"sync"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/auth/usecases"
@@ -59,6 +61,10 @@ type setupUsecase struct {
 	tokenMaker     *auth.SwappableTokenMaker
 	trackingSigner *tracking.Signer
 	migrateFn      func(db.Connection, string) error
+
+	// saveConfig writes the configuration. A field so that a test can make
+	// the last step of setup fail.
+	saveConfig func(*config.Config) error
 }
 
 func NewSetupUsecase(
@@ -74,35 +80,74 @@ func NewSetupUsecase(
 		tokenMaker:     tokenMaker,
 		trackingSigner: trackingSigner,
 		migrateFn:      migrateFn,
+		saveConfig:     config.Save,
 	}
 }
 
+// IsSetup reports whether the instance has been configured.
+//
+// The configuration file is the marker, and Setup writes it last, so its
+// existence means every earlier step — the database, the migrations and the
+// first administrator — succeeded. Only a file that is definitely absent means
+// "not set up": any other failure to look is returned, because answering "not
+// set up" on, say, a permission error would reopen the unauthenticated
+// first-run surface on a configured instance.
 func (u *setupUsecase) IsSetup(ctx context.Context) (bool, error) {
-	// Check if config file exists. If it exists, we consider it setup.
 	path, err := config.GetConfigPath()
 	if err != nil {
 		return false, err
 	}
 
-	if _, err := os.Stat(path); err == nil {
+	_, err = os.Stat(path)
+	switch {
+	case err == nil:
 		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, fmt.Errorf("could not tell whether the instance is set up: %w", err)
 	}
-
-	return false, nil
 }
 
+// setupMu serialises Setup across the process. Setup is public and its "not
+// yet configured" check is only meaningful if nobody else is between that
+// check and the write that ends it; two wizards submitted at once would
+// otherwise both create an administrator and race to write the configuration.
+// Package level rather than per usecase because the file it guards is
+// process wide too.
+var setupMu sync.Mutex
+
 func (u *setupUsecase) Setup(ctx context.Context, dbCfg *panmailv1.DatabaseConfig, adminEmail, adminPassword, adminName, baseURL string) error {
-	// Check if already setup
+	setupMu.Lock()
+	defer setupMu.Unlock()
+
 	isSetup, err := u.IsSetup(ctx)
-	if err == nil && isSetup {
+	if err != nil {
+		return err
+	}
+	if isSetup {
 		return errAlreadySetup
 	}
 
+	// Everything that can be refused without side effects is refused first.
+	// A password the administrator rule would reject used to be discovered
+	// only after the configuration was written, which closed setup for good
+	// on an instance with no user able to sign in.
+	if dbCfg == nil {
+		return errors.New("database configuration is required")
+	}
 	if err := validateEngine(dbCfg.Type); err != nil {
 		return err
 	}
+	admin := usecases.NewAdmin{
+		Email:    adminEmail,
+		Password: adminPassword,
+		Name:     adminName,
+	}
+	if err := usecases.ValidateNewAdmin(admin); err != nil {
+		return err
+	}
 
-	// 1. Connect to new DB
 	cfg := db.Config{
 		Type:     dbCfg.Type,
 		Host:     dbCfg.Host,
@@ -118,15 +163,16 @@ func (u *setupUsecase) Setup(ctx context.Context, dbCfg *panmailv1.DatabaseConfi
 		return fmt.Errorf("failed to connect to new database: %w", err)
 	}
 
-	// 2. Set the connection
+	// The administrator is written through the shared connection, so it has
+	// to point at the new database before anything else can happen. Until the
+	// configuration is saved this is not a commitment: a failed attempt
+	// leaves setup open, and the next one replaces the connection again.
 	u.conn.SetDB(newDB)
 
-	// 3. Run migrations
 	if err := u.migrateFn(u.conn, cfg.Type); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	// 4. Save config
 	symmetricKey := make([]byte, 32)
 	if _, err := crypto_rand.Read(symmetricKey); err != nil {
 		return fmt.Errorf("failed to generate symmetric key: %w", err)
@@ -141,14 +187,29 @@ func (u *setupUsecase) Setup(ctx context.Context, dbCfg *panmailv1.DatabaseConfi
 			BaseURL: baseURL,
 		},
 	}
-	if err := config.Save(appCfg); err != nil {
+
+	created, err := u.authUsecase.CreateAdmin(ctx, admin)
+	if err != nil {
+		return fmt.Errorf("failed to create the administrator: %w", err)
+	}
+
+	// Last, because the file's existence is what closes setup. Written before
+	// the administrator — the old order — any failure above left an instance
+	// that refused setup and had nobody who could sign in.
+	if err := u.saveConfig(appCfg); err != nil {
+		// Without the file setup is still open, so take the administrator
+		// back out: otherwise the retry fails on the address it already used.
+		if rmErr := u.authUsecase.RemoveAdmin(ctx, created); rmErr != nil {
+			return errors.Join(fmt.Errorf("failed to save configuration: %w", err),
+				fmt.Errorf("could not remove the administrator it had created: %w", rmErr))
+		}
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	// 5. Update token maker
-	maker, err := auth.NewPasetoMaker(appCfg.Auth.SymmetricKey)
-	if err == nil {
-		u.tokenMaker.SetMaker(maker)
+	if u.tokenMaker != nil {
+		if maker, err := auth.NewPasetoMaker(appCfg.Auth.SymmetricKey); err == nil {
+			u.tokenMaker.SetMaker(maker)
+		}
 	}
 
 	// The tracking signer has to move to the new key for the same reason the
@@ -161,12 +222,7 @@ func (u *setupUsecase) Setup(ctx context.Context, dbCfg *panmailv1.DatabaseConfi
 		u.trackingSigner.SetKey(tracking.DeriveKey(appCfg.Auth.SymmetricKey))
 	}
 
-	// 6. Create admin user
-	return u.authUsecase.CreateAdmin(ctx, usecases.NewAdmin{
-		Email:    adminEmail,
-		Password: adminPassword,
-		Name:     adminName,
-	})
+	return nil
 }
 
 // TestDatabaseConnection dials the supplied database so the setup wizard can
@@ -176,7 +232,11 @@ func (u *setupUsecase) Setup(ctx context.Context, dbCfg *panmailv1.DatabaseConfi
 // be a standing, unauthenticated way to make this server connect to any host
 // and port the caller names and report what happened.
 func (u *setupUsecase) TestDatabaseConnection(ctx context.Context, dbCfg *panmailv1.DatabaseConfig) error {
-	if isSetup, err := u.IsSetup(ctx); err == nil && isSetup {
+	isSetup, err := u.IsSetup(ctx)
+	if err != nil {
+		return err
+	}
+	if isSetup {
 		return errAlreadySetup
 	}
 

@@ -39,7 +39,7 @@ func TestSetupMovesTheTrackingSignerOntoTheGeneratedKey(t *testing.T) {
 	err := u.Setup(context.Background(), &panmailv1.DatabaseConfig{
 		Type:     "sqlite",
 		FilePath: filepath.Join(dir, "panmail.db"),
-	}, "admin@example.com", "password", "Admin", "https://mail.example.com")
+	}, "admin@example.com", "a-long-enough-password", "Admin", "https://mail.example.com")
 	if err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}

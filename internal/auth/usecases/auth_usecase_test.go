@@ -300,11 +300,114 @@ func TestCreateAdminRejectsWeakPassword(t *testing.T) {
 	repo := newStubUserRepo()
 	usecase, _ := newTestUsecase(t, repo)
 
-	if err := usecase.CreateAdmin(context.Background(), NewAdmin{
+	if _, err := usecase.CreateAdmin(context.Background(), NewAdmin{
 		Email:    "admin@example.com",
 		Password: "short",
 		Name:     "Admin",
 	}); err == nil {
 		t.Error("expected a weak password to be refused")
+	}
+}
+
+// recordingTenantRepo remembers which tenants exist, so a test can see one
+// left behind.
+type recordingTenantRepo struct {
+	stubTenantRepo
+	ids map[string]bool
+}
+
+func (r *recordingTenantRepo) Create(ctx context.Context, t *tenantentities.Tenant) error {
+	r.ids[t.ID] = true
+	return nil
+}
+
+func (r *recordingTenantRepo) Delete(ctx context.Context, id string) error {
+	delete(r.ids, id)
+	return nil
+}
+
+// failingCreateUserRepo refuses every new user, the way a duplicate address
+// or a database error does.
+type failingCreateUserRepo struct {
+	*stubUserRepo
+}
+
+func (r failingCreateUserRepo) Create(ctx context.Context, u *entities.User) error {
+	return errors.New("UNIQUE constraint failed: users.email")
+}
+
+// failingAssignMemberships refuses the home membership.
+type failingAssignMemberships struct {
+	*fakeMembershipRepo
+}
+
+func (r failingAssignMemberships) Assign(ctx context.Context, m *entities.UserTenant) error {
+	return errors.New("database is locked")
+}
+
+// CreateAdmin writes a tenant, a user and a membership. A failure part-way
+// used to leave the earlier rows behind — an orphan "Default Tenant" per
+// attempt, or a user the retry then collided with — so it must undo itself.
+func TestCreateAdminLeavesNothingBehindWhenItFails(t *testing.T) {
+	maker, err := auth.NewPasetoMaker("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name            string
+		userCreateFails bool
+	}{
+		{name: "user cannot be created", userCreateFails: true},
+		{name: "membership cannot be recorded"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			users := newStubUserRepo()
+			tenants := &recordingTenantRepo{ids: map[string]bool{}}
+			memberships := newFakeMembershipRepo()
+
+			var usecase AuthUsecase
+			if tc.userCreateFails {
+				usecase = NewAuthUsecase(failingCreateUserRepo{users}, tenants, memberships, maker)
+			} else {
+				usecase = NewAuthUsecase(users, tenants, failingAssignMemberships{memberships}, maker)
+			}
+
+			if _, err := usecase.CreateAdmin(context.Background(), NewAdmin{
+				Email: "admin@example.com", Password: "a-long-enough-password", Name: "Admin",
+			}); err == nil {
+				t.Fatal("expected CreateAdmin to fail")
+			}
+			if len(tenants.ids) != 0 {
+				t.Errorf("%d tenant(s) left behind by a failed CreateAdmin", len(tenants.ids))
+			}
+			if len(memberships.rows) != 0 {
+				t.Errorf("%d membership(s) left behind by a failed CreateAdmin", len(memberships.rows))
+			}
+		})
+	}
+}
+
+// Setup validates the administrator before it writes anything, with the same
+// rule CreateAdmin applies, so the two cannot disagree again.
+func TestValidateNewAdmin(t *testing.T) {
+	tests := []struct {
+		name    string
+		admin   NewAdmin
+		wantErr bool
+	}{
+		{"valid", NewAdmin{Email: "admin@example.com", Password: "a-long-enough-password"}, false},
+		{"exactly the minimum", NewAdmin{Email: "admin@example.com", Password: "123456789012"}, false},
+		{"one short", NewAdmin{Email: "admin@example.com", Password: "12345678901"}, true},
+		{"the wizard's old minimum", NewAdmin{Email: "admin@example.com", Password: "123456"}, true},
+		{"no address", NewAdmin{Email: "", Password: "a-long-enough-password"}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ValidateNewAdmin(tc.admin); (err != nil) != tc.wantErr {
+				t.Errorf("ValidateNewAdmin() error = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
 	}
 }
