@@ -68,6 +68,11 @@ type Options struct {
 	// each store for a handle it should not be holding.
 	Stores map[string]Checkpointer
 
+	// Dirs maps a name to a plain directory copied file by file: the event
+	// archives, which are JSONL files rather than a store, and which are the
+	// only copy of every event retention has expired.
+	Dirs map[string]string
+
 	// ConfigPath is copied verbatim: it carries the auth signing key, and on
 	// installations that never set the environment variable, the data key too.
 	ConfigPath string
@@ -87,6 +92,9 @@ func Run(ctx context.Context, opts Options) (*Manifest, error) {
 		return nil, fmt.Errorf("%s already contains a backup; choose an empty directory", opts.OutDir)
 	}
 	if err := os.MkdirAll(opts.OutDir, 0o700); err != nil {
+		return nil, err
+	}
+	if err := claimOutDir(opts); err != nil {
 		return nil, err
 	}
 
@@ -114,6 +122,16 @@ func Run(ctx context.Context, opts Options) (*Manifest, error) {
 		manifest.Stores = append(manifest.Stores, name)
 	}
 
+	for name, src := range opts.Dirs {
+		copied, err := copyDir(src, filepath.Join(opts.OutDir, name))
+		if err != nil {
+			return nil, fmt.Errorf("copy %s: %w", name, err)
+		}
+		if copied {
+			manifest.Stores = append(manifest.Stores, name)
+		}
+	}
+
 	if opts.ConfigPath != "" {
 		if err := copyFile(opts.ConfigPath, filepath.Join(opts.OutDir, "config.yaml")); err != nil {
 			return nil, fmt.Errorf("copy config: %w", err)
@@ -138,8 +156,114 @@ func Run(ctx context.Context, opts Options) (*Manifest, error) {
 	if err := os.WriteFile(filepath.Join(opts.OutDir, "manifest.json"), body, 0o600); err != nil {
 		return nil, err
 	}
+	// Only once the manifest is down: until then a retry has to be able to
+	// tell that what is here is this run's to replace.
+	_ = os.Remove(filepath.Join(opts.OutDir, inProgressMarker))
 
 	return manifest, nil
+}
+
+// inProgressMarker is written into the output directory before anything else
+// and removed after the manifest. Its presence says that everything under the
+// names this backup writes was written by an earlier run that did not finish.
+const inProgressMarker = ".backup-in-progress"
+
+// claimOutDir makes the output directory ready for this run's files.
+//
+// A failed backup used to be impossible to retry into the same directory:
+// Pebble's Checkpoint and SQLite's VACUUM INTO both refuse a destination that
+// exists, and the failed run had left its partial snapshots behind. The
+// marker is what makes clearing them safe. Without it, an existing entry is
+// refused rather than deleted — it may be a live store, if the directory named
+// is a gateway's own data directory — and with it, everything under this
+// run's names was put there by a run that never finished.
+func claimOutDir(opts Options) error {
+	marker := filepath.Join(opts.OutDir, inProgressMarker)
+	_, err := os.Stat(marker)
+	resuming := err == nil
+
+	for _, name := range outputNames(opts) {
+		path := filepath.Join(opts.OutDir, name)
+		if _, err := os.Lstat(path); err != nil {
+			continue
+		}
+		if !resuming {
+			return fmt.Errorf("%s already contains %s; choose an empty directory", opts.OutDir, name)
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("clear %s left by an unfinished backup: %w", name, err)
+		}
+	}
+	return os.WriteFile(marker, nil, 0o600)
+}
+
+// outputNames is every entry this run writes into the output directory.
+func outputNames(opts Options) []string {
+	var names []string
+	if strings.EqualFold(opts.SQLEngine, "sqlite") && opts.SQLDB != nil {
+		names = append(names, "panmail.sqlite")
+	}
+	for name := range opts.Stores {
+		names = append(names, name)
+	}
+	for name := range opts.Dirs {
+		names = append(names, name)
+	}
+	if opts.ConfigPath != "" {
+		names = append(names, "config.yaml")
+	}
+
+	// Only plain names directly inside the output directory. A name that
+	// reached outside it would make the clearing above delete something
+	// that is not this backup's.
+	safe := names[:0]
+	for _, name := range names {
+		if name != "" && name == filepath.Base(name) && name != "." && name != ".." {
+			safe = append(safe, name)
+		}
+	}
+	return safe
+}
+
+// copyDir copies a directory tree, reporting whether there was one to copy. A
+// missing source is not an error: a gateway whose retention has never expired
+// anything has no archives yet.
+//
+// Archive files are appended to while retention runs, so a backup taken
+// during a pass can end with a partial last line in the newest file. Every
+// earlier line is complete, and the file is there in full on the next backup.
+func copyDir(src, dst string) (bool, error) {
+	info, err := os.Stat(src)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("%s is not a directory", src)
+	}
+
+	return true, filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		switch {
+		case d.IsDir():
+			return os.MkdirAll(target, 0o700)
+		case d.Type().IsRegular():
+			return copyFile(path, target)
+		default:
+			// Not followed: a link in the archive directory is not an
+			// archive, and following one could copy anything on the host.
+			return nil
+		}
+	})
 }
 
 func backupSQL(ctx context.Context, opts Options, manifest *Manifest) error {

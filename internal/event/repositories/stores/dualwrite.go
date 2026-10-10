@@ -2,6 +2,7 @@ package stores
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -123,6 +124,17 @@ func (s *shadowed) pruneShadow(prune func(SharedPruner) (int64, error)) error {
 		return fmt.Errorf("shadow store: %w", err)
 	}
 	return nil
+}
+
+// Checkpoint snapshots the primary. Without it a backup taken during the
+// shadow phase refused to run, reporting that events.db could not snapshot
+// itself.
+func (s *shadowed) Checkpoint(dir string) error {
+	cp, ok := s.EventRepository.(interface{ Checkpoint(dir string) error })
+	if !ok {
+		return errors.New("the primary event store cannot snapshot itself")
+	}
+	return cp.Checkpoint(dir)
 }
 
 // DiskUsage reports the primary's size, the store on this disk. Without it the

@@ -1272,6 +1272,7 @@ func mountBackupEndpoint(
 			SQLitePath: current.Database.FilePath,
 			Version:    Version,
 			Stores:     map[string]backup.Checkpointer{},
+			Dirs:       map[string]string{"archives": eventstores.ArchiveDir()},
 		}
 		if path, err := config.GetConfigPath(); err == nil {
 			opts.ConfigPath = path
@@ -1796,6 +1797,7 @@ func handleBackupCommand() {
 		SQLitePath: cfg.Database.FilePath,
 		Version:    Version,
 		Stores:     map[string]backup.Checkpointer{},
+		Dirs:       map[string]string{"archives": eventstores.ArchiveDir()},
 	}
 
 	if path, err := config.GetConfigPath(); err == nil {
