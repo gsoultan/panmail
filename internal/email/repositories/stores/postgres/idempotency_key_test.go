@@ -13,13 +13,15 @@ import (
 
 func keyedMessage(name string, created time.Time) (*entities.OutboxEmail, *entities.IdempotencyKey) {
 	id := storetest.ID(name)
-	return &entities.OutboxEmail{
-			ID: id, TenantID: storetest.TenantA, Request: []byte(`{}`),
-			Status: entities.OutboxStatusPending, NextRetryAt: created, CreatedAt: created, UpdatedAt: created,
-		}, &entities.IdempotencyKey{
-			TenantID: storetest.TenantA, Key: "order-42", RequestHash: "hash-" + name,
-			MessageID: id, CreatedAt: created,
-		}
+	msg := &entities.OutboxEmail{
+		ID: id, TenantID: storetest.TenantA, Request: []byte(`{}`),
+		Status: entities.OutboxStatusPending, NextRetryAt: created, CreatedAt: created, UpdatedAt: created,
+	}
+	key := &entities.IdempotencyKey{
+		TenantID: storetest.TenantA, Key: "order-42", RequestHash: "hash-" + name,
+		MessageID: id, CreatedAt: created,
+	}
+	return msg, key
 }
 
 // A live key refuses a second message and queues nothing for it; an expired
