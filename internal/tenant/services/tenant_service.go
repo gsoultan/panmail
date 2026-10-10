@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"connectrpc.com/connect"
@@ -87,6 +88,10 @@ func (s *tenantService) UpdateTenant(ctx context.Context, req *connect.Request[p
 
 func (s *tenantService) DeleteTenant(ctx context.Context, req *connect.Request[panmailv1.DeleteTenantRequest]) (*connect.Response[panmailv1.DeleteTenantResponse], error) {
 	if err := s.usecase.DeleteTenant(ctx, req.Msg.Id); err != nil {
+		if errors.Is(err, usecases.ErrTenantNotEmpty) {
+			// The message names what is left, which is what the console shows.
+			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
