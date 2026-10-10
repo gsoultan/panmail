@@ -299,6 +299,15 @@ func (s *Store) Close() error {
 	return s.local.Close()
 }
 
+// DiskUsage reports the local store's size. The database's is its own
+// operator's to measure, and is not on this disk.
+func (s *Store) DiskUsage() int64 {
+	if sized, ok := s.local.(interface{ DiskUsage() int64 }); ok {
+		return sized.DiskUsage()
+	}
+	return 0
+}
+
 // StopWriter flushes and stops the batching writer without closing the local
 // store. It is what the shadow wrapper calls on the way down, since there the
 // local store is the primary and is closed by the wrapper itself.

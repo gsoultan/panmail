@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -39,14 +38,35 @@ type processEventUsecase struct {
 	sentCounter atomic.Uint64
 	sentPerSec  atomic.Pointer[float64]
 	startTime   time.Time
-	diskUsage   atomic.Uint64
 	cpuUsage    atomic.Pointer[float64]
 	cpuCores    atomic.Uint32
 	totalMemory atomic.Uint64
 	load15      atomic.Pointer[float64]
 
 	providerNames sync.Map // cache: tenantID+providerID -> providerName
+
+	// diskSources report the disk each store holds. See AddDiskUsageSource.
+	diskMu      sync.Mutex
+	diskSources []DiskUsageSource
+
+	// stopTracker ends the performance tracker, and trackerDone closes when
+	// it has. See Close.
+	stopTracker context.CancelFunc
+	trackerDone chan struct{}
+	closeOnce   sync.Once
 }
+
+// DiskUsageSource is a store that reports the disk it holds, in bytes.
+type DiskUsageSource interface {
+	DiskUsage() int64
+}
+
+// The tracker's two periods. Variables so a test can run the loop quickly;
+// read once, when the usecase is built.
+var (
+	performanceInterval = 5 * time.Second
+	resourceInterval    = 5 * time.Minute
+)
 
 // RedactionSource supplies the level to mask a stored body at on the way out.
 //
@@ -92,23 +112,62 @@ func NewProcessEventUsecase(
 		u.totalMemory.Store(v.Total)
 	}
 
-	go u.startPerformanceTracker()
+	// The stores this usecase already holds report their own size; anything
+	// else, such as the log store, is added during wiring.
+	for _, store := range []any{repo, inboundRepo} {
+		if sized, ok := store.(DiskUsageSource); ok {
+			u.diskSources = append(u.diskSources, sized)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	u.stopTracker = cancel
+	u.trackerDone = make(chan struct{})
+	go u.startPerformanceTracker(ctx, performanceInterval, resourceInterval)
 	return u
 }
 
-func (u *processEventUsecase) startPerformanceTracker() {
-	ticker := time.NewTicker(5 * time.Second)
+// AddDiskUsageSource counts another store in the disk usage the performance
+// page reports.
+func (u *processEventUsecase) AddDiskUsageSource(src DiskUsageSource) {
+	if src == nil {
+		return
+	}
+	u.diskMu.Lock()
+	defer u.diskMu.Unlock()
+	u.diskSources = append(u.diskSources, src)
+}
+
+// Close stops the performance tracker and waits for it to finish.
+//
+// It used to run for the life of the process with no way to stop it, so it
+// went on writing resource samples into an event store that shutdown was in
+// the middle of closing.
+func (u *processEventUsecase) Close() error {
+	u.closeOnce.Do(func() {
+		u.stopTracker()
+		<-u.trackerDone
+	})
+	return nil
+}
+
+func (u *processEventUsecase) startPerformanceTracker(ctx context.Context, perf, resource time.Duration) {
+	defer close(u.trackerDone)
+
+	ticker := time.NewTicker(perf)
 	defer ticker.Stop()
 
 	// Record resource metrics every 5 minutes for history
-	resourceTicker := time.NewTicker(5 * time.Minute)
+	resourceTicker := time.NewTicker(resource)
 	defer resourceTicker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
 			count := u.sentCounter.Swap(0)
-			rate := float64(count) / 5.0
+			rate := float64(count) / perf.Seconds()
 			u.sentPerSec.Store(&rate)
 
 			// CPU Usage
@@ -121,16 +180,12 @@ func (u *processEventUsecase) startPerformanceTracker() {
 				u.load15.Store(&l.Load15)
 			}
 
-			// Update disk usage periodically instead of every request
-			usage := getDirSize("events.db") + getDirSize("inbound.db") + getDirSize("logs.db")
-			u.diskUsage.Store(usage)
-
 		case <-resourceTicker.C:
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
 			cpuVal := *u.cpuUsage.Load()
 			loadVal := *u.load15.Load()
-			_ = u.repo.WriteResourceMetric(context.Background(), cpuVal, m.Alloc, loadVal)
+			_ = u.repo.WriteResourceMetric(ctx, cpuVal, m.Alloc, loadVal)
 		}
 	}
 }
@@ -139,12 +194,7 @@ func (u *processEventUsecase) GetPerformanceMetrics(ctx context.Context) (Perfor
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	diskUsage := u.diskUsage.Load()
-	if diskUsage == 0 {
-		// Initial load if not yet populated by tracker
-		diskUsage = getDirSize("events.db") + getDirSize("inbound.db") + getDirSize("logs.db")
-		u.diskUsage.Store(diskUsage)
-	}
+	diskUsage := u.diskUsage()
 
 	// Try to get open files count
 	var openFiles uint32
@@ -181,18 +231,22 @@ func (u *processEventUsecase) GetPerformanceMetrics(ctx context.Context) (Perfor
 	}, nil
 }
 
-func getDirSize(path string) uint64 {
-	var size int64
-	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
-		return nil
-	})
-	return uint64(size)
+// diskUsage totals what the stores report about themselves.
+//
+// It used to walk events.db, inbound.db and logs.db every five seconds and
+// stat every file in them — paths relative to the working directory, so a
+// gateway started with -event-dir elsewhere reported nothing for that store.
+// Each store already knows its own size from Pebble's metrics, which also
+// count the WAL and files mid-compaction that a walk misses or double-counts;
+// reading that is a field read, cheap enough to do per request.
+func (u *processEventUsecase) diskUsage() uint64 {
+	u.diskMu.Lock()
+	defer u.diskMu.Unlock()
+	var total int64
+	for _, src := range u.diskSources {
+		total += src.DiskUsage()
+	}
+	return uint64(max(total, 0))
 }
 
 func (u *processEventUsecase) getProviderName(ctx context.Context, tenantID, providerID string) string {
