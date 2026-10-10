@@ -275,14 +275,15 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, err
 	}
 
+	// Every recipient is checked before anything is recorded as PENDING. This
+	// loop used to record PENDING for each recipient as it went, so a refusal
+	// part-way through -- a suppressed address, and every refusal below it --
+	// left PENDING events for a message that was never accepted, which nothing
+	// would ever move on and the tenant's history showed as queued for good.
 	for i, recipient := range recipients.addresses {
 		if reason, ok := suppressed[recipients.normalised[i]]; ok {
 			_ = u.RecordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, "", reason, nil)
 			return nil, &SuppressedRecipientError{Recipient: recipient, Reason: reason}
-		}
-		// Record initial PENDING event (queued in outbox)
-		if err := u.RecordEvent(ctx, tenantID, req.ProviderId, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING, recipient, "", "", nil); err != nil {
-			slog.Error("failed to record pending event", "error", err, "id", messageID)
 		}
 	}
 
@@ -402,6 +403,18 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	if err := u.outboxRepo.Create(ctx, outboxEmail); err != nil {
 		slog.Error("failed to create outbox email", "error", err, "id", messageID)
 		return nil, fmt.Errorf("failed to enqueue email: %w", err)
+	}
+
+	// PENDING only now that the message is durably queued. Recorded any
+	// earlier, every refusal above -- suppression, an unrenderable template, a
+	// filter rule's reject, an outbox write that failed -- left a PENDING per
+	// recipient for a message the caller was told was refused, and nothing
+	// would ever move those on. A held message is accepted too, and waits as
+	// PENDING until a reviewer decides.
+	for _, recipient := range recipients.addresses {
+		if err := u.RecordEvent(ctx, tenantID, req.ProviderId, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING, recipient, "", "", nil); err != nil {
+			slog.Error("failed to record pending event", "error", err, "id", messageID)
+		}
 	}
 
 	// Recorded only after the payload is durably in the outbox. The other
