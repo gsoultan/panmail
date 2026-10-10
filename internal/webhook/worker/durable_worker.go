@@ -103,7 +103,7 @@ func NewDurableWorker(deliveries stores.DeliveryRepository, webhookUsecase useca
 	w := &DurableWorker{
 		deliveries:     deliveries,
 		webhookUsecase: webhookUsecase,
-		client:         &http.Client{Timeout: defaultDeliveryTimeout},
+		client:         newDeliveryClient(defaultDeliveryTimeout),
 		interval:       defaultDeliveryInterval,
 		batchSize:      defaultDeliveryBatch,
 		lease:          defaultDeliveryLease,
@@ -114,6 +114,30 @@ func NewDurableWorker(deliveries stores.DeliveryRepository, webhookUsecase useca
 	}
 	w.SetRetention(defaultDeliveryRetention)
 	return w
+}
+
+// newDeliveryClient builds the client notifications are posted with.
+//
+// It follows a redirect only to the host the subscription names. Following
+// one anywhere carried the signed notification -- payload, signature and
+// delivery id -- to wherever the endpoint pointed, a host the tenant never
+// named and the operator never saw. A redirect to another host is answered
+// with the redirect itself, which the worker records as the endpoint refusing
+// the request. Private addresses are deliberately not blocked: a self-hosted
+// gateway posting to a service beside it is the ordinary case.
+func newDeliveryClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			if req.URL.Host != via[0].URL.Host || req.URL.Scheme != via[0].URL.Scheme {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
 }
 
 // SetRetention configures how long a finished notification is kept before it

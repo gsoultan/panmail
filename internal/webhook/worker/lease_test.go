@@ -61,7 +61,7 @@ func TestTwoWorkersDoNotDeliverTheSameNotificationTwice(t *testing.T) {
 		w := NewDurableWorker(deliveries, subs)
 		// Generous reserves, so a loaded runner is not mistaken for the bug:
 		// the window to start an attempt is 500ms of a 2s lease.
-		w.client = &http.Client{Timeout: 500 * time.Millisecond}
+		w.client.Timeout = 500 * time.Millisecond
 		w.lease = 2 * time.Second
 		w.saveReserve = time.Second
 		return w
