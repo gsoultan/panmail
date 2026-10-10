@@ -132,6 +132,27 @@ func TestTheShadowWrapperReportsThePrimarysSize(t *testing.T) {
 	}
 }
 
+type checkpointingPrimary struct {
+	primaryStub
+	dir string
+}
+
+func (c *checkpointingPrimary) Checkpoint(dir string) error { c.dir = dir; return nil }
+
+// A backup snapshots the primary through the wrapper. Without this the backup
+// endpoint refused to run during the shadow phase, because the wrapper could
+// not snapshot itself.
+func TestTheShadowWrapperCanBeBackedUp(t *testing.T) {
+	primary := &checkpointingPrimary{}
+	cp, ok := stores.WithShadow(primary, &shadowStub{}).(interface{ Checkpoint(string) error })
+	if !ok {
+		t.Fatal("the wrapper cannot snapshot itself")
+	}
+	if err := cp.Checkpoint("/backup/events.db"); err != nil || primary.dir != "/backup/events.db" {
+		t.Errorf("Checkpoint reached the primary with %q, %v", primary.dir, err)
+	}
+}
+
 type closingPrimary struct {
 	primaryStub
 	closed bool

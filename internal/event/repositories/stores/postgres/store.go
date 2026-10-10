@@ -299,6 +299,19 @@ func (s *Store) Close() error {
 	return s.local.Close()
 }
 
+// Checkpoint snapshots the local store, which still holds archives' source
+// and resource history, and in most deployments every event and body too.
+// Without it a backup of a gateway in shared mode refused to run at all,
+// reporting that events.db could not snapshot itself. The database is backed
+// up by its own tooling, which the manifest says.
+func (s *Store) Checkpoint(dir string) error {
+	cp, ok := s.local.(interface{ Checkpoint(dir string) error })
+	if !ok {
+		return errors.New("the local event store cannot snapshot itself")
+	}
+	return cp.Checkpoint(dir)
+}
+
 // DiskUsage reports the local store's size. The database's is its own
 // operator's to measure, and is not on this disk.
 func (s *Store) DiskUsage() int64 {
