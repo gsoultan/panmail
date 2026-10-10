@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -64,10 +65,24 @@ type Checker struct {
 	// rather than every probe. Guarded by cacheMu.
 	lastFailed []string
 	evaluated  bool
+
+	draining atomic.Bool
 }
 
 func New() *Checker {
 	return &Checker{timeout: DefaultTimeout, cacheFor: DefaultCacheFor, probes: map[string]Probe{}}
+}
+
+// Drain makes readiness answer not-ready from now on, whatever the probes say.
+//
+// Shutdown calls it first. A load balancer only stops routing to an instance
+// once readiness says so, and until it does it keeps sending requests to a
+// listener that is about to close. Saying so first, then waiting for that to
+// propagate, is what lets the instance leave without anyone being refused.
+func (c *Checker) Drain() {
+	if c.draining.CompareAndSwap(false, true) {
+		slog.Info("readiness withdrawn: shutting down")
+	}
 }
 
 // Register adds a dependency to readiness. The name is what an operator reads
@@ -134,8 +149,14 @@ func (c *Checker) ReadyHandler() http.HandlerFunc {
 		// Readiness is a point-in-time answer, and one cached downstream is
 		// worse than none: it keeps traffic arriving after the instance has
 		// stopped being able to serve it. The second this process holds an
-		// answer for is its own, and bounded.
+		// answer for is its own, bounded, and never outlives a drain.
 		w.Header().Set("Cache-Control", "no-store")
+
+		if c.draining.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "shutting down"})
+			return
+		}
 
 		failures := c.evaluate(r.Context())
 		if len(failures) == 0 {

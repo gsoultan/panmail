@@ -276,6 +276,37 @@ func TestOnlyChangesAreLogged(t *testing.T) {
 	}
 }
 
+// SIGTERM used to flip liveness and leave readiness reporting the database,
+// which was fine, so the load balancer kept routing to a listener that was
+// about to close. Once draining, readiness says no whatever the probes say,
+// and does not run them.
+func TestADrainingInstanceIsNotReady(t *testing.T) {
+	var calls atomic.Int32
+	c := New()
+	c.cacheFor = 0
+	c.Register("database", func(context.Context) error {
+		calls.Add(1)
+		return nil
+	})
+
+	if code, _ := get(t, c.ReadyHandler()); code != http.StatusOK {
+		t.Fatalf("status %d before draining", code)
+	}
+	before := calls.Load()
+
+	c.Drain()
+	code, body := get(t, c.ReadyHandler())
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("status %d while draining; traffic keeps arriving at a closing listener", code)
+	}
+	if body["status"] != "shutting down" {
+		t.Errorf("status %v, want shutting down", body["status"])
+	}
+	if calls.Load() != before {
+		t.Error("probes ran while draining")
+	}
+}
+
 type logCapture struct {
 	mu      sync.Mutex
 	records []slog.Record

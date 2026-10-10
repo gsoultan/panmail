@@ -118,9 +118,6 @@ const (
 	// to exhaust a process.
 	maxRPCRequestBytes = 48 << 20 // 48 MiB
 
-	shutdownTimeout    = 15 * time.Second
-	workerDrainTimeout = 30 * time.Second
-
 	// How long to wait before bringing a panicked worker back, doubling up to
 	// the maximum. Short at first because the common cause is transient and
 	// mail is stopped meanwhile; bounded because a worker that panics on every
@@ -275,6 +272,11 @@ func main() {
 	// because the two costs scale differently: the settings read is per
 	// gateway per interval, so a large fleet pays for a short one, while the
 	// propagation delay it buys is the same at any size.
+	// How long readiness reports not-ready before the listener closes, so a
+	// load balancer stops routing here before anything is refused. Comes out
+	// of the 25s shutdown budget; see shutdown.go.
+	shutdownDelayFlag := flag.Duration("shutdown-delay", defaultPreStopDelay,
+		"How long to report not-ready before closing the listener on shutdown; 0 to close at once")
 	smtpReconcileIntervalFlag := flag.Duration("smtp-reconcile-interval", smtpusecases.DefaultReconcileInterval,
 		"How often to re-read the stored SMTP submission configuration; ignored when --smtp-addr is set")
 	flag.Parse()
@@ -1137,9 +1139,17 @@ func main() {
 		port = defaultPort
 	}
 
+	// Every request is served under this context, so cancelling it at shutdown
+	// is what ends a stream that would otherwise hold the drain open.
+	requestCtx, cancelRequests := context.WithCancel(context.Background())
+	defer cancelRequests()
+
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: h2c.NewHandler(authMiddleware.Handle(mux), &http2.Server{}),
+		BaseContext: func(net.Listener) context.Context {
+			return requestCtx
+		},
 
 		// Without these a client can hold a connection open indefinitely by
 		// dribbling out a request, and enough of those exhaust the server.
@@ -1165,45 +1175,41 @@ func main() {
 
 	<-stop
 	slog.Info("Shutting down server...")
-	healthChecker.SetStatus("", grpchealth.StatusNotServing)
 
-	// Stop accepting requests first, then let the workers finish what they
-	// already claimed, and only then close the stores. Closing Pebble while a
-	// worker is still writing to it is a crash, and dropping an in-flight send
-	// loses mail the caller was told had been accepted.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-
+	// Stop accepting requests, let the workers finish what they already
+	// claimed, and only then close the stores. Closing Pebble while a worker is
+	// still writing to it is a crash, and dropping an in-flight send loses mail
+	// the caller was told had been accepted. See shutdown.go for the budget.
+	listeners := []func(context.Context) error{srv.Shutdown}
 	if metricsServer != nil {
-		_ = metricsServer.Shutdown(shutdownCtx)
+		listeners = append(listeners, metricsServer.Shutdown)
 	}
 	// Draining matters more here than for a scrape endpoint: a client mid-DATA
 	// has already been told to send, and dropping the connection makes it retry
 	// a message that may yet be queued. Exactly one of these is ever running.
 	if smtpServer != nil {
-		if err := smtpServer.Shutdown(shutdownCtx); err != nil {
-			slog.Warn("SMTP submission listener shutdown failed", "error", err)
-		}
+		listeners = append(listeners, smtpServer.Shutdown)
 	}
 	if smtpSupervisor != nil {
-		smtpSupervisor.Close(shutdownCtx)
+		listeners = append(listeners, func(ctx context.Context) error {
+			smtpSupervisor.Close(ctx)
+			return nil
+		})
 	}
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("server shutdown failed", "error", err)
-	}
-
-	slog.Info("stopping background workers")
-	stopWorkers()
-
-	if waitForWorkers(&workers, workerDrainTimeout) {
-		slog.Info("background workers stopped")
-	} else {
-		slog.Warn("background workers did not stop in time", "timeout", workerDrainTimeout)
-	}
-
-	if err := providerFactory.Close(); err != nil {
-		slog.Error("failed to close provider connections", "error", err)
-	}
+	shutdownPlan{
+		budget:       shutdownBudget,
+		preStopDelay: *shutdownDelayFlag,
+		requestGrace: requestDrainGrace,
+		withdraw: func() {
+			readiness.Drain()
+			healthChecker.SetStatus("", grpchealth.StatusNotServing)
+		},
+		listeners:      listeners,
+		cancelRequests: cancelRequests,
+		stopWorkers:    stopWorkers,
+		waitWorkers:    func(d time.Duration) bool { return waitForWorkers(&workers, d) },
+		closeProviders: providerFactory.Close,
+	}.run()
 
 	slog.Info("Server stopped gracefully")
 }
