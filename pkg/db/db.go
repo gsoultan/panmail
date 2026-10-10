@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -252,24 +253,43 @@ type Connection interface {
 	IsConnected() bool
 }
 
+// connection holds the handle atomically because it is written and read on
+// different goroutines: first-run setup installs a database from a request
+// handler while the workers started at boot are already asking for it. A plain
+// field there is a data race, and not a benign one — nothing orders the write
+// before a worker's next read, so a worker may go on seeing nil.
 type connection struct {
-	db *sql.DB
+	db atomic.Pointer[sql.DB]
 }
 
 func NewConnection(db *sql.DB) Connection {
-	return &connection{db: db}
+	c := &connection{}
+	c.db.Store(db)
+	return c
 }
 
 func (c *connection) GetDB() *sql.DB {
-	return c.db
+	return c.db.Load()
 }
 
+// SetDB installs db and closes whatever was held before it.
+//
+// Setup is the caller, and setup can be retried: it connects, installs the
+// handle, then migrates, and a migration that fails leaves the operator to
+// submit the form again. Each attempt used to install a new pool over the old
+// one and leave the old one open, its connections and its goroutine with it.
+// Nothing keeps a handle across calls (every store asks the connection for it
+// per query), so the replaced one has no further users once it is swapped out.
 func (c *connection) SetDB(db *sql.DB) {
-	c.db = db
+	if old := c.db.Swap(db); old != nil && old != db {
+		if err := old.Close(); err != nil {
+			slog.Warn("failed to close the replaced database handle", "error", err)
+		}
+	}
 }
 
 func (c *connection) IsConnected() bool {
-	return c.db != nil
+	return c.db.Load() != nil
 }
 
 // sqliteDSN adds the pragmas a SQLite database needs to survive concurrent use.
