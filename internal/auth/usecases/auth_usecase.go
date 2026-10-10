@@ -132,16 +132,18 @@ func NewAuthUsecase(
 }
 
 func (u *authUsecase) SignIn(ctx context.Context, creds Credentials) (*SignInResult, error) {
-	if blocked, retryIn := u.loginLimiter.Blocked(creds.Email); blocked {
+	attempt, blocked, retryIn := u.loginLimiter.Begin(creds.Email)
+	if blocked {
 		return nil, fmt.Errorf("too many login attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
 	}
+	defer attempt.Abandon()
 
 	user, err := u.authenticatePassword(ctx, creds)
 	if err != nil {
-		u.loginLimiter.Fail(creds.Email)
+		attempt.Failed()
 		return nil, err
 	}
-	u.loginLimiter.Reset(creds.Email)
+	attempt.Succeeded()
 
 	if user.TwoFactorEnabled {
 		return u.startTwoFactorChallenge(user)
@@ -378,9 +380,11 @@ func (u *authUsecase) VerifyTwoFactorLogin(ctx context.Context, challengeToken, 
 		return nil, errors.New("invalid or expired two-factor challenge")
 	}
 
-	if blocked, retryIn := u.twoFactorLimiter.Blocked(payload.UserID); blocked {
+	attempt, blocked, retryIn := u.twoFactorLimiter.Begin(payload.UserID)
+	if blocked {
 		return nil, fmt.Errorf("too many verification attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
 	}
+	defer attempt.Abandon()
 
 	user, err := u.repo.GetByID(ctx, payload.UserID)
 	if err != nil || user == nil {
@@ -393,10 +397,10 @@ func (u *authUsecase) VerifyTwoFactorLogin(ctx context.Context, challengeToken, 
 	}
 
 	if !totp.Validate(code, secret) {
-		u.twoFactorLimiter.Fail(user.ID)
+		attempt.Failed()
 		return nil, errors.New("invalid verification code")
 	}
-	u.twoFactorLimiter.Reset(user.ID)
+	attempt.Succeeded()
 
 	if enrolling {
 		if err := u.repo.UpdateTwoFactor(ctx, user.ID, true, secret); err != nil {
@@ -431,9 +435,11 @@ func (u *authUsecase) resolveTwoFactorSecret(user *entities.User) (string, bool)
 // is taken from the server-side pending store, so the caller can only confirm
 // material this server issued to them.
 func (u *authUsecase) EnableTwoFactor(ctx context.Context, userID, code string) error {
-	if blocked, retryIn := u.twoFactorLimiter.Blocked(userID); blocked {
+	attempt, blocked, retryIn := u.twoFactorLimiter.Begin(userID)
+	if blocked {
 		return fmt.Errorf("too many verification attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
 	}
+	defer attempt.Abandon()
 
 	secret, ok := u.pendingTwoFactor.Get(userID)
 	if !ok {
@@ -441,10 +447,10 @@ func (u *authUsecase) EnableTwoFactor(ctx context.Context, userID, code string) 
 	}
 
 	if !totp.Validate(code, secret) {
-		u.twoFactorLimiter.Fail(userID)
+		attempt.Failed()
 		return errors.New("invalid verification code")
 	}
-	u.twoFactorLimiter.Reset(userID)
+	attempt.Succeeded()
 
 	if err := u.repo.UpdateTwoFactor(ctx, userID, true, secret); err != nil {
 		return err
