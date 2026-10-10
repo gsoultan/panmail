@@ -24,6 +24,12 @@ type OutboxRepository interface {
 	// so a worker that dies mid-send does not strand mail.
 	ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error)
 
+	// RenewClaim extends a claim's lease to until, and reports whether the
+	// claim is still the caller's. False means the lease lapsed and another
+	// worker claimed the message since, or it has been settled: either way it
+	// is no longer this caller's to send.
+	RenewClaim(ctx context.Context, id, claimToken string, until time.Time) (bool, error)
+
 	Update(ctx context.Context, email *entities.OutboxEmail) error
 	Delete(ctx context.Context, id string) error
 	CountPending(ctx context.Context, tenantID string) (int64, error)
