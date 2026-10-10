@@ -215,8 +215,8 @@ func TestIdleRecoversWhenTheServerGoesAway(t *testing.T) {
 	// Cut the session the way a server restart or an idle timeout would, by
 	// cancelling it from underneath. The supervisor should notice and rebuild.
 	s.mu.Lock()
-	for _, cancelSession := range s.running {
-		cancelSession()
+	for _, session := range s.running {
+		session.cancel()
 	}
 	s.mu.Unlock()
 
