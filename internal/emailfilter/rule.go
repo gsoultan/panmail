@@ -67,8 +67,8 @@ type Rule struct {
 
 // Validate checks the rule and compiles its patterns. A rule that has not been
 // validated will never match a pattern condition, because compiling is what
-// populates it — so this is not optional, and the store calls it on read as
-// well as on write.
+// populates it — so this is not optional, and the store calls it on write and
+// on the Enabled read, whose rules are the ones evaluated.
 func (r *Rule) Validate() error {
 	if strings.TrimSpace(r.Name) == "" {
 		return fmt.Errorf("emailfilter: a rule needs a name")

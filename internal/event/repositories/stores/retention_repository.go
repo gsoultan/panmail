@@ -21,4 +21,30 @@ type RetentionRepository interface {
 	TruncateBefore(ctx context.Context, before time.Time) (int64, error)
 	TruncateMessagesBefore(ctx context.Context, before time.Time) (int64, error)
 	PruneArchivesBefore(ctx context.Context, before time.Time) (int64, error)
+
+	// The two classes with a fixed horizon rather than a policy: per-minute
+	// counters and resource samples. Both are written for the life of the
+	// process, and neither is read beyond a short window, so nobody is asked
+	// how long to keep them. Day and hour counters are deliberately absent:
+	// they are what a long chart is drawn from, and are kept for good.
+	PruneMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error)
+	PruneResourceHistoryBefore(ctx context.Context, before time.Time) (int64, error)
+}
+
+// ArchivedElsewhere reports which of the given event ids another store holds
+// and will archive when they expire there.
+type ArchivedElsewhere func(ctx context.Context, ids []string) (map[string]bool, error)
+
+// SharedPruner is the shared store's retention over its own tables alone: no
+// archive written and no local store touched.
+//
+// It is what the shadow phase needs. There the local store is the primary and
+// archives everything it expires, so the database copy has only to be deleted
+// — archiving it as well would write every expired event twice, and pruning
+// through the shared store's full retention would prune the primary a second
+// time.
+type SharedPruner interface {
+	DeleteEventsBefore(ctx context.Context, before time.Time) (int64, error)
+	DeleteMessagesBefore(ctx context.Context, before time.Time) (int64, error)
+	DeleteMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error)
 }

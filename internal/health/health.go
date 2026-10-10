@@ -24,7 +24,10 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // DefaultTimeout bounds a probe. Long enough to ride out a slow query, short
@@ -34,16 +37,52 @@ const DefaultTimeout = 2 * time.Second
 // Probe reports whether one dependency is usable. A nil error means it is.
 type Probe func(context.Context) error
 
+// DefaultCacheFor is how long one evaluation answers /readyz.
+//
+// The endpoint is public and unauthenticated, because a load balancer has to
+// reach it, and every request used to ping the database. Anyone could turn
+// that into a stream of pool checkouts aimed at the same database the mail is
+// waiting on. A second is far below any orchestrator's probe period, so the
+// answer an orchestrator acts on is never meaningfully older than it was.
+const DefaultCacheFor = time.Second
+
 // Checker runs the probes that decide whether this instance can serve.
 type Checker struct {
-	timeout time.Duration
+	timeout  time.Duration
+	cacheFor time.Duration
 
 	mu     sync.RWMutex
 	probes map[string]Probe
+
+	// Concurrent requests share one evaluation rather than each running the
+	// probes, and an evaluation answers for cacheFor afterwards.
+	flight   singleflight.Group
+	cacheMu  sync.Mutex
+	cached   map[string]string
+	cachedAt time.Time
+
+	// The failing set from the previous evaluation, for logging changes
+	// rather than every probe. Guarded by cacheMu.
+	lastFailed []string
+	evaluated  bool
+
+	draining atomic.Bool
 }
 
 func New() *Checker {
-	return &Checker{timeout: DefaultTimeout, probes: map[string]Probe{}}
+	return &Checker{timeout: DefaultTimeout, cacheFor: DefaultCacheFor, probes: map[string]Probe{}}
+}
+
+// Drain makes readiness answer not-ready from now on, whatever the probes say.
+//
+// Shutdown calls it first. A load balancer only stops routing to an instance
+// once readiness says so, and until it does it keeps sending requests to a
+// listener that is about to close. Saying so first, then waiting for that to
+// propagate, is what lets the instance leave without anyone being refused.
+func (c *Checker) Drain() {
+	if c.draining.CompareAndSwap(false, true) {
+		slog.Info("readiness withdrawn: shutting down")
+	}
 }
 
 // Register adds a dependency to readiness. The name is what an operator reads
@@ -106,31 +145,81 @@ func (c *Checker) Check(ctx context.Context) map[string]string {
 // the morning is looking anyway and an internet caller is not.
 func (c *Checker) ReadyHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		failures := c.Check(r.Context())
-
 		w.Header().Set("Content-Type", "application/json")
-		// Readiness is a point-in-time answer, and a cached one is worse than
-		// none: it keeps traffic arriving after the instance has stopped being
-		// able to serve it.
+		// Readiness is a point-in-time answer, and one cached downstream is
+		// worse than none: it keeps traffic arriving after the instance has
+		// stopped being able to serve it. The second this process holds an
+		// answer for is its own, bounded, and never outlives a drain.
 		w.Header().Set("Cache-Control", "no-store")
 
+		if c.draining.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "shutting down"})
+			return
+		}
+
+		failures := c.evaluate(r.Context())
 		if len(failures) == 0 {
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ready"})
 			return
 		}
 
-		failed := slices.Sorted(maps.Keys(failures))
-		for _, name := range failed {
-			slog.Warn("readiness check failed", "dependency", name, "error", failures[name])
-		}
-
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status": "not ready",
-			"failed": failed,
+			"failed": slices.Sorted(maps.Keys(failures)),
 		})
 	}
+}
+
+// evaluate answers from the last evaluation while it is fresh, and otherwise
+// runs the probes once for every request that is waiting on them.
+func (c *Checker) evaluate(ctx context.Context) map[string]string {
+	c.cacheMu.Lock()
+	if c.evaluated && time.Since(c.cachedAt) < c.cacheFor {
+		failures := c.cached
+		c.cacheMu.Unlock()
+		return failures
+	}
+	c.cacheMu.Unlock()
+
+	v, _, _ := c.flight.Do("ready", func() (any, error) {
+		// Detached from the request that happened to start it: the others
+		// sharing the result must not fail because that one caller hung up.
+		// Check bounds the probes with its own timeout.
+		failures := c.Check(context.WithoutCancel(ctx))
+
+		c.cacheMu.Lock()
+		defer c.cacheMu.Unlock()
+		c.logChange(failures)
+		c.cached, c.cachedAt, c.evaluated = failures, time.Now(), true
+		return failures, nil
+	})
+	return v.(map[string]string)
+}
+
+// logChange reports a change in what is failing, rather than every failing
+// probe. An orchestrator probes every few seconds, and a database that is down
+// for an hour used to write a warning per probe per instance for that hour,
+// which buried the one line saying when it started. Caller holds cacheMu.
+func (c *Checker) logChange(failures map[string]string) {
+	failed := slices.Sorted(maps.Keys(failures))
+	if c.evaluated && slices.Equal(failed, c.lastFailed) {
+		return
+	}
+
+	if len(failed) == 0 {
+		// Nothing to say at boot, only on recovery.
+		if c.evaluated {
+			slog.Info("readiness restored", "previously_failed", c.lastFailed)
+		}
+	} else {
+		for _, name := range failed {
+			slog.Warn("readiness check failed", "dependency", name, "error", failures[name])
+		}
+	}
+	c.lastFailed = failed
 }
 
 // Pinger is the part of *sql.DB readiness needs.

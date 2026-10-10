@@ -250,11 +250,17 @@ the caches expire.
 A rolling deploy signals each instance in turn, and SIGTERM always lands while
 the queue is busy. What happens then:
 
-1. The listener stops accepting, and readiness starts failing.
-2. The queue worker stops claiming new batches.
-3. Sends **already in progress** are given ten seconds to finish.
-4. Messages that were claimed but never started are left alone. They keep their
-   claim, the lease expires, and the next instance to look picks them up.
+1. Readiness starts failing at once, while the listener stays open for
+   `--shutdown-delay` (5 seconds by default) so the load balancer can stop
+   routing before connections are refused.
+2. The listener stops accepting. Requests still running five seconds later are
+   cancelled, which is what ends an open live-log stream.
+3. Workers are cancelled at the same moment: the queue worker stops claiming
+   new batches, and sends **already in progress** are given ten seconds to
+   finish. HTTP and worker draining run together inside a 25-second budget
+   from the signal.
+4. Messages that were claimed but never started are left alone. Their lease is
+   no longer renewed, it expires, and the next instance to look picks them up.
 
 Step 3 is the one that matters. A send cut off after the provider accepted DATA
 but before its reply arrived has been delivered, and panmail has no way to know
@@ -290,10 +296,10 @@ Two consequences worth knowing:
   is starting to serve against a schema halfway through changing — so a long
   migration delays the whole rollout. Set readiness probe timeouts accordingly,
   or run a long migration deliberately rather than as part of a deploy.
-- Migrations are not transactional across statements. A migration that fails
-  partway leaves what it had already applied in place and the version
-  unrecorded, so the next start retries the whole file. Additive steps tolerate
-  "already exists"; anything else does not, and will need a hand.
+- Each migration runs in one transaction on the locked connection, together
+  with the record of its version, so a migration that fails partway leaves
+  nothing applied and the next start retries it cleanly. A failed migration
+  stops the instance instead of letting it serve.
 
 ## Send rate limits are per instance
 

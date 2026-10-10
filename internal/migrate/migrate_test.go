@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"path/filepath"
@@ -156,7 +157,14 @@ func TestRunUpgradesAPreVersioningDatabase(t *testing.T) {
 func TestRealFailuresAreReported(t *testing.T) {
 	db := newTestDB(t)
 
-	err := apply(db, migration{
+	// apply runs inside the transaction applyAndRecord opens for each step.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	err = apply(context.Background(), tx, migration{
 		version: 999,
 		name:    "broken",
 		body:    "CREATE TABLE valid_one (id TEXT); THIS IS NOT SQL;",

@@ -36,6 +36,12 @@ const (
 	// is part of the signed payload, so a mismatch rejects every link.
 	trackingKindUnsubscribe = "unsubscribe"
 
+	// deliveryAttemptTimeout bounds one SMTP transaction: one recipient, one
+	// provider. deliveryPrepTimeout bounds the lookups a delivery makes before
+	// it sends anything. See doSend for why they are separate.
+	deliveryAttemptTimeout = 30 * time.Second
+	deliveryPrepTimeout    = 30 * time.Second
+
 	providerCacheTTL      = time.Minute
 	templateCacheTTL      = time.Minute
 	maxProvidersPerTenant = 1000
@@ -92,6 +98,10 @@ type sendEmailUsecase struct {
 
 	providerCache *cache.TTLCache[[]*providerEntities.EmailProvider]
 	templateCache *cache.TTLCache[*templateEntities.Template]
+
+	// attemptTimeout is deliveryAttemptTimeout, held here so a test can use a
+	// timescale it can wait for.
+	attemptTimeout time.Duration
 }
 
 // BaseURLSource supplies the public URL links are built from.
@@ -128,6 +138,7 @@ func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 		screener:        deps.Screener,
 		providerCache:   cache.New[[]*providerEntities.EmailProvider](providerCacheTTL),
 		templateCache:   cache.New[*templateEntities.Template](templateCacheTTL),
+		attemptTimeout:  deliveryAttemptTimeout,
 	}
 }
 
@@ -275,14 +286,15 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, err
 	}
 
+	// Every recipient is checked before anything is recorded as PENDING. This
+	// loop used to record PENDING for each recipient as it went, so a refusal
+	// part-way through -- a suppressed address, and every refusal below it --
+	// left PENDING events for a message that was never accepted, which nothing
+	// would ever move on and the tenant's history showed as queued for good.
 	for i, recipient := range recipients.addresses {
 		if reason, ok := suppressed[recipients.normalised[i]]; ok {
 			_ = u.RecordEvent(ctx, tenantID, "", messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DROPPED, recipient, "", reason, nil)
 			return nil, &SuppressedRecipientError{Recipient: recipient, Reason: reason}
-		}
-		// Record initial PENDING event (queued in outbox)
-		if err := u.RecordEvent(ctx, tenantID, req.ProviderId, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING, recipient, "", "", nil); err != nil {
-			slog.Error("failed to record pending event", "error", err, "id", messageID)
 		}
 	}
 
@@ -349,9 +361,14 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 			case emailfilter.ActionHold:
 				// The outbox is where it waits. The claim query takes PENDING,
 				// DEFERRED and expired SENDING rows, so a HELD one is already
-				// invisible to the worker — the bytes are durable, bounded by
-				// the outbox's own retention, and releasing is a status flip
-				// rather than a second copy of the same request.
+				// invisible to the worker — the bytes are durable, and
+				// releasing is a status flip rather than a second copy of the
+				// same request.
+				//
+				// Not bounded by the outbox's own retention, which prunes only
+				// FAILED rows. A reject or an expiry discards the row, and
+				// retention's quarantine pass removes any held row whose review
+				// is over and that nothing discarded.
 				outboxStatus = entities.OutboxStatusHeld
 				record.PayloadRef = messageID
 				held = &record
@@ -404,6 +421,18 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, fmt.Errorf("failed to enqueue email: %w", err)
 	}
 
+	// PENDING only now that the message is durably queued. Recorded any
+	// earlier, every refusal above -- suppression, an unrenderable template, a
+	// filter rule's reject, an outbox write that failed -- left a PENDING per
+	// recipient for a message the caller was told was refused, and nothing
+	// would ever move those on. A held message is accepted too, and waits as
+	// PENDING until a reviewer decides.
+	for _, recipient := range recipients.addresses {
+		if err := u.RecordEvent(ctx, tenantID, req.ProviderId, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_PENDING, recipient, "", "", nil); err != nil {
+			slog.Error("failed to record pending event", "error", err, "id", messageID)
+		}
+	}
+
 	// Recorded only after the payload is durably in the outbox. The other
 	// order would leave a review queue entry pointing at a message that does
 	// not exist if the process died between the two writes.
@@ -436,6 +465,18 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		messageID = uuid.New().String()
 	}
 
+	// Each stage of a delivery has a bound of its own, and none of them share
+	// one. The worker used to give the whole message 30 seconds, while this
+	// function sends one SMTP transaction per recipient, one after another --
+	// so the pacing wait, every recipient and every provider's retries all
+	// drew on the same budget. Forty recipients at a second each delivered
+	// twenty-nine and deferred the rest, and since every pass spent a retry, a
+	// message could not reach more than a few hundred recipients before the
+	// schedule ran out. Now the lookups before sending share prepCtx, the pace
+	// bounds its own wait, and each attempt gets deliveryAttemptTimeout.
+	prepCtx, cancelPrep := context.WithTimeout(ctx, deliveryPrepTimeout)
+	defer cancelPrep()
+
 	// The same extractor admission used, so the two cannot disagree about
 	// what domain this send is from.
 	fromDomain, err := senderDomain(req.From)
@@ -453,7 +494,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	var providers []*providerEntities.EmailProvider
 	if req.ProviderId != "" {
 		// Try to find in cached list first
-		all, _ := u.getProviders(ctx, tenantID)
+		all, _ := u.getProviders(prepCtx, tenantID)
 		var p *providerEntities.EmailProvider
 		for _, item := range all {
 			if item.ID == req.ProviderId {
@@ -464,7 +505,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 
 		if p == nil {
 			// Fallback to DB
-			p, _ = u.providerRepo.GetByID(ctx, tenantID, req.ProviderId)
+			p, _ = u.providerRepo.GetByID(prepCtx, tenantID, req.ProviderId)
 		}
 
 		if p != nil {
@@ -480,7 +521,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	}
 
 	if len(providers) == 0 {
-		allProviders, err := u.getProviders(ctx, tenantID)
+		allProviders, err := u.getProviders(prepCtx, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list providers: %w", err)
 		}
@@ -517,16 +558,24 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		return nil, fmt.Errorf("no email providers available for tenant %s", tenantID)
 	}
 
-	subject, bodyHTML, bodyText, err := u.renderTemplate(ctx, tenantID, req)
+	subject, bodyHTML, bodyText, err := u.renderTemplate(prepCtx, tenantID, req)
 	if err != nil {
 		slog.Error("failed to render template for sending", "error", err, "id", messageID)
 		return nil, err
 	}
 
-	// Fetch existing events to ensure idempotency (prevent duplicate sends on retry)
-	existingEvents, err := u.eventUsecase.ListByMessageID(ctx, tenantID, messageID)
+	// Fetch existing events to ensure idempotency (prevent duplicate sends on
+	// retry).
+	//
+	// Fails closed. This used to log the error and carry on with no history,
+	// which reads as "nobody has been sent to yet" -- so a retry of a partly
+	// delivered message sent a second copy to every recipient the first pass
+	// had reached. Returned instead, the worker defers the message and tries
+	// again once the history can be read.
+	existingEvents, err := u.eventUsecase.ListByMessageID(prepCtx, tenantID, messageID)
 	if err != nil {
-		slog.Error("failed to list existing events for message", "error", err, "id", messageID)
+		slog.Error("failed to list existing events for message; not sending", "error", err, "id", messageID)
+		return nil, fmt.Errorf("failed to read delivery history: %w", err)
 	}
 	// Recipients an earlier pass finished for good without delivering -- a
 	// hard bounce, a complaint, a drop -- are settled, and are not tried again
@@ -542,7 +591,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	// a retry schedule, or pacing -- and an unsubscribe, a complaint or an
 	// operator's suppression in that time has to stop it. Checked before the
 	// pace, so a recipient who will not be sent to does not spend allowance.
-	dropped, err := u.dropSuppressedAtDelivery(ctx, tenantID, messageID, subject, recipients, finished)
+	dropped, err := u.dropSuppressedAtDelivery(prepCtx, tenantID, messageID, subject, recipients, finished)
 	if err != nil {
 		return nil, err
 	}
@@ -569,6 +618,20 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			continue
 		}
 		if dropped[recipient] || settledMap[recipient] {
+			continue
+		}
+
+		// Shutdown's grace ran out, or the claim was lost. Every recipient
+		// left would fail at once on the dead context, each recording a
+		// DEFERRED for an attempt that never reached a server; they are
+		// reported as failed for this pass instead, unattempted, and the next
+		// pass sends to them.
+		if err := ctx.Err(); err != nil {
+			failures = append(failures, RecipientFailure{
+				Recipient: recipient,
+				Err:       err,
+				Class:     emailutil.ClassifyError(err.Error()),
+			})
 			continue
 		}
 
@@ -648,7 +711,12 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			// SENT is recorded only once the provider has actually accepted the
 			// message. Recording it before the attempt counted failures as
 			// sends and inflated both the Sent metric and the msgs/sec gauge.
-			err = sender.Send(ctx, msg)
+			//
+			// Each attempt on its own clock, derived from the message's context
+			// so shutdown and a lost claim still reach it.
+			attemptCtx, cancelAttempt := context.WithTimeout(ctx, u.attemptTimeout)
+			err = sender.Send(attemptCtx, msg)
+			cancelAttempt()
 			if err == nil {
 				slog.Info("email delivered successfully", "id", messageID, "provider", p.Name, "recipient", recipient)
 				_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, recipient, subject, "", nil)
@@ -786,20 +854,31 @@ func (u *sendEmailUsecase) injectPixel(htmlContent, tenantID, messageID, recipie
 	return htmlContent + pixel
 }
 
+// rewriteLinks routes every web link through the click endpoint.
+//
+// One pass over the body, using the match indexes. This used to be
+// ReplaceAllStringFunc with a FindStringSubmatch inside it, which ran the
+// pattern a second time over every match to recover the submatch the first run
+// had already found -- per link, per recipient, so its cost grew with the size
+// of a send.
 func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipient, recipientEncoded string) string {
-	return hrefRegexp.ReplaceAllStringFunc(htmlContent, func(match string) string {
-		submatch := hrefRegexp.FindStringSubmatch(match)
-		if len(submatch) < 2 {
-			return match
-		}
+	matches := hrefRegexp.FindAllStringSubmatchIndex(htmlContent, -1)
+	if len(matches) == 0 {
+		return htmlContent
+	}
 
-		originalURL := tracking.UnescapeHrefValue(submatch[1])
+	baseURL := u.baseURL()
+	var out strings.Builder
+	last := 0
+	for _, m := range matches {
+		// m[0]:m[1] is the attribute, m[2]:m[3] the value inside its quotes.
+		originalURL := tracking.UnescapeHrefValue(htmlContent[m[2]:m[3]])
 
 		// Anything that is not an ordinary web link is left alone: anchors and
 		// mailto: links have nothing to track, and other schemes must never be
 		// reachable through the gateway's own domain.
 		if tracking.ValidateTarget(originalURL) != nil {
-			return match
+			continue
 		}
 
 		signature := u.trackingSigner.Sign(tracking.Link{
@@ -810,10 +889,36 @@ func (u *sendEmailUsecase) rewriteLinks(htmlContent, tenantID, messageID, recipi
 			TargetURL: originalURL,
 		})
 
-		return fmt.Sprintf(`href="%s/track/click/%s/%s/%s?url=%s&amp;%s=%s"`,
-			u.baseURL(), tenantID, messageID, recipientEncoded,
-			url.QueryEscape(originalURL), tracking.SignatureParam, signature)
-	})
+		if last == 0 {
+			out.Grow(len(htmlContent) + len(matches)*(len(baseURL)+256))
+		}
+		// Written piece by piece rather than through Sprintf, which boxed seven
+		// arguments per link. The output is byte-for-byte what it formatted:
+		// href="<base>/track/click/<tenant>/<message>/<recipient>?url=<target>&amp;<sig>=<signature>"
+		out.WriteString(htmlContent[last:m[0]])
+		out.WriteString(`href="`)
+		out.WriteString(baseURL)
+		out.WriteString("/track/click/")
+		out.WriteString(tenantID)
+		out.WriteByte('/')
+		out.WriteString(messageID)
+		out.WriteByte('/')
+		out.WriteString(recipientEncoded)
+		out.WriteString("?url=")
+		out.WriteString(url.QueryEscape(originalURL))
+		out.WriteString("&amp;")
+		out.WriteString(tracking.SignatureParam)
+		out.WriteByte('=')
+		out.WriteString(signature)
+		out.WriteByte('"')
+		last = m[1]
+	}
+	if last == 0 {
+		// Nothing was worth tracking; the body is unchanged.
+		return htmlContent
+	}
+	out.WriteString(htmlContent[last:])
+	return out.String()
 }
 
 func (u *sendEmailUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient, subject, errorMessage string, metadata map[string]any) error {

@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -173,10 +175,14 @@ func TestReadinessIsNotCacheable(t *testing.T) {
 	}
 }
 
-// The probe runs per request; a stale result is the bug being fixed.
-func TestEveryRequestRunsTheProbe(t *testing.T) {
+// The answer is held for a bounded window and then probed afresh. A result
+// that never expired would be the static checker this package replaced; one
+// that never lasted at all let any unauthenticated caller ping the database
+// as often as it liked.
+func TestTheAnswerIsReprobedOnceItsWindowPasses(t *testing.T) {
 	var calls atomic.Int32
 	c := New()
+	c.cacheFor = 50 * time.Millisecond
 	c.Register("database", func(context.Context) error {
 		calls.Add(1)
 		return nil
@@ -185,9 +191,156 @@ func TestEveryRequestRunsTheProbe(t *testing.T) {
 	for range 3 {
 		get(t, c.ReadyHandler())
 	}
-	if got := calls.Load(); got != 3 {
-		t.Errorf("probe ran %d times over 3 requests; the answer is being cached", got)
+	if got := calls.Load(); got != 1 {
+		t.Errorf("probe ran %d times over 3 requests inside one window, want 1", got)
 	}
+
+	time.Sleep(2 * c.cacheFor)
+	get(t, c.ReadyHandler())
+	if got := calls.Load(); got != 2 {
+		t.Errorf("probe ran %d times after the window passed, want 2; the answer is going stale", got)
+	}
+}
+
+// /readyz is public and unauthenticated. Every request used to ping the
+// database, so a flood of them was a flood of pool checkouts against the
+// database the mail queue depends on.
+func TestABurstOfRequestsProbesOnce(t *testing.T) {
+	var calls atomic.Int32
+	release := make(chan struct{})
+	c := New()
+	c.Register("database", func(context.Context) error {
+		calls.Add(1)
+		<-release // hold the probe so the whole burst arrives while it runs
+		return nil
+	})
+
+	const burst = 50
+	var wg sync.WaitGroup
+	codes := make(chan int, burst)
+	for range burst {
+		wg.Go(func() {
+			rec := httptest.NewRecorder()
+			c.ReadyHandler()(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+			codes <- rec.Code
+		})
+	}
+	// Let the burst queue up behind the first probe, then let it answer.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	close(codes)
+
+	if got := calls.Load(); got != 1 {
+		t.Errorf("%d concurrent requests ran the probe %d times, want 1", burst, got)
+	}
+	for code := range codes {
+		if code != http.StatusOK {
+			t.Errorf("a request sharing the evaluation got %d", code)
+		}
+	}
+}
+
+// A database down for an hour used to log a warning per probe per instance
+// for the hour. What an operator needs is when it changed.
+func TestOnlyChangesAreLogged(t *testing.T) {
+	logs := captureLogs(t)
+
+	var down atomic.Bool
+	down.Store(true)
+	c := New()
+	c.cacheFor = 0
+	c.Register("database", func(context.Context) error {
+		if down.Load() {
+			return errors.New("connection refused")
+		}
+		return nil
+	})
+
+	for range 10 {
+		get(t, c.ReadyHandler())
+	}
+	if got := logs.count(slog.LevelWarn); got != 1 {
+		t.Errorf("ten failing probes logged %d warnings, want 1 for the change", got)
+	}
+
+	down.Store(false)
+	for range 10 {
+		get(t, c.ReadyHandler())
+	}
+	if got := logs.count(slog.LevelInfo); got != 1 {
+		t.Errorf("recovery logged %d times, want once", got)
+	}
+	if got := logs.count(slog.LevelWarn); got != 1 {
+		t.Errorf("healthy probes logged warnings: %d in total", got)
+	}
+}
+
+// SIGTERM used to flip liveness and leave readiness reporting the database,
+// which was fine, so the load balancer kept routing to a listener that was
+// about to close. Once draining, readiness says no whatever the probes say,
+// and does not run them.
+func TestADrainingInstanceIsNotReady(t *testing.T) {
+	var calls atomic.Int32
+	c := New()
+	c.cacheFor = 0
+	c.Register("database", func(context.Context) error {
+		calls.Add(1)
+		return nil
+	})
+
+	if code, _ := get(t, c.ReadyHandler()); code != http.StatusOK {
+		t.Fatalf("status %d before draining", code)
+	}
+	before := calls.Load()
+
+	c.Drain()
+	code, body := get(t, c.ReadyHandler())
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("status %d while draining; traffic keeps arriving at a closing listener", code)
+	}
+	if body["status"] != "shutting down" {
+		t.Errorf("status %v, want shutting down", body["status"])
+	}
+	if calls.Load() != before {
+		t.Error("probes ran while draining")
+	}
+}
+
+type logCapture struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (l *logCapture) Enabled(context.Context, slog.Level) bool { return true }
+func (l *logCapture) Handle(_ context.Context, r slog.Record) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.records = append(l.records, r)
+	return nil
+}
+func (l *logCapture) WithAttrs([]slog.Attr) slog.Handler { return l }
+func (l *logCapture) WithGroup(string) slog.Handler      { return l }
+
+func (l *logCapture) count(level slog.Level) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := 0
+	for _, r := range l.records {
+		if r.Level == level {
+			n++
+		}
+	}
+	return n
+}
+
+func captureLogs(t *testing.T) *logCapture {
+	t.Helper()
+	capture := &logCapture{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(capture))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return capture
 }
 
 func TestNoDependenciesIsReady(t *testing.T) {
@@ -238,6 +391,9 @@ func TestTheProbeFollowsTheConnectionRatherThanCapturingIt(t *testing.T) {
 	defer live.Close()
 
 	c := New()
+	// What is under test is which handle the probe reads, not how long an
+	// answer is held, so every request evaluates afresh.
+	c.cacheFor = 0
 	shared := &conn{} // nothing configured yet, as at first boot
 	c.Register("database", SQL(shared))
 

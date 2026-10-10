@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -156,8 +157,14 @@ func (u *membershipUsecase) ListUserTenants(ctx context.Context, userID string) 
 
 func (u *membershipUsecase) RoleIn(ctx context.Context, userID, tenantID string) (string, error) {
 	user, err := u.users.GetByID(ctx, userID)
-	if err != nil || user == nil {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && user == nil) {
 		return "", ErrUserNotFound
+	}
+	if err != nil {
+		// Not "no such user": the account could not be read. Every session
+		// request asks this question, so calling a database blip a deleted
+		// user would sign every console user out at once.
+		return "", err
 	}
 
 	// Super admin is a global capability: it is held on the user and reaches

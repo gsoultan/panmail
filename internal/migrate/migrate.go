@@ -37,6 +37,29 @@ func Run(db *sql.DB, dialect string) error {
 		return errors.New("database not connected")
 	}
 
+	migrations, err := loadMigrations()
+	if err != nil {
+		return err
+	}
+	return run(context.Background(), db, dialect, migrationLockKey, migrations)
+}
+
+// run is Run with the lock key and the steps named, so a test can apply steps
+// of its own without contending with every other package's migrations.
+//
+// Everything happens on one connection, taken from the pool for the whole run:
+// the lock, the read of what is applied, every step and every record of one.
+// The lock is a session lock and has to sit on a dedicated connection anyway;
+// running the steps on the pool beside it needed a second connection, and with
+// database.max_open_conns: 1 the lock held the only one there was, so the
+// first step waited for it forever and the gateway never started.
+func run(ctx context.Context, db *sql.DB, dialect string, key int, migrations []migration) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to take a connection for migrating: %w", err)
+	}
+	defer conn.Close()
+
 	// One instance migrates; the rest wait and then find nothing to do.
 	//
 	// A rolling deploy starts the new instances while the old ones are still
@@ -47,24 +70,19 @@ func Run(db *sql.DB, dialect string) error {
 	// "applied but could not be recorded" — version is a primary key — and
 	// refusing to start. The half that matters is two ALTERs on one table at
 	// the same time.
-	unlock, err := lockForMigration(db, dialect)
+	unlock, err := lockConn(ctx, conn, dialect, key)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	if err := ensureVersionTable(db, dialect); err != nil {
+	if err := ensureVersionTable(ctx, conn, dialect); err != nil {
 		return fmt.Errorf("failed to prepare the migration table: %w", err)
 	}
 
-	applied, err := appliedVersions(db)
+	applied, err := appliedVersions(ctx, conn)
 	if err != nil {
 		return fmt.Errorf("failed to read applied migrations: %w", err)
-	}
-
-	migrations, err := loadMigrations()
-	if err != nil {
-		return err
 	}
 
 	replacer := typesFor(dialect)
@@ -74,25 +92,72 @@ func Run(db *sql.DB, dialect string) error {
 		}
 
 		slog.Info("applying migration", "version", m.version, "name", m.name)
-		if err := apply(db, m, replacer); err != nil {
-			return fmt.Errorf("migration %04d_%s failed: %w", m.version, m.name, err)
-		}
-		if err := recordVersion(db, m.version); err != nil {
-			return fmt.Errorf("migration %04d_%s applied but could not be recorded: %w", m.version, m.name, err)
+		if err := applyAndRecord(ctx, conn, m, replacer); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-func apply(db *sql.DB, m migration, replacer *strings.Replacer) error {
+// applyAndRecord runs one step and records it, in one transaction.
+//
+// Both engines panmail supports have transactional DDL, so a step now either
+// happens completely and is recorded, or does not happen at all. Without the
+// transaction a step that failed partway left the statements before the
+// failure applied and the version unrecorded, and the next boot re-ran it
+// against a schema that was neither the old one nor the new one.
+//
+// The cost is that a step cannot use a statement PostgreSQL refuses inside a
+// transaction block: CREATE INDEX CONCURRENTLY, VACUUM, CREATE DATABASE.
+// TestNoMigrationNeedsToRunOutsideATransaction holds the files to that. The
+// comment in 0011 explaining its plain CREATE INDEX by saying migrations run
+// in a transaction was written before they did; it is true from here on, and
+// the file stays as it was released.
+func applyAndRecord(ctx context.Context, conn *sql.Conn, m migration, replacer *strings.Replacer) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("migration %04d_%s could not begin: %w", m.version, m.name, err)
+	}
+	// A no-op once committed.
+	defer func() { _ = tx.Rollback() }()
+
+	if err := apply(ctx, tx, m, replacer); err != nil {
+		return fmt.Errorf("migration %04d_%s failed: %w", m.version, m.name, err)
+	}
+	if err := recordVersion(ctx, tx, m.version); err != nil {
+		return fmt.Errorf("migration %04d_%s applied but could not be recorded: %w", m.version, m.name, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migration %04d_%s could not be committed: %w", m.version, m.name, err)
+	}
+	return nil
+}
+
+// apply runs a step's statements inside tx.
+//
+// Each statement gets a savepoint, because an error inside a PostgreSQL
+// transaction aborts it: every later statement is refused with "current
+// transaction is aborted" until the whole transaction is rolled back. A benign
+// error has to be undone on its own for the rest of the step to carry on, and
+// rolling back to the savepoint does exactly that. SQLite does not abort on an
+// error, and accepts the same savepoints.
+func apply(ctx context.Context, tx *sql.Tx, m migration, replacer *strings.Replacer) error {
 	for _, stmt := range splitStatements(replacer.Replace(m.body)) {
-		if _, err := db.Exec(stmt); err != nil {
-			if isBenign(err) {
-				slog.Debug("migration statement already satisfied", "version", m.version, "error", err)
-				continue
+		if _, err := tx.ExecContext(ctx, "SAVEPOINT migration_statement"); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			if !isBenign(err) {
+				return fmt.Errorf("%w (statement: %s)", err, summarize(stmt))
 			}
-			return fmt.Errorf("%w (statement: %s)", err, summarize(stmt))
+			slog.Debug("migration statement already satisfied", "version", m.version, "error", err)
+			if _, err := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT migration_statement"); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT migration_statement"); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -117,13 +182,20 @@ func isBenign(err error) bool {
 	return false
 }
 
-func ensureVersionTable(db *sql.DB, dialect string) error {
+// execQuerier is what a pool and a single connection both offer, so the
+// helpers below run on whichever the caller holds.
+type execQuerier interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func ensureVersionTable(ctx context.Context, q execQuerier, dialect string) error {
 	timestamp := "TIMESTAMP WITH TIME ZONE"
 	if strings.ToLower(dialect) != DialectPostgres {
 		timestamp = "DATETIME"
 	}
 
-	_, err := db.Exec(fmt.Sprintf(`
+	_, err := q.ExecContext(ctx, fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY,
 			applied_at %s NOT NULL
@@ -131,8 +203,8 @@ func ensureVersionTable(db *sql.DB, dialect string) error {
 	return err
 }
 
-func appliedVersions(db *sql.DB) (map[int]struct{}, error) {
-	rows, err := db.Query("SELECT version FROM schema_migrations")
+func appliedVersions(ctx context.Context, q execQuerier) (map[int]struct{}, error) {
+	rows, err := q.QueryContext(ctx, "SELECT version FROM schema_migrations")
 	if err != nil {
 		return nil, err
 	}
@@ -149,8 +221,8 @@ func appliedVersions(db *sql.DB) (map[int]struct{}, error) {
 	return applied, rows.Err()
 }
 
-func recordVersion(db *sql.DB, version int) error {
-	_, err := db.Exec("INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)", version, time.Now())
+func recordVersion(ctx context.Context, tx *sql.Tx, version int) error {
+	_, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)", version, time.Now())
 	return err
 }
 
@@ -201,8 +273,26 @@ func lockForMigrationKey(db *sql.DB, dialect string, key int) (func(), error) {
 		return nil, fmt.Errorf("failed to take a connection for the migration lock: %w", err)
 	}
 
-	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", key); err != nil {
+	unlock, err := lockConn(ctx, conn, dialect, key)
+	if err != nil {
 		_ = conn.Close()
+		return nil, err
+	}
+	return func() {
+		unlock()
+		_ = conn.Close()
+	}, nil
+}
+
+// lockConn takes the migration lock on a connection the caller holds and
+// returns what releases it. The caller closes the connection, which drops the
+// lock regardless if the release itself fails.
+func lockConn(ctx context.Context, conn *sql.Conn, dialect string, key int) (func(), error) {
+	if strings.ToLower(dialect) != DialectPostgres {
+		return func() {}, nil
+	}
+
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", key); err != nil {
 		return nil, fmt.Errorf("failed to acquire the migration lock: %w", err)
 	}
 
@@ -213,7 +303,6 @@ func lockForMigrationKey(db *sql.DB, dialect string, key int) (func(), error) {
 			// not stuck — but an operator should know it happened.
 			slog.Warn("failed to release the migration lock; closing the connection will drop it", "error", err)
 		}
-		_ = conn.Close()
 	}, nil
 }
 

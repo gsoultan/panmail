@@ -6,6 +6,7 @@ import { userClient } from '../services/client';
 import { UserRole } from '../api/panmail/v1/auth_pb';
 import { useDisclosure } from '@mantine/hooks';
 import { useAdaptedForm } from '../lib/form/useAdaptedForm';
+import { MIN_PASSWORD_LENGTH, passwordLengthError } from '../lib/password';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../store/authStore';
 import { UserTenantsModal } from '../features/auth/components/UserTenantsModal';
@@ -68,7 +69,7 @@ export const UsersPage: React.FC = () => {
     },
     validate: {
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Invalid email'),
-      password: (value) => (value.length < 6 ? 'Password must be at least 6 characters' : null),
+      password: passwordLengthError,
       name: (value) => (value.length < 2 ? 'Name is too short' : null),
     },
   });
@@ -193,7 +194,7 @@ export const UsersPage: React.FC = () => {
             <Stack>
               <TextInput label="Name" placeholder="Full Name" required {...createForm.getInputProps('name')} />
               <TextInput label="Email" placeholder="user@example.com" required {...createForm.getInputProps('email')} />
-              <PasswordInput label="Password" placeholder="Secure password" required {...createForm.getInputProps('password')} />
+              <PasswordInput label="Password" placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`} required {...createForm.getInputProps('password')} />
               <Select
                 label="Role"
                 data={[

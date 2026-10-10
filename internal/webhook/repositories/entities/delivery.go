@@ -37,8 +37,15 @@ type WebhookDelivery struct {
 	// something subtly different from what the event described.
 	Payload []byte
 
-	Status        DeliveryStatus
-	AttemptCount  int
+	Status       DeliveryStatus
+	AttemptCount int
+
+	// ClaimToken identifies the claim this copy was read under. An update is
+	// only applied while the row still carries it, so a worker whose lease ran
+	// out cannot overwrite the outcome recorded by the worker that took the
+	// row over. Empty on a row that was not read through a claim.
+	ClaimToken string
+
 	NextAttemptAt time.Time
 	LastError     string
 

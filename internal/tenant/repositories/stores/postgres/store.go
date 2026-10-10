@@ -24,11 +24,17 @@ var (
 	updateTenantQuery string
 	//go:embed sql/delete_tenant.sql
 	deleteTenantQuery string
+	//go:embed sql/count_tenant_dependents.sql
+	countTenantDependentsQuery string
 )
 
 type store struct {
 	conn db.Connection
 }
+
+// Compile-time proof that the store answers the deletion precheck; the usecase
+// discovers it by type assertion, and losing it would silently skip the check.
+var _ repositories.DependentCounter = (*store)(nil)
 
 func NewStore(conn db.Connection) repositories.TenantRepository {
 	return &store{conn: conn}
@@ -126,4 +132,17 @@ func (s *store) Delete(ctx context.Context, id string) error {
 	}
 	_, err = db.ExecContext(ctx, deleteTenantQuery, id)
 	return err
+}
+
+func (s *store) CountDependents(ctx context.Context, id string) (repositories.Dependents, error) {
+	var d repositories.Dependents
+	dbConn, err := s.getDB()
+	if err != nil {
+		return d, err
+	}
+	err = dbConn.QueryRowContext(ctx, countTenantDependentsQuery, id).Scan(
+		&d.Users, &d.GuestMembers, &d.EmailProviders, &d.ApiKeys,
+		&d.Templates, &d.Suppressions, &d.Webhooks, &d.OutboxMessages,
+	)
+	return d, err
 }

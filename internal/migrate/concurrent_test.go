@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"strings"
@@ -144,7 +145,7 @@ func TestASecondRunAfterAConcurrentOneHasNothingToDo(t *testing.T) {
 		t.Fatalf("first run: %v", err)
 	}
 
-	before, err := appliedVersions(db)
+	before, err := appliedVersions(context.Background(), db)
 	if err != nil {
 		t.Fatalf("read applied: %v", err)
 	}
@@ -153,7 +154,7 @@ func TestASecondRunAfterAConcurrentOneHasNothingToDo(t *testing.T) {
 		t.Fatalf("second run: %v", err)
 	}
 
-	after, err := appliedVersions(db)
+	after, err := appliedVersions(context.Background(), db)
 	if err != nil {
 		t.Fatalf("read applied: %v", err)
 	}

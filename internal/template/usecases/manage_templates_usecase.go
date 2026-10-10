@@ -52,8 +52,27 @@ func (u *manageTemplatesUsecase) Get(ctx context.Context, tenantID, id string) (
 	return u.toProto(t), nil
 }
 
+// defaultTemplatePageSize and maxTemplatePageSize bound a listing. Every
+// template comes back whole -- subject, both bodies and the builder's design
+// document -- so a page is not a list of names, and a caller asking for a
+// million rows got every template the tenant had, bodies included, in one
+// response held in memory on both ends.
+const (
+	defaultTemplatePageSize = 50
+	maxTemplatePageSize     = 500
+)
+
+// templatePageSize resolves the page a caller asked for: unset means the
+// default, and anything larger than the bound is the bound.
+func templatePageSize(requested int) int {
+	if requested <= 0 {
+		return defaultTemplatePageSize
+	}
+	return min(requested, maxTemplatePageSize)
+}
+
 func (u *manageTemplatesUsecase) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*panmailv1.Template, string, error) {
-	templates, nextPageToken, err := u.repo.List(ctx, tenantID, pageSize, pageToken)
+	templates, nextPageToken, err := u.repo.List(ctx, tenantID, templatePageSize(pageSize), pageToken)
 	if err != nil {
 		return nil, "", err
 	}

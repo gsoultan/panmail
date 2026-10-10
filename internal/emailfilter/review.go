@@ -153,10 +153,12 @@ func (r *reviewer) Reject(ctx context.Context, tenantID, id, reviewedBy, note st
 
 	if record.Action == ActionHold && record.PayloadRef != "" && record.Direction == DirectionOutbound && r.outbound != nil {
 		if err := r.outbound.DiscardHeld(ctx, record.TenantID, record.PayloadRef); err != nil {
-			// Not fatal. The decision stands either way, and a held row nobody
-			// claims is swept by the outbox's own retention; failing the call
-			// here would invite a reviewer to press reject again on a message
-			// that is already rejected.
+			// Not fatal. The decision stands either way, and the payload of a
+			// review that is over is removed by retention's quarantine pass
+			// (ExpirySweeper.PruneBefore) -- not by the outbox's own retention,
+			// which only ever prunes FAILED rows. Failing the call here would
+			// invite a reviewer to press reject again on a message that is
+			// already rejected.
 			slog.Error("could not discard the payload of a rejected message",
 				"error", err, "id", record.ID, "message_id", record.MessageID)
 		}

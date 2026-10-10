@@ -3,6 +3,7 @@ package middlewares
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -28,9 +29,10 @@ const (
 const (
 	membershipCacheTTL = 5 * time.Second
 
-	// Keyed by user id and tenant id, both of which come from authenticated
-	// material rather than from the request body, so the key space is bounded
-	// by the number of real memberships. The limit is a backstop.
+	// Keyed by user id and tenant id. The tenant id comes from the caller's
+	// X-Tenant-ID header, so only answers that name a real membership are
+	// stored: that bounds the key space by the number of memberships rather
+	// than by how many ids a caller cares to invent. The limit is a backstop.
 	membershipCacheMaxEntries = 4096
 )
 
@@ -81,6 +83,11 @@ func (m *AuthMiddleware) Handle(next http.Handler) http.Handler {
 		}
 
 		principal, err := m.identify(r)
+		if errors.Is(err, errAccountUnavailable) {
+			slog.Error("could not confirm the caller's account", "path", r.URL.Path, "error", err)
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		if err != nil {
 			slog.Warn("rejecting request with invalid credentials", "path", r.URL.Path, "error", err)
 			http.Error(w, "invalid credentials", http.StatusUnauthorized)
@@ -149,38 +156,46 @@ func (m *AuthMiddleware) identifyBearer(r *http.Request, authHeader string) (*Pr
 		Role:     payload.Role,
 	}
 
-	// A request may name a tenant other than the one the token was minted for.
-	// The header is only consulted when it disagrees with the token, so the
-	// ordinary single-tenant request costs nothing to serve.
 	target := r.Header.Get(tenantIDHeader)
-	if target == "" || target == payload.TenantID {
+	if target == "" {
+		target = payload.TenantID
+	}
+
+	if m.memberships == nil {
+		// Without membership there is nothing to ask, so the token is taken at
+		// its word and only a super admin may name another tenant — the
+		// behaviour before memberships existed.
+		if target == payload.TenantID {
+			return principal, nil
+		}
+		if principal.Role != RoleSuperAdmin {
+			return nil, ErrTenantNotPermitted
+		}
+		principal.TenantID = target
+		logSuperAdminSwitch(principal, r.URL.Path)
 		return principal, nil
 	}
-	if err := m.switchTenant(r.Context(), principal, target, r.URL.Path); err != nil {
+
+	if err := m.actIn(r.Context(), principal, target, r.URL.Path); err != nil {
 		return nil, err
 	}
 	return principal, nil
 }
 
-// switchTenant moves the principal into another tenant, or refuses.
+// actIn sets the tenant the principal acts in and the role they hold there,
+// both read from the account as it is now rather than from the token.
 //
-// The role moves with it. A user who administers their own tenant and is a
-// viewer in one they have been lent must be a viewer while acting there —
-// carrying the home role across would make every assignment a promotion.
-func (m *AuthMiddleware) switchTenant(ctx context.Context, principal *Principal, target, path string) error {
-	// Super admin is global: it reaches procedures that are not scoped to any
-	// tenant, so it needs no membership and is answered without a query.
-	if principal.Role == RoleSuperAdmin {
-		principal.TenantID = target
-		slog.Info("super admin switched tenant context",
-			"user_id", principal.UserID, "tenant_id", target, "path", path)
-		return nil
-	}
-
-	if m.memberships == nil {
-		return ErrTenantNotPermitted
-	}
-
+// The token's role and tenant were what a session ran on for its whole 24
+// hours, so a user who was deleted, demoted or stripped of super admin kept
+// what they had at sign-in until it expired. Every request now asks the same
+// cached question the tenant switch always asked, the home tenant included,
+// so a change takes effect within the cache's few seconds.
+//
+// The role is the one held in the tenant being entered. A user who
+// administers their own tenant and is a viewer in one they have been lent
+// must be a viewer while acting there — carrying the home role across would
+// make every assignment a promotion.
+func (m *AuthMiddleware) actIn(ctx context.Context, principal *Principal, target, path string) error {
 	role, err := m.resolveRole(ctx, principal.UserID, target)
 	if err != nil {
 		return err
@@ -191,14 +206,35 @@ func (m *AuthMiddleware) switchTenant(ctx context.Context, principal *Principal,
 		return ErrTenantNotPermitted
 	}
 
+	switched := target != principal.TenantID
 	principal.TenantID = target
 	principal.Role = role
+	if switched && role == RoleSuperAdmin {
+		logSuperAdminSwitch(principal, path)
+	}
 	return nil
 }
 
-// resolveRole returns the role the user holds in the tenant, "" for none. A
-// negative answer is cached too: a client that keeps sending a stale tenant
-// header would otherwise query on every request it makes.
+// logSuperAdminSwitch records a super admin entering a tenant they hold no
+// membership in, which is the access support and monitoring rely on and the
+// one an audit will ask about.
+func logSuperAdminSwitch(principal *Principal, path string) {
+	slog.Info("super admin switched tenant context",
+		"user_id", principal.UserID, "tenant_id", principal.TenantID, "path", path)
+}
+
+// errAccountUnavailable marks a session that could not be checked against its
+// account because the account could not be read.
+var errAccountUnavailable = errors.New("account could not be read")
+
+// resolveRole returns the role the user holds in the tenant, "" for none.
+//
+// Only a positive answer is cached. A negative one used to be cached as well,
+// keyed by whatever tenant id the header named, so any signed-in viewer could
+// fill the shared cache with invented ids — each costing two queries — until
+// it refused new entries and every real member's switch went back to the
+// database. A refusal is the rare case, and paying for it is the right side
+// of that trade.
 func (m *AuthMiddleware) resolveRole(ctx context.Context, userID, tenantID string) (string, error) {
 	key := userID + "\x00" + tenantID
 	if role, ok := m.resolvedRoles.Get(key); ok {
@@ -206,12 +242,19 @@ func (m *AuthMiddleware) resolveRole(ctx context.Context, userID, tenantID strin
 	}
 
 	role, err := m.memberships.RoleIn(ctx, userID, tenantID)
-	if err != nil {
-		// A user that cannot be read is not a user that may act. Do not cache
-		// it: the next request should ask again rather than inherit a failure.
+	if errors.Is(err, usecases.ErrUserNotFound) {
+		// A user that no longer exists is not a user that may act.
 		return "", ErrTenantNotPermitted
 	}
+	if err != nil {
+		// The account could not be read. That is an outage, not a verdict:
+		// answering 401 would make the console sign everyone out during a
+		// database blip. Nothing is cached, so the next request asks again.
+		return "", fmt.Errorf("%w: %w", errAccountUnavailable, err)
+	}
 
-	m.resolvedRoles.Put(key, role)
+	if role != "" {
+		m.resolvedRoles.Put(key, role)
+	}
 	return role, nil
 }

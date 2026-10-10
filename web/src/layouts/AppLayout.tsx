@@ -49,6 +49,7 @@ import { useQuery } from '@tanstack/react-query';
 import { tenantService } from '../services/tenant';
 import { userService } from '../services/user';
 import { UserRole } from '../api/panmail/v1/auth_pb';
+import { accessFor } from '../lib/access';
 import classes from './AppLayout.module.css';
 
 interface NavItemProps {
@@ -68,6 +69,7 @@ export const AppLayout: React.FC = () => {
   const computedColorScheme = useComputedColorScheme('light', { getInitialValueInEffect: true });
 
   const isSuperAdmin = user?.role === UserRole.SUPER_ADMIN;
+  const access = accessFor(user?.role);
 
   // A super admin may act in any tenant, so they choose from all of them.
   const { data: tenantsData } = useQuery({
@@ -339,7 +341,7 @@ export const AppLayout: React.FC = () => {
                 active={location.pathname === '/test-delivery'}
               />
 
-              {(user?.role === UserRole.SUPER_ADMIN || user?.role === UserRole.ADMIN) && (
+              {access.administerTenant && (
                 <>
                   {!collapsed && (
                     <Text size="xs" fw={700} c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))" tt="uppercase" px="md" mb={4} mt="md">
@@ -358,16 +360,19 @@ export const AppLayout: React.FC = () => {
                     to="/users"
                     active={location.pathname === '/users'}
                   />
-                  <NavItem
-                    icon={IconSettings}
-                    label="Settings"
-                    to="/settings"
-                    active={location.pathname === '/settings'}
-                  />
+                  {/* Deployment-wide, so super admin only: see lib/access. */}
+                  {access.configureDeployment && (
+                    <NavItem
+                      icon={IconSettings}
+                      label="Settings"
+                      to="/settings"
+                      active={location.pathname === '/settings'}
+                    />
+                  )}
                 </>
               )}
 
-              {user?.role === UserRole.SUPER_ADMIN && (
+              {access.manageTenants && (
                 <NavItem
                   icon={IconBuildingCommunity}
                   label="Tenants"

@@ -9,6 +9,11 @@ import (
 
 type OutboxRepository interface {
 	Create(ctx context.Context, email *entities.OutboxEmail) error
+
+	// GetByID returns (nil, nil) when there is no such message. A row that has
+	// gone is an answer, not a failure: a delivered or discarded message is
+	// deleted, and a caller retrying an operation has to be able to tell that
+	// apart from a database it could not reach.
 	GetByID(ctx context.Context, id string) (*entities.OutboxEmail, error)
 
 	// ClaimPending atomically takes ownership of up to limit due messages for
@@ -19,6 +24,12 @@ type OutboxRepository interface {
 	// so a worker that dies mid-send does not strand mail.
 	ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error)
 
+	// RenewClaim extends a claim's lease to until, and reports whether the
+	// claim is still the caller's. False means the lease lapsed and another
+	// worker claimed the message since, or it has been settled: either way it
+	// is no longer this caller's to send.
+	RenewClaim(ctx context.Context, id, claimToken string, until time.Time) (bool, error)
+
 	Update(ctx context.Context, email *entities.OutboxEmail) error
 	Delete(ctx context.Context, id string) error
 	CountPending(ctx context.Context, tenantID string) (int64, error)
@@ -26,11 +37,17 @@ type OutboxRepository interface {
 	// PruneTerminal removes messages in a terminal state last touched before
 	// the cutoff, and reports how many went.
 	//
-	// Only failures accumulate — a delivered message is deleted outright — but
-	// they accumulate forever, and each row carries the whole serialised
+	// Of what the worker settles, only failures accumulate — a delivered
+	// message is deleted outright — but they accumulate forever, and each row carries the whole serialised
 	// request including the body. Over the life of a deployment that is the
 	// largest table in the database, holding nothing anyone will read.
 	PruneTerminal(ctx context.Context, olderThan time.Time) (int64, error)
+
+	// PruneHeld removes held messages created before the cutoff whose review
+	// is no longer pending, and reports how many went. It is the backstop for
+	// a held payload nothing discarded; a message a reviewer can still release
+	// is never removed, however old.
+	PruneHeld(ctx context.Context, olderThan time.Time) (int64, error)
 
 	// Stats reports how much is queued and how old the oldest of it is.
 	//

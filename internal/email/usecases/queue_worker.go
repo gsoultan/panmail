@@ -22,7 +22,6 @@ import (
 const (
 	outboxBatchSize    = 500
 	outboxConcurrency  = 200
-	perEmailTimeout    = 30 * time.Second
 	bookkeepingTimeout = 10 * time.Second
 	retryPatternTTL    = time.Minute
 
@@ -75,6 +74,11 @@ type queueWorker struct {
 
 	retryPatterns *cache.TTLCache[[]string]
 
+	// lease and leaseRenewEvery are messageLease and leaseRenewEvery, held
+	// here so a test can run the renewal on a timescale it can wait for.
+	lease           time.Duration
+	leaseRenewEvery time.Duration
+
 	// Where the deployment-wide backoff schedule comes from. Read on use
 	// rather than captured at construction: it lives in the database now, so a
 	// change saved on the settings page reaches this worker — on any instance —
@@ -105,6 +109,8 @@ func NewQueueWorker(
 		interval:           interval,
 		trigger:            make(chan struct{}, 1),
 		retryPatterns:      cache.New[[]string](retryPatternTTL),
+		lease:              messageLease,
+		leaseRenewEvery:    leaseRenewEvery,
 	}
 
 	return w
@@ -152,7 +158,7 @@ func (w *queueWorker) Start(ctx context.Context) {
 }
 
 func (w *queueWorker) processPending(ctx context.Context) int {
-	emails, err := w.outboxRepo.ClaimPending(ctx, outboxBatchSize, perEmailTimeout)
+	emails, err := w.outboxRepo.ClaimPending(ctx, outboxBatchSize, w.lease)
 	if err != nil {
 		slog.Error("failed to claim pending outbox emails", "error", err)
 		return 0
@@ -205,6 +211,10 @@ func (w *queueWorker) processPending(ctx context.Context) int {
 			// risks nothing. It stays claimed, the lease expires, and it is
 			// picked up again. Waiting for the whole batch would turn every
 			// shutdown into a full drain of 500 messages.
+			//
+			// A message waiting here is not holding its lease alive. If the
+			// wait outlasts it, another replica may claim the message, and
+			// processEmail finds that out before sending -- see holdLease.
 			case <-ctx.Done():
 			}
 		}(e)
@@ -223,8 +233,21 @@ func recoverEmail(id string) {
 }
 
 func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail) {
-	sendCtx, cancel := context.WithTimeout(ctx, perEmailTimeout)
-	defer cancel()
+	// Before anything else, including the delete of a row that cannot be
+	// read: none of it is this worker's to do unless the claim still is.
+	lease, ok := w.holdLease(ctx, e)
+	if !ok {
+		return
+	}
+	defer lease.release()
+
+	// No deadline for the message as a whole. It used to have 30 seconds,
+	// shared by the pacing wait and one SMTP transaction per recipient in
+	// turn, so a message to more than a few dozen slow recipients could never
+	// be delivered in one pass. The send path bounds each attempt instead; a
+	// message runs as long as its recipients take, and holdLease keeps its
+	// claim for that long.
+	sendCtx := lease.ctx
 
 	slog.Info("worker processing email", "id", e.ID, "tenant_id", e.TenantID, "retry_count", e.RetryCount)
 
@@ -239,6 +262,15 @@ func (w *queueWorker) processEmail(ctx context.Context, e *entities.OutboxEmail)
 	sendCtx = context.WithValue(sendCtx, MessageIDKey, e.ID)
 
 	res, err := w.emailUsecase.SendEmail(sendCtx, e.TenantID, &req)
+
+	// Another worker owns the message now. Whatever this pass did is in the
+	// event history it will read, and settling the row from here would
+	// overwrite its claim -- so this worker writes nothing.
+	if lease.lost.Load() {
+		slog.Warn("not settling an outbox message whose claim was lost", "id", e.ID, "send_error", err)
+		return
+	}
+
 	if err == nil && res != nil {
 		slog.Info("email sent successfully from worker", "id", e.ID)
 		w.deleteOutbox(ctx, e.ID)
@@ -584,8 +616,17 @@ func (w *queueWorker) handleRecipientFailures(
 
 	// Some recipients are worth another attempt, so the row stays. The next
 	// pass skips everyone delivered or settled, so it goes to them alone.
-	e.RetryCount++
-	if delay, ok := nextRetryDelay(retry[0].Class, e.RetryCount, w.getRetryPattern(ctx, e.TenantID)); ok {
+	//
+	// A pass that delivered to anyone made progress, and is not spent from
+	// the retry schedule. Counting it bounded how many recipients a message
+	// could ever reach by the length of the schedule rather than by whether
+	// they could be delivered to. It cannot loop: every such pass leaves fewer
+	// recipients to go, and a pass that delivers no one is counted.
+	if rf.Delivered == 0 {
+		e.RetryCount++
+	}
+	attempt := max(e.RetryCount, 1)
+	if delay, ok := nextRetryDelay(retry[0].Class, attempt, w.getRetryPattern(ctx, e.TenantID)); ok {
 		e.Status = entities.OutboxStatusDeferred
 		e.NextRetryAt = time.Now().Add(delay)
 		w.updateOutbox(ctx, e)

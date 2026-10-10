@@ -48,8 +48,19 @@ func TestAuthorizeUserRoles(t *testing.T) {
 		{"admin may not update tenants", panmailv1connect.TenantServiceUpdateTenantProcedure, userContext(RoleAdmin), true},
 		{"super admin may update tenants", panmailv1connect.TenantServiceUpdateTenantProcedure, userContext(RoleSuperAdmin), false},
 
-		{"admin may update settings", panmailv1connect.SystemSettingsServiceUpdateSettingsProcedure, userContext(RoleAdmin), false},
+		// System settings and the SMTP listener are deployment-wide, so a
+		// tenant administrator may not change them. This used to assert the
+		// opposite, which is how one tenant's administrator could set the
+		// retention that deletes every other tenant's mail.
+		{"super admin may update settings", panmailv1connect.SystemSettingsServiceUpdateSettingsProcedure, userContext(RoleSuperAdmin), false},
+		{"admin may not update settings", panmailv1connect.SystemSettingsServiceUpdateSettingsProcedure, userContext(RoleAdmin), true},
 		{"viewer may not update settings", panmailv1connect.SystemSettingsServiceUpdateSettingsProcedure, userContext(RoleViewer), true},
+		{"super admin may configure the SMTP listener", panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure, userContext(RoleSuperAdmin), false},
+		{"admin may not configure the SMTP listener", panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure, userContext(RoleAdmin), true},
+		{"api key may not configure the SMTP listener", panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure, apiKeyContext(entities.ScopeEmailSend, entities.ScopeProvidersWrite), true},
+		// Logs stay with tenant administrators: they are filtered to the
+		// caller's tenant.
+		{"admin may read logs", panmailv1connect.LogServiceListLogsProcedure, userContext(RoleAdmin), false},
 
 		{"viewer may list templates", panmailv1connect.TemplateServiceListTemplatesProcedure, userContext(RoleViewer), false},
 		{"viewer may not create templates", panmailv1connect.TemplateServiceCreateTemplateProcedure, userContext(RoleViewer), true},

@@ -19,6 +19,7 @@ import {
   Grid,
 } from '@mantine/core';
 import { useAdaptedForm } from '../lib/form/useAdaptedForm';
+import { MIN_PASSWORD_LENGTH, passwordLengthError } from '../lib/password';
 import { useNavigate } from '@tanstack/react-router';
 import { setupClient } from '../services/client';
 import { notifications } from '@mantine/notifications';
@@ -63,7 +64,7 @@ export const SetupPage: React.FC = () => {
     },
     validate: {
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Invalid email'),
-      password: (value) => (value.length < 6 ? 'Password must be at least 6 characters' : null),
+      password: passwordLengthError,
       name: (value) => (value.length < 2 ? 'Name is too short' : null),
     },
   });
@@ -387,7 +388,7 @@ export const SetupPage: React.FC = () => {
                       />
                       <PasswordInput
                         label="Password"
-                        placeholder="At least 6 characters"
+                        placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                         size="sm"
                         {...adminForm.getInputProps('password')}
                       />

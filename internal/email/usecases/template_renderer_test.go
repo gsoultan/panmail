@@ -1,6 +1,7 @@
 package usecases
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -422,6 +423,51 @@ func TestUnknownZoneFailsAndNamesItself(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Asia/Jakata") {
 		t.Errorf("the error should name the zone, got %q", err)
+	}
+}
+
+// Every distinct template source used to stay cached for the life of the
+// process, keyed by the source itself. A body sent with each request is a new
+// source every time, and 5,000 versions of a 10KB one held 831 MiB. The caches
+// must stop growing at their limit however many distinct templates arrive.
+func TestTemplateCachesStayBounded(t *testing.T) {
+	r := NewTemplateRenderer().(*templateRenderer)
+	data := map[string]any{"name": "Ada", "StartAt": "2026-12-01T09:30:00Z"}
+
+	for i := range renderCacheEntries * 2 {
+		suffix := strconv.Itoa(i)
+		// Handlebars, the Go fallback (a pipeline raymond cannot parse) and a
+		// method call between them reach all four caches.
+		if _, err := r.Render("Hello {{name}} "+suffix, data, false); err != nil {
+			t.Fatalf("handlebars render: %v", err)
+		}
+		if _, err := r.Render(`{{ printf "%s" .name }} `+suffix, data, true); err != nil {
+			t.Fatalf("go html render: %v", err)
+		}
+		if _, err := r.Render(`{{ .StartAt.Format "2006" }} `+suffix, data, false); err != nil {
+			t.Fatalf("method call render: %v", err)
+		}
+	}
+
+	caches := map[string]int{
+		"raymond": r.raymondCache.Len(),
+		"go html": r.goHtmlCache.Len(),
+		"go text": r.goTextCache.Len(),
+		"rewrite": r.rewriteCache.Len(),
+	}
+	for name, n := range caches {
+		if n == 0 {
+			t.Errorf("%s cache is empty; the test did not reach it", name)
+		}
+		if n > renderCacheEntries {
+			t.Errorf("%s cache holds %d entries, want at most %d", name, n, renderCacheEntries)
+		}
+	}
+
+	// A cached template must still render, not just be counted.
+	out, err := r.Render("Hello {{name}} 0", data, false)
+	if err != nil || out != "Hello Ada 0" {
+		t.Errorf("Render after filling the cache = %q, %v", out, err)
 	}
 }
 

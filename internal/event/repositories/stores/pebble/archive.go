@@ -15,6 +15,13 @@ import (
 // tenant.
 const archiveRoot = "archives"
 
+// ArchiveDir is the directory every tenant's archives are written under, for
+// a backup to include: it holds the only copy of every event retention has
+// expired.
+func ArchiveDir() string {
+	return archiveRoot
+}
+
 // tenantArchiveDir returns the directory holding a tenant's archives.
 //
 // filepath.Base strips any path the caller supplied, so a tenant id taken from

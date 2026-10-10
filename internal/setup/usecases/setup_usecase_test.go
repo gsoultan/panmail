@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
@@ -15,6 +16,13 @@ import (
 type mockAuthUsecase struct {
 	isFirstRun    bool
 	isFirstRunErr error
+
+	// createErr makes CreateAdmin fail. onCreate runs inside it, so a test
+	// can observe what setup had and had not done by then.
+	createErr error
+	onCreate  func()
+	created   atomic.Int32
+	removed   atomic.Int32
 }
 
 func (m *mockAuthUsecase) SignIn(ctx context.Context, creds authusecases.Credentials) (*authusecases.SignInResult, error) {
@@ -23,7 +31,18 @@ func (m *mockAuthUsecase) SignIn(ctx context.Context, creds authusecases.Credent
 func (m *mockAuthUsecase) GetCurrentUser(ctx context.Context, userID string) (*entities.User, error) {
 	return nil, nil
 }
-func (m *mockAuthUsecase) CreateAdmin(ctx context.Context, admin authusecases.NewAdmin) error {
+func (m *mockAuthUsecase) CreateAdmin(ctx context.Context, admin authusecases.NewAdmin) (*authusecases.CreatedAdmin, error) {
+	if m.onCreate != nil {
+		m.onCreate()
+	}
+	if m.createErr != nil {
+		return nil, m.createErr
+	}
+	m.created.Add(1)
+	return &authusecases.CreatedAdmin{UserID: "admin-1", TenantID: "tenant-1"}, nil
+}
+func (m *mockAuthUsecase) RemoveAdmin(ctx context.Context, created *authusecases.CreatedAdmin) error {
+	m.removed.Add(1)
 	return nil
 }
 func (m *mockAuthUsecase) IsFirstRun(ctx context.Context) (bool, error) {
@@ -44,10 +63,16 @@ func (m *mockAuthUsecase) DisableTwoFactor(ctx context.Context, userID string) e
 
 type mockConnection struct {
 	isConnected bool
+	setDBCalls  atomic.Int32
 }
 
-func (m *mockConnection) GetDB() *sql.DB   { return nil }
-func (m *mockConnection) SetDB(db *sql.DB) {}
+func (m *mockConnection) GetDB() *sql.DB { return nil }
+func (m *mockConnection) SetDB(db *sql.DB) {
+	m.setDBCalls.Add(1)
+	if db != nil {
+		_ = db.Close()
+	}
+}
 func (m *mockConnection) IsConnected() bool {
 	return m.isConnected
 }

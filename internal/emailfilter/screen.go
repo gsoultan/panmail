@@ -111,8 +111,9 @@ func (s *screener) Record(ctx context.Context, record *FilteredMessage) error {
 	}
 	if record.ExpiresAt == nil {
 		// Only a held message expires. A rejected one is already terminal and
-		// a tagged one was delivered; both are history, and history is pruned
-		// by retention on its own schedule rather than by this clock.
+		// a tagged one was delivered; both are history, pruned by retention's
+		// quarantine pass one quarantine period after they were recorded
+		// rather than by this clock.
 		// Zero is forever, so a held message gets no deadline at all rather
 		// than one in the past. A quarantine that never expires grows; one
 		// that expires by accident loses mail nobody decided about.

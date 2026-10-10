@@ -61,6 +61,10 @@ func (q *fakeQuarantine) Review(_ context.Context, _, id string, status emailfil
 	return &copied, nil
 }
 
+func (q *fakeQuarantine) PruneTerminal(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
 func (q *fakeQuarantine) Expire(context.Context, time.Time, int) ([]emailfilter.FilteredMessage, error) {
 	return nil, nil
 }

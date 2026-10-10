@@ -232,8 +232,12 @@ func TestExhaustedRetriesSettleOnlyTheFailingRecipient(t *testing.T) {
 // problem was "user unknown", was recorded as a spam complaint. Complaint rate
 // is a number tenants are judged on; recording complaints nobody made is not a
 // labelling slip.
+//
+// b@'s reply is a complaint the recipient made. It used to be "message
+// rejected as spam", which is a content filter's verdict on the message and
+// is now classified as REJECTED, not as anyone's complaint.
 func TestEveryRecipientFailingPermanentlyFailsTheMessage(t *testing.T) {
-	const spam = "550 5.7.1 message rejected as spam"
+	const spam = "550 5.7.1 message marked as spam by recipient"
 	h := newOutcomeHarness(t, "a@example.com", "b@example.com")
 	h.replies["a@example.com"] = []error{errors.New(hardBounce)}
 	h.replies["b@example.com"] = []error{errors.New(spam)}

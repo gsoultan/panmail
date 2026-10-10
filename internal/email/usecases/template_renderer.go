@@ -2,16 +2,19 @@ package usecases
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	htmltemplate "html/template"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	texttemplate "text/template"
+	"time"
 
 	"github.com/aymerick/raymond"
+	"github.com/gsoultan/panmail/pkg/cache"
 )
 
 // TemplateRenderer defines the interface for rendering email templates.
@@ -19,18 +22,44 @@ type TemplateRenderer interface {
 	Render(tpl string, data any, isHTML bool) (string, error)
 }
 
+// renderCacheEntries and renderCacheTTL bound each of the renderer's
+// caches. They used to be sync.Maps that were never evicted, keyed by the full
+// template source, and a template is often not a fixed stored thing but a body
+// sent with the request: 5,000 versions of a 10KB body held 831 MiB. The limit
+// is generous for the templates a deployment really reuses; the TTL lets a
+// cache filled by one-off bodies make room again, since a full cache refuses
+// new entries rather than evicting live ones.
+const (
+	renderCacheEntries = 512
+	renderCacheTTL     = 10 * time.Minute
+)
+
 type templateRenderer struct {
-	raymondCache sync.Map
-	goHtmlCache  sync.Map
-	goTextCache  sync.Map
+	raymondCache *cache.TTLCache[*raymond.Template]
+	goHtmlCache  *cache.TTLCache[*htmltemplate.Template]
+	goTextCache  *cache.TTLCache[*texttemplate.Template]
 	// rewriteCache holds the Go-template source for templates that call a
 	// method, so the rewrite runs once per template rather than once per mail.
-	rewriteCache sync.Map
+	rewriteCache *cache.TTLCache[string]
 }
 
 // NewTemplateRenderer creates a new instance of TemplateRenderer.
 func NewTemplateRenderer() TemplateRenderer {
-	return &templateRenderer{}
+	return &templateRenderer{
+		raymondCache: cache.NewWithLimit[*raymond.Template](renderCacheTTL, renderCacheEntries),
+		goHtmlCache:  cache.NewWithLimit[*htmltemplate.Template](renderCacheTTL, renderCacheEntries),
+		goTextCache:  cache.NewWithLimit[*texttemplate.Template](renderCacheTTL, renderCacheEntries),
+		rewriteCache: cache.NewWithLimit[string](renderCacheTTL, renderCacheEntries),
+	}
+}
+
+// sourceKey keys the caches by a digest of the template rather than by the
+// template itself, so a cached entry does not pin a second copy of a large
+// body. A collision would render one tenant's template with another's data,
+// so the digest is a cryptographic one and not a cheaper map hash.
+func sourceKey(source string) string {
+	sum := sha256.Sum256([]byte(source))
+	return hex.EncodeToString(sum[:])
 }
 
 // markSafeForPlainText wraps every string in the data so Handlebars does not
@@ -201,8 +230,8 @@ func containsMethodCall(tpl string) bool {
 // prepare returns the Go-template source for a template that calls a method,
 // and reports false for every other template.
 func (r *templateRenderer) prepare(tpl string) (string, bool) {
-	if val, ok := r.rewriteCache.Load(tpl); ok {
-		rewritten := val.(string)
+	key := sourceKey(tpl)
+	if rewritten, ok := r.rewriteCache.Get(key); ok {
 		return rewritten, rewritten != ""
 	}
 
@@ -210,7 +239,7 @@ func (r *templateRenderer) prepare(tpl string) (string, bool) {
 	if !ok {
 		rewritten = ""
 	}
-	r.rewriteCache.Store(tpl, rewritten)
+	r.rewriteCache.Put(key, rewritten)
 	return rewritten, ok
 }
 
@@ -236,31 +265,34 @@ func (e parseError) Unwrap() error { return e.err }
 // fallback cannot collide on one cache entry.
 func (r *templateRenderer) renderGo(source string, data any, isHTML bool) (string, error) {
 	var buf bytes.Buffer
+	key := sourceKey(source)
 
 	if isHTML {
-		goTpl, ok := r.goHtmlCache.Load(source)
+		goTpl, ok := r.goHtmlCache.Get(key)
 		if !ok {
 			parsed, err := htmltemplate.New("tpl").Funcs(templateFuncs).Parse(source)
 			if err != nil {
 				return "", parseError{err}
 			}
-			goTpl, _ = r.goHtmlCache.LoadOrStore(source, parsed)
+			goTpl = parsed
+			r.goHtmlCache.Put(key, goTpl)
 		}
-		if err := goTpl.(*htmltemplate.Template).Execute(&buf, data); err != nil {
+		if err := goTpl.Execute(&buf, data); err != nil {
 			return "", err
 		}
 		return buf.String(), nil
 	}
 
-	goTpl, ok := r.goTextCache.Load(source)
+	goTpl, ok := r.goTextCache.Get(key)
 	if !ok {
 		parsed, err := texttemplate.New("tpl").Funcs(templateFuncs).Parse(source)
 		if err != nil {
 			return "", parseError{err}
 		}
-		goTpl, _ = r.goTextCache.LoadOrStore(source, parsed)
+		goTpl = parsed
+		r.goTextCache.Put(key, goTpl)
 	}
-	if err := goTpl.(*texttemplate.Template).Execute(&buf, data); err != nil {
+	if err := goTpl.Execute(&buf, data); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
@@ -304,14 +336,13 @@ func (r *templateRenderer) Render(tpl string, data any, isHTML bool) (string, er
 	}
 
 	// 1. Try Handlebars (raymond) - Primary engine for this project
-	var rayTpl *raymond.Template
-	if val, ok := r.raymondCache.Load(tpl); ok {
-		rayTpl = val.(*raymond.Template)
-	} else {
+	rayKey := sourceKey(tpl)
+	rayTpl, ok := r.raymondCache.Get(rayKey)
+	if !ok {
 		var err error
 		rayTpl, err = raymond.Parse(tpl)
 		if err == nil {
-			r.raymondCache.Store(tpl, rayTpl)
+			r.raymondCache.Put(rayKey, rayTpl)
 		}
 	}
 

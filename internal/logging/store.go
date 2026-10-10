@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/google/uuid"
 	"github.com/gsoultan/panmail/pkg/pebbleopt"
 )
 
@@ -35,8 +35,17 @@ type Store interface {
 }
 
 type pebbleStore struct {
-	db          *pebble.DB
-	subscribers sync.Map
+	db *pebble.DB
+
+	// subMu guards subscribers. Write sends under the read lock and the
+	// unsubscribe path deletes and closes under the write lock, so a send can
+	// never land on a channel that has just been closed. sync.Map could not
+	// give that: a Write that had already loaded a channel would send on it
+	// after the cleanup goroutine closed it, and "send on closed channel" in a
+	// slog handler takes the process down.
+	subMu       sync.RWMutex
+	subscribers map[uint64]chan LogEntry
+	nextSubID   uint64
 	logChan     chan LogEntry
 	stopChan    chan struct{}
 	wg          sync.WaitGroup
@@ -56,9 +65,10 @@ func NewPebbleStore(dir string) (Store, error) {
 		return nil, err
 	}
 	s := &pebbleStore{
-		db:       db,
-		logChan:  make(chan LogEntry, 10000), // Large buffer for logs
-		stopChan: make(chan struct{}),
+		db:          db,
+		subscribers: make(map[uint64]chan LogEntry),
+		logChan:     make(chan LogEntry, 10000), // Large buffer for logs
+		stopChan:    make(chan struct{}),
 	}
 
 	// Start background worker for async writes
@@ -131,14 +141,14 @@ func (s *pebbleStore) worker() {
 
 func (s *pebbleStore) Write(entry LogEntry) error {
 	// Broadcast to subscribers immediately (synchronous for live view)
-	s.subscribers.Range(func(k, v any) bool {
-		ch := v.(chan LogEntry)
+	s.subMu.RLock()
+	for _, ch := range s.subscribers {
 		select {
 		case ch <- entry:
 		default:
 		}
-		return true
-	})
+	}
+	s.subMu.RUnlock()
 
 	// Async write to DB
 	select {
@@ -154,14 +164,18 @@ func (s *pebbleStore) Write(entry LogEntry) error {
 
 func (s *pebbleStore) Subscribe(ctx context.Context) <-chan LogEntry {
 	ch := make(chan LogEntry, 100)
-	id := uuid.New().String()
-	s.subscribers.Store(id, ch)
+	s.subMu.Lock()
+	s.nextSubID++
+	id := s.nextSubID
+	s.subscribers[id] = ch
+	s.subMu.Unlock()
 
-	go func() {
-		<-ctx.Done()
-		s.subscribers.Delete(id)
+	context.AfterFunc(ctx, func() {
+		s.subMu.Lock()
+		delete(s.subscribers, id)
 		close(ch)
-	}()
+		s.subMu.Unlock()
+	})
 
 	return ch
 }
@@ -180,15 +194,28 @@ func (s *pebbleStore) List(pageSize int, pageToken string, tenantID string) ([]L
 		iter.Last() // Start from most recent if no token
 	}
 
-	count := 0
-	for ; iter.Valid() && count < pageSize; iter.Prev() {
+	// A tenant whose entries are rare would otherwise make one page decode
+	// the whole store. Past the scan budget the page comes back short, with a
+	// token to carry on from.
+	var needle []byte
+	if tenantID != "" {
+		quoted, _ := json.Marshal(tenantID)
+		needle = append([]byte(`"tenant_id":`), quoted...)
+	}
+	count, scanned := 0, 0
+	for ; iter.Valid() && count < pageSize && scanned < listScanBudget; iter.Prev() {
+		scanned++
+		// An empty tenantID is the operator's unfiltered view. Anyone else
+		// sees only entries that name their tenant: an entry with no tenant
+		// is process-wide and may mention any tenant's recipients.
+		if tenantID != "" && !bytes.Contains(iter.Value(), needle) {
+			continue
+		}
 		var entry LogEntry
 		if err := json.Unmarshal(iter.Value(), &entry); err != nil {
 			continue
 		}
-
-		// Filter by tenant if requested
-		if tenantID != "" && entry.TenantID != "" && entry.TenantID != tenantID {
+		if tenantID != "" && entry.TenantID != tenantID {
 			continue
 		}
 
@@ -298,6 +325,9 @@ func (s *pebbleStore) TruncateBefore(ctx context.Context, before time.Time) (int
 }
 
 const logTruncateBatchSize = 1000
+
+// listScanBudget caps how many entries one List call reads.
+const listScanBudget = 20000
 
 func (s *pebbleStore) Close() error {
 	var err error

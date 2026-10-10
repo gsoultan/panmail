@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,10 @@ import (
 type workerMockOutboxRepo struct {
 	emails     []*entities.OutboxEmail
 	lastUpdate *entities.OutboxEmail
+
+	// renew answers RenewClaim when set; unset, every claim is still ours.
+	renew    func() (bool, error)
+	renewals atomic.Int64
 }
 
 func (m *workerMockOutboxRepo) Create(ctx context.Context, e *entities.OutboxEmail) error {
@@ -221,6 +226,14 @@ func TestQueueWorker_ProcessEmail(t *testing.T) {
 	}
 }
 
+func (m *workerMockOutboxRepo) RenewClaim(context.Context, string, string, time.Time) (bool, error) {
+	m.renewals.Add(1)
+	if m.renew != nil {
+		return m.renew()
+	}
+	return true, nil
+}
+
 func (m *workerMockOutboxRepo) ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error) {
 	return m.ListPending(ctx, limit)
 }
@@ -238,6 +251,8 @@ func (m *workerMockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time
 	m.emails = kept
 	return removed, nil
 }
+
+func (m *workerMockOutboxRepo) PruneHeld(context.Context, time.Time) (int64, error) { return 0, nil }
 
 func (m *workerMockOutboxRepo) Stats(context.Context) (int64, time.Time, error) {
 	oldest := time.Now()

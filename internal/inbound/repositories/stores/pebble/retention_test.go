@@ -21,21 +21,14 @@ func newTestStore(t *testing.T) stores.InboundRepository {
 	return s
 }
 
-// write stores a message and waits for the async writer to flush it, so a
-// prune that follows sees it.
+// write stores a message. Write commits before it returns, so a prune that
+// follows sees it.
 func write(t *testing.T, s stores.InboundRepository, e *entities.InboundEmail) {
 	t.Helper()
 
 	if err := s.Write(t.Context(), e); err != nil {
 		t.Fatalf("failed to write %s: %v", e.ID, err)
 	}
-	for range 100 {
-		if got, _ := s.GetByID(t.Context(), testTenant, e.ID); got != nil {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("inbound message %s never became readable", e.ID)
 }
 
 func inbound(id string, age time.Duration) *entities.InboundEmail {

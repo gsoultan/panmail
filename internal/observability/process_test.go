@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -29,7 +30,7 @@ func TestProcessMetricsArePublished(t *testing.T) {
 		t.Fatalf("ping: %v", err)
 	}
 
-	if err := m.ObserveProcess(db); err != nil {
+	if err := m.ObserveProcess(func() *sql.DB { return db }); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -102,6 +103,37 @@ func TestProcessMetricsWithoutADatabase(t *testing.T) {
 	}
 	if strings.Contains(body, "panmail_db_connections_in_use") {
 		t.Error("connection metrics were published with no database to read them from")
+	}
+}
+
+// The gateway registers its metrics at boot, which on a fresh install is
+// before setup has installed a database. The pool gauges used to be built
+// from the handle at that moment, nil, so they never appeared until the
+// process was restarted.
+func TestPoolMetricsFollowTheDatabaseInstalledLater(t *testing.T) {
+	m, err := New()
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+
+	var current atomic.Pointer[sql.DB]
+	if err := m.ObserveProcess(current.Load); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	if body := scrape(t, m); strings.Contains(body, "panmail_db_connections_open") {
+		t.Error("pool numbers were published before there was a pool")
+	}
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	current.Store(db) // what setup does
+
+	if body := scrape(t, m); !strings.Contains(body, "panmail_db_connections_open") {
+		t.Error("pool numbers did not appear once a database was installed; they need a restart")
 	}
 }
 

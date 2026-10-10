@@ -36,4 +36,10 @@ type OutboxEmail struct {
 	LastError   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+
+	// ClaimToken is the claim this copy of the row was handed under, set by
+	// ClaimPending and empty otherwise. A worker renews its lease with it, and
+	// a renewal that no longer matches means another worker has since claimed
+	// the message.
+	ClaimToken string
 }

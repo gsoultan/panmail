@@ -58,6 +58,19 @@ func NewStore(conn db.Connection, local stores.EventRepository, writer *Writer) 
 	return &Store{conn: conn, local: local, writer: writer}
 }
 
+// NewShadow builds the shared store as the shadow for stores.WithShadow: it
+// writes the database only.
+//
+// The shadow phase wraps the local store as the primary, and the wrapper
+// already writes every event and body to it. A shadow that mirrored to the
+// same local store as well, as NewStore does, wrote each of them there twice —
+// harmless for the rows, which land on the same key, but every counter was
+// merged twice, so the dashboard's figures doubled for as long as the shadow
+// ran.
+func NewShadow(conn db.Connection, local stores.EventRepository, writer *Writer) *Store {
+	return NewStore(conn, local, writer).WithoutLocalWrites()
+}
+
 // WithoutLocalWrites stops the local event and message writes.
 //
 // The last step of docs/design/0002-shared-event-store.md, and the only one a
@@ -189,8 +202,56 @@ func (s *Store) GetLatestMessageForRecipient(ctx context.Context, tenantID, reci
 	return m, err
 }
 
-// TruncateMessagesBefore deletes stored bodies older than the cutoff.
+// BackfillMessageProvider records the provider on a stored message that does
+// not name one yet: one UPDATE of one column, rather than reading the body
+// with its attachments and writing all of it back. A message that already
+// names a provider is left alone, as is one that is not there.
+func (s *Store) BackfillMessageProvider(ctx context.Context, tenantID, messageID, providerID string) error {
+	conn, err := s.db()
+	if err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE email_messages SET provider_id = $1
+		 WHERE tenant_id = $2 AND id = $3 AND provider_id IS NULL`,
+		nullableUUID(providerID), tenantID, messageID); err != nil {
+		return err
+	}
+
+	if s.stopPebble {
+		return nil
+	}
+	// Mirrored like the body it belongs to, so reverting to local reads finds
+	// the provider there too.
+	if b, ok := s.local.(stores.MessageProviderBackfiller); ok {
+		if err := b.BackfillMessageProvider(ctx, tenantID, messageID, providerID); err != nil {
+			slog.Warn("could not mirror a message's provider to the local store",
+				"error", err, "id", messageID)
+		}
+	}
+	return nil
+}
+
+// TruncateMessagesBefore deletes stored bodies older than the cutoff, from the
+// database and from the local store.
+//
+// Both, because unless -stop-local-events is set every body is mirrored to the
+// local store — and even when it is, the local store still holds whatever was
+// written before. Bodies are never archived, so there is nothing to do once
+// rather than twice here: each copy is simply deleted. The count returned is
+// the database's; the local pass logs its own.
 func (s *Store) TruncateMessagesBefore(ctx context.Context, before time.Time) (int64, error) {
+	n, err := s.local.TruncateMessagesBefore(ctx, before)
+	logMirrorPrune("messages", n)
+	if err != nil {
+		return 0, fmt.Errorf("local store: %w", err)
+	}
+	return s.DeleteMessagesBefore(ctx, before)
+}
+
+// DeleteMessagesBefore deletes stored bodies older than the cutoff from the
+// database alone. See stores.SharedPruner.
+func (s *Store) DeleteMessagesBefore(ctx context.Context, before time.Time) (int64, error) {
 	conn, err := s.db()
 	if err != nil {
 		return 0, err
@@ -234,10 +295,39 @@ func (s *Store) GetResourceHistory(ctx context.Context, since time.Time) ([]enti
 // local store first would be closing the thing archives are served from while
 // a flush is still in flight.
 func (s *Store) Close() error {
+	s.StopWriter()
+	return s.local.Close()
+}
+
+// Checkpoint snapshots the local store, which still holds archives' source
+// and resource history, and in most deployments every event and body too.
+// Without it a backup of a gateway in shared mode refused to run at all,
+// reporting that events.db could not snapshot itself. The database is backed
+// up by its own tooling, which the manifest says.
+func (s *Store) Checkpoint(dir string) error {
+	cp, ok := s.local.(interface{ Checkpoint(dir string) error })
+	if !ok {
+		return errors.New("the local event store cannot snapshot itself")
+	}
+	return cp.Checkpoint(dir)
+}
+
+// DiskUsage reports the local store's size. The database's is its own
+// operator's to measure, and is not on this disk.
+func (s *Store) DiskUsage() int64 {
+	if sized, ok := s.local.(interface{ DiskUsage() int64 }); ok {
+		return sized.DiskUsage()
+	}
+	return 0
+}
+
+// StopWriter flushes and stops the batching writer without closing the local
+// store. It is what the shadow wrapper calls on the way down, since there the
+// local store is the primary and is closed by the wrapper itself.
+func (s *Store) StopWriter() {
 	if s.writer != nil {
 		s.writer.Stop()
 	}
-	return s.local.Close()
 }
 
 // --- encoding ---

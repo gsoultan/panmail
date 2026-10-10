@@ -27,7 +27,21 @@ type store struct {
 	opChan  chan any
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
+
+	// closeMu orders enqueueing against Close. A sender holds it for reading
+	// across its check of closed and its send, so once Close has taken it for
+	// writing and set closed, no op can reach opChan behind the worker's final
+	// drain — which is what lets that drain be the last word.
+	closeMu   sync.RWMutex
+	closed    bool
+	closeOnce sync.Once
+	closeErr  error
 }
+
+// ErrClosed is returned by a write that arrives after Close. The write is
+// refused rather than queued, because a queued op nobody will ever commit is a
+// silent loss, and blocking on a channel nobody reads would hang the caller.
+var ErrClosed = errors.New("event store is closed")
 
 type writeOp struct {
 	event *entities.EmailEvent
@@ -39,6 +53,28 @@ type messageOp struct {
 
 type resourceOp struct {
 	point entities.ResourcePoint
+}
+
+// latestExpiryOp asks the writer to drop latest-event pointers for events
+// retention has expired, each only if it still points at that event.
+//
+// Retention used to do this itself, and raced the writer: it read latest_ts,
+// the writer then moved the pointer to a newer event, and retention's commit
+// deleted latest_ts regardless — leaving the newer latest_events entry with
+// nothing pointing at it, so the next write for that message and recipient
+// added a second one and the timeline listed the message twice, forever.
+// latest_ts is now read and written by one goroutine only, which removes the
+// race rather than narrowing it.
+type latestExpiryOp struct {
+	expired []latestPointer
+	// done is closed once the deletions are committed, so the retention pass
+	// can compact over them.
+	done chan struct{}
+}
+
+// latestPointer names one latest_events entry by what its key is built from.
+type latestPointer struct {
+	tenantID, messageID, recipient, tsDesc string
 }
 
 func NewStore(dir string) (stores.EventRepository, error) {
@@ -114,37 +150,78 @@ func (s *store) worker() {
 	batchLatestTs := make(map[string]string)
 
 	count := 0
+	commit := func() {
+		if count == 0 {
+			return
+		}
+		_ = batch.Commit(nil)
+		batch = s.db.NewBatch()
+		clear(batchLatestTs)
+		count = 0
+	}
+	apply := func(op any) {
+		switch v := op.(type) {
+		case writeOp:
+			_ = s.performWrite(batch, v.event, batchLatestTs)
+		case messageOp:
+			_ = s.performWriteMessage(batch, v.message)
+		case resourceOp:
+			_ = s.performWriteResource(batch, v.point)
+		case latestExpiryOp:
+			s.performLatestExpiry(batch, v.expired, batchLatestTs)
+			// Committed at once rather than with the next batch: the pass
+			// that sent this compacts over these keys as soon as it returns.
+			count++
+			commit()
+			close(v.done)
+			return
+		}
+		count++
+		if count >= 500 {
+			commit()
+		}
+	}
+
 	for {
 		select {
 		case op := <-s.opChan:
-			switch v := op.(type) {
-			case writeOp:
-				_ = s.performWrite(batch, v.event, batchLatestTs)
-			case messageOp:
-				_ = s.performWriteMessage(batch, v.message)
-			case resourceOp:
-				_ = s.performWriteResource(batch, v.point)
-			}
-			count++
-			if count >= 500 {
-				_ = batch.Commit(nil)
-				batch = s.db.NewBatch()
-				clear(batchLatestTs)
-				count = 0
-			}
+			apply(op)
 		case <-ticker.C:
-			if count > 0 {
-				_ = batch.Commit(nil)
-				batch = s.db.NewBatch()
-				clear(batchLatestTs)
-				count = 0
-			}
+			commit()
 		case <-s.stopCh:
-			if count > 0 {
-				_ = batch.Commit(nil)
+			// Drain before the final commit. select picks among ready cases at
+			// random, so stop can win while thousands of ops are still
+			// buffered — and every one of them is a write its caller was told
+			// had been accepted. Close has already stopped new ops arriving,
+			// so this terminates.
+			for {
+				select {
+				case op := <-s.opChan:
+					apply(op)
+					continue
+				default:
+				}
+				break
 			}
+			commit()
+			_ = batch.Close()
 			return
 		}
+	}
+}
+
+// enqueue hands an op to the writer, or refuses it once the store is closing.
+func (s *store) enqueue(ctx context.Context, op any) error {
+	s.closeMu.RLock()
+	defer s.closeMu.RUnlock()
+	if s.closed {
+		return ErrClosed
+	}
+	select {
+	case s.opChan <- op:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -186,8 +263,11 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 	copy(metricKey, buf)
 	_ = s.incrementCounter(batch, metricKey)
 
+	// The buckets are UTC, on both sides: see bucketTime.
+	at := bucketTime(e.Timestamp)
+
 	// Daily timeseries
-	dateStr := e.Timestamp.Format("2006-01-02")
+	dateStr := at.Format(dayLayout)
 	buf = buf[:0]
 	buf = append(buf, "timeseries:"...)
 	buf = append(buf, e.TenantID...)
@@ -200,7 +280,7 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 	_ = s.incrementCounter(batch, tsKey)
 
 	// Hourly timeseries
-	hourStr := e.Timestamp.Format("2006-01-02 15")
+	hourStr := at.Format(hourLayout)
 	buf = buf[:0]
 	buf = append(buf, "timeseries:hour:"...)
 	buf = append(buf, e.TenantID...)
@@ -213,7 +293,7 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 	_ = s.incrementCounter(batch, hourKey)
 
 	// Minute timeseries
-	minuteStr := e.Timestamp.Format("2006-01-02 15:04")
+	minuteStr := at.Format(minuteLayout)
 	buf = buf[:0]
 	buf = append(buf, "timeseries:minute:"...)
 	buf = append(buf, e.TenantID...)
@@ -301,6 +381,38 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 	return nil
 }
 
+// performLatestExpiry drops each latest-event pointer that still names the
+// expired event. It consults the batch cache before the database for the same
+// reason performWrite does: a newer event may be in this uncommitted batch.
+func (s *store) performLatestExpiry(batch *pebble.Batch, expired []latestPointer, batchLatestTs map[string]string) {
+	for _, p := range expired {
+		cacheKey := p.tenantID + ":" + p.messageID + ":" + p.recipient
+		latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s:%s", p.tenantID, p.messageID, p.recipient))
+
+		current, ok := batchLatestTs[cacheKey]
+		if !ok {
+			val, closer, err := s.db.Get(latestTsKey)
+			if err != nil {
+				continue
+			}
+			current = string(val)
+			_ = closer.Close()
+		}
+		// Only when this is the event it points at: dropping it for an older
+		// event would hide a message that still has live events.
+		if current != p.tsDesc {
+			continue
+		}
+
+		_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s",
+			p.tenantID, p.tsDesc, p.messageID, p.recipient)), nil)
+		_ = batch.Delete(latestTsKey, nil)
+		// Recorded as "no pointer", which performWrite reads as such, so a
+		// write later in this batch does not try to delete it again.
+		batchLatestTs[cacheKey] = ""
+	}
+}
+
 func (s *store) performWriteMessage(batch *pebble.Batch, m *entities.EmailMessage) error {
 	val, err := json.Marshal(m)
 	if err != nil {
@@ -317,21 +429,11 @@ func (s *store) performWriteMessage(batch *pebble.Batch, m *entities.EmailMessag
 }
 
 func (s *store) Write(ctx context.Context, e *entities.EmailEvent) error {
-	select {
-	case s.opChan <- writeOp{event: e}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return s.enqueue(ctx, writeOp{event: e})
 }
 
 func (s *store) WriteMessage(ctx context.Context, m *entities.EmailMessage) error {
-	select {
-	case s.opChan <- messageOp{message: m}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return s.enqueue(ctx, messageOp{message: m})
 }
 
 func (s *store) GetByID(ctx context.Context, tenantID string, id string) (*entities.EmailEvent, error) {
@@ -430,12 +532,7 @@ func (s *store) WriteResourceMetric(ctx context.Context, cpuUsage float64, memUs
 			SystemLoad15: load15,
 		},
 	}
-	select {
-	case s.opChan <- op:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return s.enqueue(ctx, op)
 }
 
 func (s *store) performWriteResource(batch *pebble.Batch, p entities.ResourcePoint) error {
@@ -704,9 +801,25 @@ func (s *store) GetMetrics(ctx context.Context, tenantID string, startTime, endT
 		return res, nil
 	}
 
-	// Calculate metrics using aggregated minute timeseries for better performance and persistence
-	ts, err := s.GetTimeSeriesMetrics(ctx, tenantID, startTime, endTime, "minute")
-	if err == nil && len(ts) > 0 {
+	// A closed range is summed from the coarsest counters that tile it: whole
+	// days from day counters, and only the ragged edges from hour and minute
+	// ones. See rangeCounters.
+	if !startTime.IsZero() && !endTime.IsZero() {
+		// Empty, and said so here: the fallback below would hand Pebble a
+		// lower bound above its upper one.
+		if endTime.Before(startTime) {
+			return map[string]int64{}, nil
+		}
+		res, err := s.rangeCounters(tenantID, startTime, endTime)
+		if err != nil {
+			return nil, err
+		}
+		if len(res) > 0 {
+			return res, nil
+		}
+	} else if ts, err := s.GetTimeSeriesMetrics(ctx, tenantID, startTime, endTime, "minute"); err == nil && len(ts) > 0 {
+		// Open at one end, which nothing in the dashboard asks for: there is
+		// no edge to tile from, so this keeps summing minutes.
 		res := make(map[string]int64)
 		for _, minMetrics := range ts {
 			for eventType, count := range minMetrics {
@@ -778,7 +891,7 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 			} else if granularity == "minute" {
 				format = "2006-01-02 15:04"
 			}
-			lowerBound = []byte(fmt.Sprintf("%s%s:%s", prefixStr, tenantID, startTime.Format(format)))
+			lowerBound = []byte(fmt.Sprintf("%s%s:%s", prefixStr, tenantID, bucketTime(startTime).Format(format)))
 		}
 
 		if !endTime.IsZero() {
@@ -788,7 +901,7 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 			} else if granularity == "minute" {
 				format = "2006-01-02 15:04"
 			}
-			upperBound = []byte(fmt.Sprintf("%s%s:%s\xff", prefixStr, tenantID, endTime.Format(format)))
+			upperBound = []byte(fmt.Sprintf("%s%s:%s\xff", prefixStr, tenantID, bucketTime(endTime).Format(format)))
 		}
 
 		iter, err := s.db.NewIter(&pebble.IterOptions{
@@ -870,13 +983,13 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 		var timeKey string
 		switch granularity {
 		case "minute":
-			timeKey = e.Timestamp.Format("2006-01-02 15:04")
+			timeKey = bucketTime(e.Timestamp).Format("2006-01-02 15:04")
 		case "hour":
-			timeKey = e.Timestamp.Format("2006-01-02 15:00")
+			timeKey = bucketTime(e.Timestamp).Format("2006-01-02 15:00")
 		case "day":
-			timeKey = e.Timestamp.Format("2006-01-02")
+			timeKey = bucketTime(e.Timestamp).Format("2006-01-02")
 		default:
-			timeKey = e.Timestamp.Format("2006-01-02")
+			timeKey = bucketTime(e.Timestamp).Format("2006-01-02")
 		}
 
 		typeStr := strings.TrimPrefix(e.Type.String(), "EMAIL_EVENT_TYPE_")
@@ -889,10 +1002,22 @@ func (s *store) GetTimeSeriesMetrics(ctx context.Context, tenantID string, start
 	return res, nil
 }
 
+// Close stops accepting writes, commits everything already accepted, and
+// closes the database. Safe to call more than once, since the shared store and
+// the wrappers around this one can each reach it on the way down.
 func (s *store) Close() error {
-	close(s.stopCh)
-	s.wg.Wait()
-	return s.db.Close()
+	s.closeOnce.Do(func() {
+		// Taken for writing, so every sender already past its closed check
+		// has finished its send before the worker is told to drain.
+		s.closeMu.Lock()
+		s.closed = true
+		s.closeMu.Unlock()
+
+		close(s.stopCh)
+		s.wg.Wait()
+		s.closeErr = s.db.Close()
+	})
+	return s.closeErr
 }
 
 // Checkpoint writes a consistent snapshot of this store into dir.

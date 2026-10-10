@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -58,6 +59,29 @@ const defaultSSLMode = "prefer"
 //	instances × max_open_conns + headroom ≤ server max_connections
 const defaultMaxOpenConns = 25
 
+// pingTimeout bounds the ping that proves a new handle works. Long enough for
+// a TLS handshake to a server under load, short enough that a gateway retrying
+// an unreachable database says so in seconds. A variable so a test can shorten
+// it rather than wait it out.
+var pingTimeout = 10 * time.Second
+
+// ErrInvalidConfig marks a Connect failure that no amount of waiting will
+// fix: an engine panmail does not support, or a SQLite database with no path.
+// A caller retrying an unreachable database checks for it so that it gives up
+// at once on a configuration mistake instead of spending its whole retry
+// budget on one.
+var ErrInvalidConfig = errors.New("invalid database configuration")
+
+// invalidConfigError carries the original message unchanged, which is what an
+// operator reads, while still answering errors.Is(err, ErrInvalidConfig).
+type invalidConfigError struct{ err error }
+
+func invalidConfig(err error) error { return invalidConfigError{err: err} }
+
+func (e invalidConfigError) Error() string        { return e.err.Error() }
+func (e invalidConfigError) Unwrap() error        { return e.err }
+func (e invalidConfigError) Is(target error) bool { return target == ErrInvalidConfig }
+
 func Connect(cfg Config) (*sql.DB, error) {
 	var driverName string
 	var dataSourceName string
@@ -76,19 +100,19 @@ func Connect(cfg Config) (*sql.DB, error) {
 		// succeeds, the schema is created, and the failure only appears later
 		// when someone tries to use it. Refusing here says so at the one
 		// moment it can still be acted on.
-		return nil, fmt.Errorf(
+		return nil, invalidConfig(fmt.Errorf(
 			"database type %q is not supported: the query layer uses PostgreSQL-style "+
 				"positional parameters, so %s connects but every query fails. Use postgres or sqlite",
-			cfg.Type, cfg.Type)
+			cfg.Type, cfg.Type))
 	case "sqlite":
 		driverName = "sqlite"
 		dsn, err := sqliteDSN(cfg.FilePath)
 		if err != nil {
-			return nil, err
+			return nil, invalidConfig(err)
 		}
 		dataSourceName = dsn
 	default:
-		return nil, fmt.Errorf("unsupported database type: %s", cfg.Type)
+		return nil, invalidConfig(fmt.Errorf("unsupported database type: %s", cfg.Type))
 	}
 
 	db, err := sql.Open(driverName, dataSourceName)
@@ -113,7 +137,18 @@ func Connect(cfg Config) (*sql.DB, error) {
 	db.SetConnMaxLifetime(5 * time.Minute)
 	db.SetConnMaxIdleTime(2 * time.Minute)
 
-	if err := db.Ping(); err != nil {
+	// Closed on failure. sql.Open starts a goroutine that lives as long as the
+	// handle does, so returning without closing leaked one pool, and its
+	// goroutine, per failed attempt — and a caller retrying a database that is
+	// down makes a failed attempt every few seconds.
+	//
+	// Bounded, because pgx sets no connect timeout of its own: against a host
+	// whose firewall drops packets rather than refusing them, a ping waits on
+	// the kernel's TCP retries, about two minutes, before anything is reported.
+	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 
@@ -218,24 +253,43 @@ type Connection interface {
 	IsConnected() bool
 }
 
+// connection holds the handle atomically because it is written and read on
+// different goroutines: first-run setup installs a database from a request
+// handler while the workers started at boot are already asking for it. A plain
+// field there is a data race, and not a benign one — nothing orders the write
+// before a worker's next read, so a worker may go on seeing nil.
 type connection struct {
-	db *sql.DB
+	db atomic.Pointer[sql.DB]
 }
 
 func NewConnection(db *sql.DB) Connection {
-	return &connection{db: db}
+	c := &connection{}
+	c.db.Store(db)
+	return c
 }
 
 func (c *connection) GetDB() *sql.DB {
-	return c.db
+	return c.db.Load()
 }
 
+// SetDB installs db and closes whatever was held before it.
+//
+// Setup is the caller, and setup can be retried: it connects, installs the
+// handle, then migrates, and a migration that fails leaves the operator to
+// submit the form again. Each attempt used to install a new pool over the old
+// one and leave the old one open, its connections and its goroutine with it.
+// Nothing keeps a handle across calls (every store asks the connection for it
+// per query), so the replaced one has no further users once it is swapped out.
 func (c *connection) SetDB(db *sql.DB) {
-	c.db = db
+	if old := c.db.Swap(db); old != nil && old != db {
+		if err := old.Close(); err != nil {
+			slog.Warn("failed to close the replaced database handle", "error", err)
+		}
+	}
 }
 
 func (c *connection) IsConnected() bool {
-	return c.db != nil
+	return c.db.Load() != nil
 }
 
 // sqliteDSN adds the pragmas a SQLite database needs to survive concurrent use.

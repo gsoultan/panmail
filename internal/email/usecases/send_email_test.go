@@ -137,6 +137,9 @@ func (m *mockEventRepo) Close() error { return nil }
 type mockEventUsecase struct {
 	events   []*evententities.EmailEvent
 	messages []*panmailv1.EmailMessage
+	// listErr, when set, is what ListByMessageID answers: the delivery
+	// history could not be read.
+	listErr error
 }
 
 func (m *mockEventUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, subject string, errorMessage string, metadata map[string]any) error {
@@ -166,6 +169,9 @@ func (m *mockEventUsecase) GetEvent(ctx context.Context, tenantID string, id str
 	return nil, nil, nil
 }
 func (m *mockEventUsecase) ListByMessageID(ctx context.Context, tenantID string, messageID string) ([]*panmailv1.EmailEvent, error) {
+	if m.listErr != nil {
+		return nil, m.listErr
+	}
 	var res []*panmailv1.EmailEvent
 	for _, e := range m.events {
 		if e.MessageID == messageID {
@@ -675,6 +681,10 @@ func (m *mockSenderFunc) Validate(ctx context.Context, email string) error { ret
 func (m *mockSenderFunc) Ping(ctx context.Context) error                   { return nil }
 func (m *mockSenderFunc) SetRetryConfig(config gsmail.RetryConfig)         {}
 
+func (m *mockOutboxRepo) RenewClaim(context.Context, string, string, time.Time) (bool, error) {
+	return true, nil
+}
+
 func (m *mockOutboxRepo) ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error) {
 	return m.ListPending(ctx, limit)
 }
@@ -707,6 +717,8 @@ func (m *mockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time.Time)
 	m.emails = kept
 	return removed, nil
 }
+
+func (m *mockOutboxRepo) PruneHeld(context.Context, time.Time) (int64, error) { return 0, nil }
 
 func (m *mockOutboxRepo) Stats(context.Context) (int64, time.Time, error) {
 	return int64(len(m.emails)), time.Now(), nil

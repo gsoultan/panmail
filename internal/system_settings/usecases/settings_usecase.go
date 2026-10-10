@@ -3,6 +3,8 @@ package usecases
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"time"
 
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/redact"
@@ -33,10 +35,24 @@ type settingsUsecase struct {
 	// than at the next daily pass. Optional: without it the policy still
 	// applies, just later.
 	retentionWorker RetentionTrigger
+
+	// The in-memory copy the send path reads, re-read after a save. Optional.
+	provider Refresher
+	now      func() time.Time
 }
 
-func NewSettingsUsecase(repo repositories.SettingsRepository, retentionWorker RetentionTrigger) SettingsUsecase {
-	return &settingsUsecase{repo: repo, retentionWorker: retentionWorker}
+// Refresher re-reads the stored settings into whatever serves them on the hot
+// path. systemsettings.Provider is the one in production.
+type Refresher interface {
+	Refresh(ctx context.Context) error
+}
+
+// NewSettingsUsecase builds the usecase. provider, when set, is refreshed after
+// every save: it otherwise re-reads on its own timer, and the instance that
+// served the save went on putting the old base URL into tracking links for up
+// to a minute after the page said "saved".
+func NewSettingsUsecase(repo repositories.SettingsRepository, retentionWorker RetentionTrigger, provider Refresher) SettingsUsecase {
+	return &settingsUsecase{repo: repo, retentionWorker: retentionWorker, provider: provider, now: time.Now}
 }
 
 func (u *settingsUsecase) GetSettings(ctx context.Context) (*panmailv1.SystemSettings, error) {
@@ -109,8 +125,22 @@ func (u *settingsUsecase) UpdateSettings(ctx context.Context, s *panmailv1.Syste
 		stored.ContentRedaction = redactionFromProto(s.ContentRedaction).String()
 	}
 
+	// The stored row's own timestamp came back from the read above, so
+	// without this every save wrote the previous one back and updated_at
+	// never moved past the first.
+	stored.UpdatedAt = u.now().UTC()
+
 	if err := u.repo.Save(ctx, stored); err != nil {
 		return nil, err
+	}
+
+	if u.provider != nil {
+		if err := u.provider.Refresh(ctx); err != nil {
+			// The save stands; the provider's own timer will catch up. Failing
+			// the request would tell the administrator a saved change was not.
+			slog.Warn("settings saved but could not be re-read; this instance applies them at its next refresh",
+				"error", err)
+		}
 	}
 
 	if u.retentionWorker != nil {

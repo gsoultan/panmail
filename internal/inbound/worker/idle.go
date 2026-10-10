@@ -2,6 +2,9 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"log/slog"
 	"sync"
 	"time"
@@ -37,7 +40,19 @@ type IdleSupervisor struct {
 	refresh time.Duration
 
 	mu      sync.Mutex
-	running map[string]context.CancelFunc
+	running map[string]*idleSession
+}
+
+// idleSession is one provider's connection, as the supervisor tracks it.
+//
+// The fingerprint is of the configuration the session was opened with. A
+// session used to be keyed by provider id alone, so one opened before an
+// operator corrected a password or moved the provider to a new host kept
+// using the old settings until the process restarted -- reconnecting with
+// them forever if they were the reason it was failing.
+type idleSession struct {
+	fingerprint string
+	cancel      context.CancelFunc
 }
 
 const (
@@ -52,7 +67,7 @@ func NewIdleSupervisor(poller *Poller) *IdleSupervisor {
 		retryDelay: defaultIdleRetryDelay,
 		maxDelay:   defaultIdleMaxDelay,
 		refresh:    defaultIdleRefresh,
-		running:    map[string]context.CancelFunc{},
+		running:    map[string]*idleSession{},
 	}
 }
 
@@ -110,24 +125,57 @@ func (s *IdleSupervisor) reconcile(ctx context.Context) {
 }
 
 func (s *IdleSupervisor) ensure(ctx context.Context, tenantID string, provider *providerEntities.EmailProvider) {
+	fingerprint := providerFingerprint(provider)
+
 	s.mu.Lock()
-	if _, already := s.running[provider.ID]; already {
-		s.mu.Unlock()
-		return
+	if current, ok := s.running[provider.ID]; ok {
+		if current.fingerprint == fingerprint {
+			s.mu.Unlock()
+			return
+		}
+		// The provider changed under a live session. Cancel it and open a
+		// replacement with what is configured now; the old one's exit will
+		// not touch the entry, which is no longer its own.
+		slog.Info("idle: provider configuration changed, reconnecting",
+			"tenant_id", tenantID, "provider_id", provider.ID)
+		current.cancel()
 	}
 	sessionCtx, cancel := context.WithCancel(ctx)
-	s.running[provider.ID] = cancel
+	session := &idleSession{fingerprint: fingerprint, cancel: cancel}
+	s.running[provider.ID] = session
 	s.mu.Unlock()
 
 	go func() {
 		defer func() {
+			// Only remove the entry if it is still this session's. When a
+			// configuration change replaced it, the entry belongs to the
+			// replacement, and deleting it would leave that session running
+			// untracked -- and the next reconcile would open a second.
 			s.mu.Lock()
-			delete(s.running, provider.ID)
+			if s.running[provider.ID] == session {
+				delete(s.running, provider.ID)
+			}
 			s.mu.Unlock()
 			cancel()
 		}()
 		s.session(sessionCtx, tenantID, provider)
 	}()
+}
+
+// providerFingerprint identifies the configuration a session connects with.
+// Name, type and the connection config are what a receiver is built from; a
+// change to any of them means the open connection is not the one wanted.
+func providerFingerprint(p *providerEntities.EmailProvider) string {
+	h := sha256.New()
+	for _, part := range [][]byte{[]byte(p.TenantID), []byte(p.Name), []byte(p.Type.String()), p.Config} {
+		// Length-prefixed so two different splits of the same bytes cannot
+		// collide.
+		var n [8]byte
+		binary.BigEndian.PutUint64(n[:], uint64(len(part)))
+		h.Write(n[:])
+		h.Write(part)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // session keeps one provider connected, reconnecting with backoff.
@@ -237,10 +285,10 @@ func (s *IdleSupervisor) deliver(ctx context.Context, tenantID string, provider 
 func (s *IdleSupervisor) stopUnwanted(wanted map[string]struct{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, cancel := range s.running {
+	for id, session := range s.running {
 		if _, keep := wanted[id]; !keep {
 			slog.Info("idle: provider no longer present, closing session", "provider_id", id)
-			cancel()
+			session.cancel()
 		}
 	}
 }
@@ -248,8 +296,8 @@ func (s *IdleSupervisor) stopUnwanted(wanted map[string]struct{}) {
 func (s *IdleSupervisor) stopAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, cancel := range s.running {
-		cancel()
+	for _, session := range s.running {
+		session.cancel()
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,6 +51,13 @@ type NewAdmin struct {
 	Name     string
 }
 
+// CreatedAdmin names what CreateAdmin wrote, so that a setup which fails
+// afterwards can remove exactly that and nothing else.
+type CreatedAdmin struct {
+	UserID   string
+	TenantID string
+}
+
 // TwoFactorSetup is the enrolment material handed to a user who must configure
 // an authenticator app.
 type TwoFactorSetup struct {
@@ -74,7 +82,14 @@ type SignInResult struct {
 type AuthUsecase interface {
 	SignIn(ctx context.Context, creds Credentials) (*SignInResult, error)
 	GetCurrentUser(ctx context.Context, userID string) (*entities.User, error)
-	CreateAdmin(ctx context.Context, admin NewAdmin) error
+	// CreateAdmin creates the first administrator and the tenant they live
+	// in. It either creates all of it or none of it: a failure part-way
+	// removes what it had already written, so a refused setup can simply be
+	// tried again.
+	CreateAdmin(ctx context.Context, admin NewAdmin) (*CreatedAdmin, error)
+	// RemoveAdmin undoes CreateAdmin, for a setup that failed after the
+	// administrator was written.
+	RemoveAdmin(ctx context.Context, created *CreatedAdmin) error
 	IsFirstRun(ctx context.Context) (bool, error)
 
 	// 2FA methods
@@ -117,16 +132,18 @@ func NewAuthUsecase(
 }
 
 func (u *authUsecase) SignIn(ctx context.Context, creds Credentials) (*SignInResult, error) {
-	if blocked, retryIn := u.loginLimiter.Blocked(creds.Email); blocked {
+	attempt, blocked, retryIn := u.loginLimiter.Begin(creds.Email)
+	if blocked {
 		return nil, fmt.Errorf("too many login attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
 	}
+	defer attempt.Abandon()
 
 	user, err := u.authenticatePassword(ctx, creds)
 	if err != nil {
-		u.loginLimiter.Fail(creds.Email)
+		attempt.Failed()
 		return nil, err
 	}
-	u.loginLimiter.Reset(creds.Email)
+	attempt.Succeeded()
 
 	if user.TwoFactorEnabled {
 		return u.startTwoFactorChallenge(user)
@@ -203,14 +220,14 @@ func (u *authUsecase) GetCurrentUser(ctx context.Context, userID string) (*entit
 	return u.repo.GetByID(ctx, userID)
 }
 
-func (u *authUsecase) CreateAdmin(ctx context.Context, admin NewAdmin) error {
-	if err := validatePassword(admin.Password); err != nil {
-		return err
+func (u *authUsecase) CreateAdmin(ctx context.Context, admin NewAdmin) (*CreatedAdmin, error) {
+	if err := ValidateNewAdmin(admin); err != nil {
+		return nil, err
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(admin.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	tenantID := uuid.New().String()
@@ -222,8 +239,9 @@ func (u *authUsecase) CreateAdmin(ctx context.Context, admin NewAdmin) error {
 	}
 
 	if err := u.tenantRepo.Create(ctx, tenant); err != nil {
-		return err
+		return nil, err
 	}
+	created := &CreatedAdmin{TenantID: tenantID}
 
 	user := &entities.User{
 		ID:        uuid.New().String(),
@@ -237,32 +255,87 @@ func (u *authUsecase) CreateAdmin(ctx context.Context, admin NewAdmin) error {
 	}
 
 	if err := u.repo.Create(ctx, user); err != nil {
-		return err
+		// A duplicate address or a database error here used to leave the
+		// tenant behind, and every retry added another "Default Tenant".
+		return nil, u.undoCreateAdmin(ctx, created, err)
 	}
+	created.UserID = user.ID
 
 	// The home tenant is a membership like any other, so that the first
 	// administrator is listed among their own tenant's members and can be
 	// assigned to further tenants by the same path as anybody else. A super
 	// admin's global role is not a tenant role, so the row records
 	// administrator, the strongest role that can be held locally.
-	if u.memberships == nil {
-		return nil
+	if u.memberships != nil {
+		if err := u.memberships.Assign(ctx, &entities.UserTenant{
+			UserID:    user.ID,
+			TenantID:  tenantID,
+			Role:      entities.RoleAdmin,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+		}); err != nil {
+			return nil, u.undoCreateAdmin(ctx, created, err)
+		}
 	}
-	return u.memberships.Assign(ctx, &entities.UserTenant{
-		UserID:    user.ID,
-		TenantID:  tenantID,
-		Role:      entities.RoleAdmin,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-	})
+	return created, nil
 }
 
-func validatePassword(password string) error {
-	const minPasswordLength = 12
-	if len(password) < minPasswordLength {
-		return fmt.Errorf("password must be at least %d characters", minPasswordLength)
+// undoCreateAdmin removes a partly created administrator and returns the error
+// that caused it, joined with any failure to clean up so that neither is lost.
+func (u *authUsecase) undoCreateAdmin(ctx context.Context, created *CreatedAdmin, cause error) error {
+	if err := u.RemoveAdmin(ctx, created); err != nil {
+		return errors.Join(cause, fmt.Errorf("could not remove the partly created administrator: %w", err))
+	}
+	return cause
+}
+
+// RemoveAdmin deletes what CreateAdmin wrote, children first: the membership
+// and the user both point at the tenant, and SQLite enforces those keys.
+func (u *authUsecase) RemoveAdmin(ctx context.Context, created *CreatedAdmin) error {
+	if created == nil {
+		return nil
+	}
+	if created.UserID != "" {
+		if u.memberships != nil {
+			if err := u.memberships.RemoveAllForUser(ctx, created.UserID); err != nil {
+				return err
+			}
+		}
+		if err := u.repo.Delete(ctx, created.UserID); err != nil {
+			return err
+		}
+	}
+	if created.TenantID != "" {
+		return u.tenantRepo.Delete(ctx, created.TenantID)
 	}
 	return nil
+}
+
+// MinPasswordLength is the shortest password any account may have. The setup
+// wizard and the user forms in the console carry the same number; a wizard
+// that accepted less than this is how a first run used to fail after it had
+// already written its configuration.
+const MinPasswordLength = 12
+
+// ErrPasswordTooShort is returned for a password under MinPasswordLength.
+var ErrPasswordTooShort = fmt.Errorf("password must be at least %d characters", MinPasswordLength)
+
+// ValidatePassword applies the password rule shared by every way an account
+// is created.
+func ValidatePassword(password string) error {
+	if len(password) < MinPasswordLength {
+		return ErrPasswordTooShort
+	}
+	return nil
+}
+
+// ValidateNewAdmin checks the first administrator's details without touching
+// anything, so setup can refuse bad input before it has side effects.
+func ValidateNewAdmin(admin NewAdmin) error {
+	if !strings.Contains(admin.Email, "@") {
+		return errors.New("a valid administrator email address is required")
+	}
+	return ValidatePassword(admin.Password)
 }
 
 func (u *authUsecase) IsFirstRun(ctx context.Context) (bool, error) {
@@ -307,9 +380,11 @@ func (u *authUsecase) VerifyTwoFactorLogin(ctx context.Context, challengeToken, 
 		return nil, errors.New("invalid or expired two-factor challenge")
 	}
 
-	if blocked, retryIn := u.twoFactorLimiter.Blocked(payload.UserID); blocked {
+	attempt, blocked, retryIn := u.twoFactorLimiter.Begin(payload.UserID)
+	if blocked {
 		return nil, fmt.Errorf("too many verification attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
 	}
+	defer attempt.Abandon()
 
 	user, err := u.repo.GetByID(ctx, payload.UserID)
 	if err != nil || user == nil {
@@ -322,10 +397,10 @@ func (u *authUsecase) VerifyTwoFactorLogin(ctx context.Context, challengeToken, 
 	}
 
 	if !totp.Validate(code, secret) {
-		u.twoFactorLimiter.Fail(user.ID)
+		attempt.Failed()
 		return nil, errors.New("invalid verification code")
 	}
-	u.twoFactorLimiter.Reset(user.ID)
+	attempt.Succeeded()
 
 	if enrolling {
 		if err := u.repo.UpdateTwoFactor(ctx, user.ID, true, secret); err != nil {
@@ -360,9 +435,11 @@ func (u *authUsecase) resolveTwoFactorSecret(user *entities.User) (string, bool)
 // is taken from the server-side pending store, so the caller can only confirm
 // material this server issued to them.
 func (u *authUsecase) EnableTwoFactor(ctx context.Context, userID, code string) error {
-	if blocked, retryIn := u.twoFactorLimiter.Blocked(userID); blocked {
+	attempt, blocked, retryIn := u.twoFactorLimiter.Begin(userID)
+	if blocked {
 		return fmt.Errorf("too many verification attempts. please try again in %d minutes", int(retryIn.Minutes())+1)
 	}
+	defer attempt.Abandon()
 
 	secret, ok := u.pendingTwoFactor.Get(userID)
 	if !ok {
@@ -370,10 +447,10 @@ func (u *authUsecase) EnableTwoFactor(ctx context.Context, userID, code string) 
 	}
 
 	if !totp.Validate(code, secret) {
-		u.twoFactorLimiter.Fail(userID)
+		attempt.Failed()
 		return errors.New("invalid verification code")
 	}
-	u.twoFactorLimiter.Reset(userID)
+	attempt.Succeeded()
 
 	if err := u.repo.UpdateTwoFactor(ctx, userID, true, secret); err != nil {
 		return err

@@ -148,6 +148,7 @@ func TestUsecaseRefusalsKeepTheirMeaning(t *testing.T) {
 		{usecases.ErrTenantNotFound, connect.CodeNotFound},
 		{usecases.ErrNotAMember, connect.CodeNotFound},
 		{usecases.ErrRoleNotAssignable, connect.CodeInvalidArgument},
+		{usecases.ErrPasswordTooShort, connect.CodeInvalidArgument},
 		{usecases.ErrHomeTenantRemoval, connect.CodeFailedPrecondition},
 		{usecases.ErrHomeTenantOnlyDeletion, connect.CodeFailedPrecondition},
 		{usecases.ErrSuperAdminFromGuestTenant, connect.CodeFailedPrecondition},

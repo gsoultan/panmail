@@ -118,9 +118,6 @@ const (
 	// to exhaust a process.
 	maxRPCRequestBytes = 48 << 20 // 48 MiB
 
-	shutdownTimeout    = 15 * time.Second
-	workerDrainTimeout = 30 * time.Second
-
 	// How long to wait before bringing a panicked worker back, doubling up to
 	// the maximum. Short at first because the common cause is transient and
 	// mail is stopped meanwhile; bounded because a worker that panics on every
@@ -275,6 +272,11 @@ func main() {
 	// because the two costs scale differently: the settings read is per
 	// gateway per interval, so a large fleet pays for a short one, while the
 	// propagation delay it buys is the same at any size.
+	// How long readiness reports not-ready before the listener closes, so a
+	// load balancer stops routing here before anything is refused. Comes out
+	// of the 25s shutdown budget; see shutdown.go.
+	shutdownDelayFlag := flag.Duration("shutdown-delay", defaultPreStopDelay,
+		"How long to report not-ready before closing the listener on shutdown; 0 to close at once")
 	smtpReconcileIntervalFlag := flag.Duration("smtp-reconcile-interval", smtpusecases.DefaultReconcileInterval,
 		"How often to re-read the stored SMTP submission configuration; ignored when --smtp-addr is set")
 	flag.Parse()
@@ -321,15 +323,11 @@ func main() {
 	}
 
 	if cfg != nil {
-		sqlDB, err := db.Connect(cfg.Database)
-		if err != nil {
-			slog.Error("failed to connect to db from config", "error", err)
-		} else {
-			conn.SetDB(sqlDB)
-			// Run migration if connected
-			if err := migrate(conn, cfg.Database.Type); err != nil {
-				slog.Error("failed to migrate db", "error", err)
-			}
+		// Fatal, unlike before setup: a configured gateway without its database
+		// can do nothing, and exiting is what gets it restarted. See boot.go.
+		if err := openConfiguredDatabase(cfg.Database, conn, db.Connect, migrate, defaultBootRetry()); err != nil {
+			slog.Error("refusing to start", "error", err)
+			os.Exit(1)
 		}
 	} else {
 		slog.Info("First run detected: no configuration found. Waiting for setup.")
@@ -459,7 +457,7 @@ func main() {
 		// dashboard with a blank Content tab.
 		shadowEvents = eventpostgres.NewWriter(conn)
 		eventRepo = eventrepos.WithShadow(eventRepo,
-			eventpostgres.NewStore(conn, eventRepo, shadowEvents))
+			eventpostgres.NewShadow(conn, eventRepo, shadowEvents))
 		slog.Info("delivery events are being written to the shared database as well",
 			"note", "nothing reads them yet; compare panmail_event_shadow_written_total with the dashboard's own counts")
 	}
@@ -509,6 +507,14 @@ func main() {
 	runWorker(&workers, workerCtx, "outbound-webhooks", func() { outboundWebhookWorker.Start(workerCtx) })
 
 	processEventUsecase := eventusecases.NewProcessEventUsecase(eventRepo, inboundRepo, outboxRepo, providerRepo, outboundWebhookWorker)
+	if lifecycle, ok := processEventUsecase.(eventusecases.Lifecycle); ok {
+		// Deferred after the event store's Close, so it runs before it: the
+		// tracker samples into that store.
+		defer func() { _ = lifecycle.Close() }()
+		if sized, ok := logStore.(eventusecases.DiskUsageSource); ok {
+			lifecycle.AddDiskUsageSource(sized)
+		}
+	}
 	// Stored message bodies are masked on the way out of the API, at whatever
 	// level the settings page currently says. Read through the provider so a
 	// change reaches every instance on its next refresh rather than at restart.
@@ -528,16 +534,16 @@ func main() {
 		inboundUsecase = screenable.WithScreener(filterScreener)
 	}
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
-	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase)
+	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase, providerRepo)
 
 	warnIfUnsubscribeLinksWillNotWork(settingsProvider.BaseURL())
-	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo)
-	templateRenderer := emailusecases.NewTemplateRenderer()
 	// One limiter shared by the API path and the outbox worker, so a tenant
 	// cannot get twice its allowance by using both. Its state is per process;
 	// see the package comment for what that means for a multi-instance
 	// deployment.
 	sendLimiter := ratelimit.New()
+	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo, sendLimiter)
+	templateRenderer := emailusecases.NewTemplateRenderer()
 
 	sendEmailUsecase := emailusecases.NewSendEmailUsecase(emailusecases.SendEmailDeps{
 		ProviderRepo:    providerRepo,
@@ -561,9 +567,10 @@ func main() {
 
 	// Built here rather than above because releasing a held message has to be
 	// able to wake the worker, and the worker does not exist until now.
+	heldReleaser := emailusecases.NewHeldReleaser(outboxRepo, queueWorker)
 	filterReviewer := emailfilter.NewReviewer(
 		filterQuarantineStore,
-		emailusecases.NewHeldReleaser(outboxRepo, queueWorker),
+		heldReleaser,
 		inboundusecases.NewHeldReleaser(inboundRepo, outboundWebhookWorker),
 		filterNotifier,
 	)
@@ -588,6 +595,10 @@ func main() {
 	// and hands the outbox and webhook queues their own cutoffs, so all seven
 	// policies come from the settings page and a change applies without a
 	// restart. Started last because it needs the workers it configures.
+	//
+	// The quarantine sweeper is given the outbox releaser, so an expired hold's
+	// payload is discarded rather than left in the outbox for good.
+	filterExpiry := emailfilter.NewExpirySweeper(filterQuarantineStore, filterNotifier, heldReleaser)
 	retentionWorker := retention.NewWorker(retention.Deps{
 		// The repository rather than the provider. A pass runs immediately
 		// after a save, and the provider is a snapshot up to a refresh
@@ -601,8 +612,11 @@ func main() {
 		Webhooks: outboundWebhookWorker,
 		// The sweeper rather than the store: it announces each expiry to the
 		// tenant's subscribers and hands retention back the count it wants.
-		Quarantine: emailfilter.NewExpirySweeper(filterQuarantineStore, filterNotifier),
-		Screener:   filterScreener,
+		Quarantine: filterExpiry,
+		// The same sweeper: decided reviews and the held payloads nothing
+		// discarded are pruned on the quarantine policy.
+		QuarantineHistory: filterExpiry,
+		Screener:          filterScreener,
 	})
 	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })
 
@@ -619,7 +633,7 @@ func main() {
 	// filter out.
 	warnAboutUnboundedRetention(settingsRepo)
 
-	settingsUsecase := settingsusecases.NewSettingsUsecase(settingsRepo, retentionWorker)
+	settingsUsecase := settingsusecases.NewSettingsUsecase(settingsRepo, retentionWorker, settingsProvider)
 	// settingsService is built further down, once the SMTP submission usecase
 	// it reports through exists: that one needs the API-key and send usecases,
 	// which are not constructed until the transports are wired.
@@ -807,7 +821,9 @@ func main() {
 	// Goroutines, heap and the connection pool. Everything above measures the
 	// work; this measures whether the process doing it is growing, which is
 	// what decides whether it survives a month rather than an afternoon.
-	if err := metrics.ObserveProcess(conn.GetDB()); err != nil {
+	// The method, not its result: on a fresh install setup has not installed
+	// a database yet, and the pool gauges have to follow the one it installs.
+	if err := metrics.ObserveProcess(conn.GetDB); err != nil {
 		slog.Error("failed to register process metrics", "error", err)
 	}
 
@@ -878,10 +894,11 @@ func main() {
 
 	membershipUsecase := authusecases.NewMembershipUsecase(membershipRepo, userRepo, tenantRepo)
 
-	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, membershipRepo, swappableTokenMaker)
-	authService := authservices.NewAuthService(authUsecase, membershipUsecase)
-
 	userUsecase := authusecases.NewUserUsecase(userRepo, membershipRepo)
+
+	authUsecase := authusecases.NewAuthUsecase(userRepo, tenantRepo, membershipRepo, swappableTokenMaker)
+	authService := authservices.NewAuthService(authUsecase, membershipUsecase, userUsecase)
+
 	userService := authservices.NewUserService(userUsecase, membershipUsecase)
 
 	apiKeyUsecase := authusecases.NewApiKeyUsecase(apiKeyRepo)
@@ -1130,9 +1147,17 @@ func main() {
 		port = defaultPort
 	}
 
+	// Every request is served under this context, so cancelling it at shutdown
+	// is what ends a stream that would otherwise hold the drain open.
+	requestCtx, cancelRequests := context.WithCancel(context.Background())
+	defer cancelRequests()
+
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: h2c.NewHandler(authMiddleware.Handle(mux), &http2.Server{}),
+		BaseContext: func(net.Listener) context.Context {
+			return requestCtx
+		},
 
 		// Without these a client can hold a connection open indefinitely by
 		// dribbling out a request, and enough of those exhaust the server.
@@ -1158,45 +1183,41 @@ func main() {
 
 	<-stop
 	slog.Info("Shutting down server...")
-	healthChecker.SetStatus("", grpchealth.StatusNotServing)
 
-	// Stop accepting requests first, then let the workers finish what they
-	// already claimed, and only then close the stores. Closing Pebble while a
-	// worker is still writing to it is a crash, and dropping an in-flight send
-	// loses mail the caller was told had been accepted.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-
+	// Stop accepting requests, let the workers finish what they already
+	// claimed, and only then close the stores. Closing Pebble while a worker is
+	// still writing to it is a crash, and dropping an in-flight send loses mail
+	// the caller was told had been accepted. See shutdown.go for the budget.
+	listeners := []func(context.Context) error{srv.Shutdown}
 	if metricsServer != nil {
-		_ = metricsServer.Shutdown(shutdownCtx)
+		listeners = append(listeners, metricsServer.Shutdown)
 	}
 	// Draining matters more here than for a scrape endpoint: a client mid-DATA
 	// has already been told to send, and dropping the connection makes it retry
 	// a message that may yet be queued. Exactly one of these is ever running.
 	if smtpServer != nil {
-		if err := smtpServer.Shutdown(shutdownCtx); err != nil {
-			slog.Warn("SMTP submission listener shutdown failed", "error", err)
-		}
+		listeners = append(listeners, smtpServer.Shutdown)
 	}
 	if smtpSupervisor != nil {
-		smtpSupervisor.Close(shutdownCtx)
+		listeners = append(listeners, func(ctx context.Context) error {
+			smtpSupervisor.Close(ctx)
+			return nil
+		})
 	}
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("server shutdown failed", "error", err)
-	}
-
-	slog.Info("stopping background workers")
-	stopWorkers()
-
-	if waitForWorkers(&workers, workerDrainTimeout) {
-		slog.Info("background workers stopped")
-	} else {
-		slog.Warn("background workers did not stop in time", "timeout", workerDrainTimeout)
-	}
-
-	if err := providerFactory.Close(); err != nil {
-		slog.Error("failed to close provider connections", "error", err)
-	}
+	shutdownPlan{
+		budget:       shutdownBudget,
+		preStopDelay: *shutdownDelayFlag,
+		requestGrace: requestDrainGrace,
+		withdraw: func() {
+			readiness.Drain()
+			healthChecker.SetStatus("", grpchealth.StatusNotServing)
+		},
+		listeners:      listeners,
+		cancelRequests: cancelRequests,
+		stopWorkers:    stopWorkers,
+		waitWorkers:    func(d time.Duration) bool { return waitForWorkers(&workers, d) },
+		closeProviders: providerFactory.Close,
+	}.run()
 
 	slog.Info("Server stopped gracefully")
 }
@@ -1224,13 +1245,34 @@ func mountBackupEndpoint(
 			return
 		}
 
+		// The configuration as it is now, not as it was at boot. On a fresh
+		// install there was none at boot and setup wrote it later; reading the
+		// boot-time value dereferenced nil and the endpoint panicked on every
+		// request until the process was restarted.
+		current := cfg
+		if current == nil {
+			loaded, err := config.Load()
+			if err != nil {
+				slog.Error("backup could not read the configuration", "error", err)
+				http.Error(w, "could not read the configuration: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			current = loaded
+		}
+		sqlDB := conn.GetDB()
+		if current == nil || sqlDB == nil {
+			http.Error(w, "not configured yet: complete setup first, there is nothing to back up", http.StatusServiceUnavailable)
+			return
+		}
+
 		opts := backup.Options{
 			OutDir:     out,
-			SQLDB:      conn.GetDB(),
-			SQLEngine:  cfg.Database.Type,
-			SQLitePath: cfg.Database.FilePath,
+			SQLDB:      sqlDB,
+			SQLEngine:  current.Database.Type,
+			SQLitePath: current.Database.FilePath,
 			Version:    Version,
 			Stores:     map[string]backup.Checkpointer{},
+			Dirs:       map[string]string{"archives": eventstores.ArchiveDir()},
 		}
 		if path, err := config.GetConfigPath(); err == nil {
 			opts.ConfigPath = path
@@ -1755,6 +1797,7 @@ func handleBackupCommand() {
 		SQLitePath: cfg.Database.FilePath,
 		Version:    Version,
 		Stores:     map[string]backup.Checkpointer{},
+		Dirs:       map[string]string{"archives": eventstores.ArchiveDir()},
 	}
 
 	if path, err := config.GetConfigPath(); err == nil {

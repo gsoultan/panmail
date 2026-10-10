@@ -18,6 +18,8 @@ var (
 	outboxStatsQuery string
 	//go:embed sql/prune_terminal_outbox.sql
 	pruneTerminalOutboxQuery string
+	//go:embed sql/prune_held_outbox.sql
+	pruneHeldOutboxQuery string
 
 	//go:embed sql/create_outbox.sql
 	createOutboxQuery string
@@ -33,6 +35,8 @@ var (
 	listClaimedOutboxQuery string
 	//go:embed sql/release_outbox_claim.sql
 	releaseOutboxClaimQuery string
+	//go:embed sql/renew_outbox_claim.sql
+	renewOutboxClaimQuery string
 	//go:embed sql/update_outbox.sql
 	updateOutboxQuery string
 	//go:embed sql/delete_outbox.sql
@@ -73,6 +77,13 @@ func (s *outboxStore) GetByID(ctx context.Context, id string) (*entities.OutboxE
 	e := &entities.OutboxEmail{}
 	var lastError sql.NullString
 	err = db.QueryRowContext(ctx, getOutboxByIDQuery, id).Scan(&e.ID, &e.TenantID, &e.Request, &e.Status, &e.RetryCount, &e.NextRetryAt, &lastError, &e.CreatedAt, &e.UpdatedAt)
+	// Absent is (nil, nil), as the interface promises. Returning the driver's
+	// ErrNoRows made every caller's "no longer here" branch unreachable: a
+	// discard retried after the row had gone failed instead of reporting the
+	// work already done.
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -119,10 +130,29 @@ func (s *outboxStore) ClaimPending(ctx context.Context, limit int, leaseFor time
 			return nil, err
 		}
 		e.LastError = lastError.String
+		e.ClaimToken = token
 		emails = append(emails, e)
 	}
 
 	return emails, rows.Err()
+}
+
+// RenewClaim extends the lease on a claimed message, if the claim is still
+// this token's.
+func (s *outboxStore) RenewClaim(ctx context.Context, id, claimToken string, until time.Time) (bool, error) {
+	dbConn, err := s.getDB()
+	if err != nil {
+		return false, err
+	}
+	res, err := dbConn.ExecContext(ctx, renewOutboxClaimQuery, until, id, claimToken)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected == 1, nil
 }
 
 func (s *outboxStore) Update(ctx context.Context, email *entities.OutboxEmail) error {
@@ -164,6 +194,22 @@ func (s *outboxStore) PruneTerminal(ctx context.Context, olderThan time.Time) (i
 	}
 	// Not every driver reports affected rows, and the count is only for the
 	// log line, so a driver that declines to say is not an error.
+	removed, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return removed, nil
+}
+
+func (s *outboxStore) PruneHeld(ctx context.Context, olderThan time.Time) (int64, error) {
+	db, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+	res, err := db.ExecContext(ctx, pruneHeldOutboxQuery, olderThan)
+	if err != nil {
+		return 0, err
+	}
 	removed, err := res.RowsAffected()
 	if err != nil {
 		return 0, nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -39,14 +38,35 @@ type processEventUsecase struct {
 	sentCounter atomic.Uint64
 	sentPerSec  atomic.Pointer[float64]
 	startTime   time.Time
-	diskUsage   atomic.Uint64
 	cpuUsage    atomic.Pointer[float64]
 	cpuCores    atomic.Uint32
 	totalMemory atomic.Uint64
 	load15      atomic.Pointer[float64]
 
 	providerNames sync.Map // cache: tenantID+providerID -> providerName
+
+	// diskSources report the disk each store holds. See AddDiskUsageSource.
+	diskMu      sync.Mutex
+	diskSources []DiskUsageSource
+
+	// stopTracker ends the performance tracker, and trackerDone closes when
+	// it has. See Close.
+	stopTracker context.CancelFunc
+	trackerDone chan struct{}
+	closeOnce   sync.Once
 }
+
+// DiskUsageSource is a store that reports the disk it holds, in bytes.
+type DiskUsageSource interface {
+	DiskUsage() int64
+}
+
+// The tracker's two periods. Variables so a test can run the loop quickly;
+// read once, when the usecase is built.
+var (
+	performanceInterval = 5 * time.Second
+	resourceInterval    = 5 * time.Minute
+)
 
 // RedactionSource supplies the level to mask a stored body at on the way out.
 //
@@ -92,23 +112,62 @@ func NewProcessEventUsecase(
 		u.totalMemory.Store(v.Total)
 	}
 
-	go u.startPerformanceTracker()
+	// The stores this usecase already holds report their own size; anything
+	// else, such as the log store, is added during wiring.
+	for _, store := range []any{repo, inboundRepo} {
+		if sized, ok := store.(DiskUsageSource); ok {
+			u.diskSources = append(u.diskSources, sized)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	u.stopTracker = cancel
+	u.trackerDone = make(chan struct{})
+	go u.startPerformanceTracker(ctx, performanceInterval, resourceInterval)
 	return u
 }
 
-func (u *processEventUsecase) startPerformanceTracker() {
-	ticker := time.NewTicker(5 * time.Second)
+// AddDiskUsageSource counts another store in the disk usage the performance
+// page reports.
+func (u *processEventUsecase) AddDiskUsageSource(src DiskUsageSource) {
+	if src == nil {
+		return
+	}
+	u.diskMu.Lock()
+	defer u.diskMu.Unlock()
+	u.diskSources = append(u.diskSources, src)
+}
+
+// Close stops the performance tracker and waits for it to finish.
+//
+// It used to run for the life of the process with no way to stop it, so it
+// went on writing resource samples into an event store that shutdown was in
+// the middle of closing.
+func (u *processEventUsecase) Close() error {
+	u.closeOnce.Do(func() {
+		u.stopTracker()
+		<-u.trackerDone
+	})
+	return nil
+}
+
+func (u *processEventUsecase) startPerformanceTracker(ctx context.Context, perf, resource time.Duration) {
+	defer close(u.trackerDone)
+
+	ticker := time.NewTicker(perf)
 	defer ticker.Stop()
 
 	// Record resource metrics every 5 minutes for history
-	resourceTicker := time.NewTicker(5 * time.Minute)
+	resourceTicker := time.NewTicker(resource)
 	defer resourceTicker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
 			count := u.sentCounter.Swap(0)
-			rate := float64(count) / 5.0
+			rate := float64(count) / perf.Seconds()
 			u.sentPerSec.Store(&rate)
 
 			// CPU Usage
@@ -121,16 +180,12 @@ func (u *processEventUsecase) startPerformanceTracker() {
 				u.load15.Store(&l.Load15)
 			}
 
-			// Update disk usage periodically instead of every request
-			usage := getDirSize("events.db") + getDirSize("inbound.db") + getDirSize("logs.db")
-			u.diskUsage.Store(usage)
-
 		case <-resourceTicker.C:
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
 			cpuVal := *u.cpuUsage.Load()
 			loadVal := *u.load15.Load()
-			_ = u.repo.WriteResourceMetric(context.Background(), cpuVal, m.Alloc, loadVal)
+			_ = u.repo.WriteResourceMetric(ctx, cpuVal, m.Alloc, loadVal)
 		}
 	}
 }
@@ -139,12 +194,7 @@ func (u *processEventUsecase) GetPerformanceMetrics(ctx context.Context) (Perfor
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	diskUsage := u.diskUsage.Load()
-	if diskUsage == 0 {
-		// Initial load if not yet populated by tracker
-		diskUsage = getDirSize("events.db") + getDirSize("inbound.db") + getDirSize("logs.db")
-		u.diskUsage.Store(diskUsage)
-	}
+	diskUsage := u.diskUsage()
 
 	// Try to get open files count
 	var openFiles uint32
@@ -181,18 +231,22 @@ func (u *processEventUsecase) GetPerformanceMetrics(ctx context.Context) (Perfor
 	}, nil
 }
 
-func getDirSize(path string) uint64 {
-	var size int64
-	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
-		return nil
-	})
-	return uint64(size)
+// diskUsage totals what the stores report about themselves.
+//
+// It used to walk events.db, inbound.db and logs.db every five seconds and
+// stat every file in them — paths relative to the working directory, so a
+// gateway started with -event-dir elsewhere reported nothing for that store.
+// Each store already knows its own size from Pebble's metrics, which also
+// count the WAL and files mid-compaction that a walk misses or double-counts;
+// reading that is a field read, cheap enough to do per request.
+func (u *processEventUsecase) diskUsage() uint64 {
+	u.diskMu.Lock()
+	defer u.diskMu.Unlock()
+	var total int64
+	for _, src := range u.diskSources {
+		total += src.DiskUsage()
+	}
+	return uint64(max(total, 0))
 }
 
 func (u *processEventUsecase) getProviderName(ctx context.Context, tenantID, providerID string) string {
@@ -225,20 +279,26 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 		u.sentCounter.Add(1)
 	}
 
-	// Attempt to recover missing fields from stored message
-	if messageID != "" {
-		msg, _ := u.repo.GetMessage(ctx, tenantID, messageID)
+	// Attempt to recover missing fields from stored message.
+	//
+	// Only when something is actually missing. The stored message is the whole
+	// body, attachments included, and decoding it is the cost of this call:
+	// the send path records SENT and DELIVERED for every recipient with the
+	// provider, recipient and subject already in hand, so reading it anyway
+	// decoded a 5 MiB attachment 150 times for one 50-recipient send. An id
+	// that is not one of ours still takes the lookup, because resolving it to
+	// our id is the other thing this does.
+	var msg *evententities.EmailMessage
+	looked := false
+	if messageID != "" && (providerID == "" || recipient == "" || subject == "" || !isInternalID(messageID)) {
+		looked = true
+		msg, _ = u.repo.GetMessage(ctx, tenantID, messageID)
 
 		// Fallback lookup: if message not found by ID, and it's not a UUID, it might be a provider ID
 		if msg == nil && recipient != "" {
 			// We only try to recover the message ID from recipient if the provided messageID
 			// doesn't look like our internal UUID.
-			isUUID := true
-			if _, err := uuid.Parse(messageID); err != nil {
-				isUUID = false
-			}
-
-			if !isUUID {
+			if !isInternalID(messageID) {
 				msg, _ = u.repo.GetLatestMessageForRecipient(ctx, tenantID, recipient)
 				if msg != nil {
 					messageID = msg.ID
@@ -288,11 +348,7 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 
 	// If it's a DELIVERED event, update the message with the provider used if not already set
 	if err == nil && eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED && providerID != "" && messageID != "" {
-		msg, _ := u.repo.GetMessage(ctx, tenantID, messageID)
-		if msg != nil && msg.ProviderID == "" {
-			msg.ProviderID = providerID
-			_ = u.repo.WriteMessage(ctx, msg)
-		}
+		u.backfillProvider(ctx, tenantID, messageID, providerID, msg, looked)
 	}
 
 	if err == nil && u.webhookTrigger != nil {
@@ -309,6 +365,49 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 	}
 
 	return err
+}
+
+// isInternalID reports whether a message id is one panmail issued. Anything
+// else is a provider's id for the message, to be resolved to ours.
+func isInternalID(messageID string) bool {
+	_, err := uuid.Parse(messageID)
+	return err == nil
+}
+
+// backfillProvider records which provider delivered a message whose stored
+// copy does not name one yet.
+//
+// It used to read the whole stored message again for every DELIVERED and, when
+// the provider was missing, write the whole body back — attachments included —
+// to change one field. A store that can set the field on its own is asked to;
+// otherwise the message already read above is reused rather than read twice.
+func (u *processEventUsecase) backfillProvider(ctx context.Context, tenantID, messageID, providerID string, msg *evententities.EmailMessage, looked bool) {
+	// Read above and already naming a provider: nothing to do, and the
+	// common case once the first recipient's DELIVERED has set it.
+	if msg != nil && msg.ProviderID != "" {
+		return
+	}
+	// Looked up above and not there: there is nothing to backfill.
+	if looked && msg == nil {
+		return
+	}
+
+	if b, ok := u.repo.(eventstores.MessageProviderBackfiller); ok {
+		if err := b.BackfillMessageProvider(ctx, tenantID, messageID, providerID); err != nil {
+			slog.Warn("could not record the provider on a stored message",
+				"error", err, "id", messageID)
+		}
+		return
+	}
+
+	if msg == nil {
+		msg, _ = u.repo.GetMessage(ctx, tenantID, messageID)
+		if msg == nil || msg.ProviderID != "" {
+			return
+		}
+	}
+	msg.ProviderID = providerID
+	_ = u.repo.WriteMessage(ctx, msg)
 }
 
 func (u *processEventUsecase) mapToWebhookTrigger(t panmailv1.EmailEventType) panmailv1.WebhookTriggerEvent {
