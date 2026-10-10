@@ -315,6 +315,10 @@ func parseSESReceived(raw string) (*inboundPayload, error) {
 		content = decoded
 	}
 
+	// The whole message, so a delivery report relayed through SES shows its
+	// parts to the bounce check like one posted raw by any other service.
+	p.Raw = string(content)
+
 	parsed, err := smtpmime.NewParser(0, 0).Parse(bytes.NewReader(content), n.Mail.Source)
 	if err != nil {
 		// SES accepted this message, so it is mail whatever its MIME says.
@@ -333,5 +337,6 @@ func parseSESReceived(raw string) (*inboundPayload, error) {
 	}
 	p.Text = req.BodyText
 	p.HTML = req.BodyHtml
+	p.readRaw()
 	return p, nil
 }

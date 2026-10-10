@@ -535,3 +535,22 @@ func TestSendGridInboundParseAuthenticatesWithItsBasicCredential(t *testing.T) {
 		})
 	}
 }
+
+// A delivery report SES relays is a whole message like any other, so its
+// parts reach the bounce check just as a raw post's do.
+func TestAnSESRelayedDeliveryReportReachesTheBounceCheck(t *testing.T) {
+	signer := newSNSSigner(t)
+	uc := &stubUsecase{}
+	h := signer.handler(uc, sesTopic)
+
+	env := notification(received(t, rawDSN, "UTF8", false))
+	if rec := postSNS(h, signer.sign(t, env)); rec.Code != http.StatusAccepted {
+		t.Fatalf("status %d (%s), want 202", rec.Code, rec.Body.String())
+	}
+	if len(uc.reports) != 1 || uc.reports[0] == nil {
+		t.Fatalf("handed on no report for an SES-relayed delivery status notification")
+	}
+	if got := uc.reports[0].Recipients; len(got) != 1 || got[0].Address != "gone@example.org" {
+		t.Errorf("report recipients %+v", got)
+	}
+}
