@@ -29,7 +29,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { settingsService } from '../../../../services/settings';
 import { useAuthStore } from '../../../../store/authStore';
-import { UserRole } from '../../../../api/panmail/v1/auth_pb';
+import { accessFor } from '../../../../lib/access';
 import { emailProviderService } from '../../../email-providers/services/emailProvider';
 import { describeConnection } from './smtpConnection';
 import { SmtpSubmissionForm } from './SmtpSubmissionForm';
@@ -117,10 +117,10 @@ export const SmtpIntegrationPanel: React.FC = () => {
   // `editable` is about this gateway — not managed by flags, and holding a data
   // key to seal a certificate with. Whether *this* caller may change it is a
   // role check, which the server enforces and the nav bar already mirrors the
-  // same way.
+  // same way. The listener is one port for the whole deployment, so it is a
+  // super admin's to open, not a tenant administrator's.
   const { user } = useAuthStore();
-  const mayConfigure =
-    user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const mayConfigure = accessFor(user?.role).configureDeployment;
   const editable = (submission?.editable ?? false) && mayConfigure;
 
   const header = (
