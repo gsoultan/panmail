@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	inboundStores "github.com/gsoultan/panmail/internal/inbound/repositories/stores"
 	"github.com/gsoultan/panmail/internal/inbound/usecases"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -56,10 +56,20 @@ var (
 type WebhookHandler struct {
 	usecase      usecases.InboundUsecase
 	providerRepo providerStores.Repository
+
+	// receipts recognises a provider's retry of a post already accepted. Nil
+	// turns deduplication off, which is what a caller with no database gets.
+	receipts inboundStores.ReceiptRepository
 }
 
 func NewWebhookHandler(usecase usecases.InboundUsecase, providerRepo providerStores.Repository) *WebhookHandler {
 	return &WebhookHandler{usecase: usecase, providerRepo: providerRepo}
+}
+
+// WithReceipts turns on deduplication of retried posts.
+func (h *WebhookHandler) WithReceipts(receipts inboundStores.ReceiptRepository) *WebhookHandler {
+	h.receipts = receipts
+	return h
 }
 
 func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -102,6 +112,26 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A provider retries any post it did not see a 2xx for, and a slow answer
+	// looks to it exactly like a failure, so the same message can arrive more
+	// than once and on more than one instance. Each copy used to be stored,
+	// screened, bounce-checked and announced to the tenant's webhooks again.
+	key := dedupeKey(payload)
+	claim, held := h.claim(r.Context(), tenantID, providerID, key)
+	switch claim {
+	case inboundStores.ClaimDuplicate:
+		// The same answer the first post got: as far as the provider is
+		// concerned this is that post, delivered.
+		w.WriteHeader(http.StatusAccepted)
+		return
+	case inboundStores.ClaimInFlight:
+		// Not success: the post holding the claim may yet fail, and a
+		// provider told 2xx here would never send the message again.
+		w.Header().Set("Retry-After", inFlightRetryAfter)
+		http.Error(w, "The same message is being processed; retry later", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Only the raw message, when the service posts it, can show a delivery
 	// report's structure: the parsed fields carry text, not parts. A post
 	// without it is stored as mail and never records a bounce.
@@ -111,7 +141,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	email := &panmailv1.InboundEmail{
-		Id:        uuid.New().String(),
+		Id:        inboundID(tenantID, providerID, key),
 		TenantId:  tenantID,
 		From:      payload.From,
 		To:        payload.To,
@@ -130,10 +160,12 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// to retry; it has no use for any of that.
 		slog.Error("failed to process an inbound email",
 			"error", err, "tenant_id", email.TenantId, "id", email.Id)
+		held.release(r.Context())
 		http.Error(w, "Could not process the message", http.StatusInternalServerError)
 		return
 	}
 
+	held.complete(r.Context())
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -219,6 +251,12 @@ type inboundPayload struct {
 	// alongside or instead of the parsed fields (SendGrid's "email" field
 	// with "send raw" on). It is the only source of a message's parts.
 	Raw string `json:"raw"`
+
+	// EventID is the poster's own id for this delivery, the same on every
+	// retry of it. MessageID is the message's Message-ID, for a poster that
+	// sends it as a field of its own rather than among the headers.
+	EventID   string `json:"event_id"`
+	MessageID string `json:"message_id"`
 
 	// raw is Raw parsed, nil when there was none or it did not parse.
 	raw *gsmail.Email
@@ -318,6 +356,12 @@ func (p *inboundPayload) fromForm(values url.Values) {
 	p.Text = values.Get("text")
 	p.HTML = values.Get("html")
 	p.Raw = values.Get("email")
+	p.EventID = values.Get("event_id")
+	// Mailgun's routes post the header under its own name.
+	p.MessageID = values.Get("message_id")
+	if p.MessageID == "" {
+		p.MessageID = values.Get("Message-Id")
+	}
 
 	for _, field := range values["to"] {
 		for _, addr := range strings.Split(field, ",") {

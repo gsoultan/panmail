@@ -17,6 +17,8 @@ const (
 	classAppLogs  = "app_logs"
 	classInbound  = "inbound"
 
+	classInboundReceipts = "inbound_receipts"
+
 	classQuarantine      = "quarantine"
 	classMinuteSeries    = "minute_series"
 	classResourceHistory = "resource_history"
@@ -223,6 +225,9 @@ func (w *Worker) jobs(p Policy) []pruneJob {
 	}
 	if inbound := w.deps.Inbound; inbound != nil {
 		jobs = append(jobs, pruneJob{class: classInbound, days: p.InboundDays, run: inbound.TruncateBefore})
+	}
+	if receipts := w.deps.InboundReceipts; receipts != nil {
+		jobs = append(jobs, pruneJob{class: classInboundReceipts, days: InboundReceiptDays, run: receipts.PruneBefore})
 	}
 	if quarantine := w.deps.QuarantineHistory; quarantine != nil {
 		jobs = append(jobs, pruneJob{class: classQuarantine, days: p.QuarantineDays, run: quarantine.PruneBefore})

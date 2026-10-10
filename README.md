@@ -669,7 +669,7 @@ Every class of data panmail stores has its own retention, set in **Settings → 
 | `inbound_retention_days` | Received mail | forever | Deleted outright |
 | `quarantine_retention_days` | How long a held message waits for review, and how long finished review records are kept | forever | Held payload discarded; review record deleted |
 
-Two kinds of telemetry are pruned on a fixed horizon rather than a setting: per-minute analytics counters after 30 days and resource samples after 7 days. Hour and day counters, which the analytics pages read for anything longer, are kept. Analytics buckets are in UTC; a server that was not running in UTC sees its graphs shift once by its offset at the upgrade that introduced this.
+Two kinds of telemetry are pruned on a fixed horizon rather than a setting: per-minute analytics counters after 30 days and resource samples after 7 days. So are the inbound endpoint's receipts of posts already accepted (hashes, not mail), after 7 days. Hour and day counters, which the analytics pages read for anything longer, are kept. Analytics buckets are in UTC; a server that was not running in UTC sees its graphs shift once by its offset at the upgrade that introduced this.
 
 When events are written to both the local store and PostgreSQL (`-shared-events`, or the shadow phase), retention prunes both, and archives once.
 

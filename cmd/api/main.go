@@ -55,6 +55,7 @@ import (
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
 	"github.com/gsoultan/panmail/internal/health"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores/pebble"
+	inboundpostgres "github.com/gsoultan/panmail/internal/inbound/repositories/stores/postgres"
 	inboundservices "github.com/gsoultan/panmail/internal/inbound/services"
 	inboundhttp "github.com/gsoultan/panmail/internal/inbound/transports/http"
 	inboundusecases "github.com/gsoultan/panmail/internal/inbound/usecases"
@@ -541,7 +542,10 @@ func main() {
 		inboundUsecase = verifying.WithBounceSigner(trackingSigner)
 	}
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
-	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase, providerRepo)
+	// Receipts live in the shared database rather than beside the mail, so a
+	// provider's retry is recognised whichever instance it lands on.
+	inboundReceipts := inboundpostgres.NewReceiptStore(conn)
+	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase, providerRepo).WithReceipts(inboundReceipts)
 
 	warnIfUnsubscribeLinksWillNotWork(settingsProvider.BaseURL())
 	// One limiter shared by the API path and the outbox worker, so a tenant
@@ -617,6 +621,9 @@ func main() {
 		Inbound:  inboundRepo,
 		Outbox:   queueWorker,
 		Webhooks: outboundWebhookWorker,
+		// Pruned on a fixed horizon, not the inbound policy: see
+		// retention.InboundReceiptDays.
+		InboundReceipts: inboundReceipts,
 		// The sweeper rather than the store: it announces each expiry to the
 		// tenant's subscribers and hands retention back the count it wants.
 		Quarantine: filterExpiry,

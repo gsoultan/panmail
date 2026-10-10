@@ -112,7 +112,7 @@ Administrator.
 | ID | Requirement |
 | --- | --- |
 | I1 | IMAP/POP3 polling and IMAP IDLE per provider; an IDLE session restarts when its provider's settings change. |
-| I2 | An HTTP parse endpoint at `/inbound/{tenant_id}/{provider_id}`, authenticated with the provider's webhook secret (HMAC header or HTTP Basic). The tenant comes from the credential, never from the body. JSON, multipart and urlencoded bodies are accepted; anything unparseable is refused. |
+| I2 | An HTTP parse endpoint at `/inbound/{tenant_id}/{provider_id}`, authenticated with the provider's webhook secret (HMAC header or HTTP Basic). The tenant comes from the credential, never from the body. JSON, multipart and urlencoded bodies are accepted; anything unparseable is refused. A retried post is stored once: deduplicated per tenant and provider on the poster's event id, else on the Message-ID with a digest of the message, through a receipt in the shared database that holds under concurrent posts and on any instance. A duplicate is answered as a success; one whose first post is still in flight is asked to retry. |
 | I3 | A received bounce is recorded only when it is a delivery status notification (a `message/delivery-status` part) whose returned headers carry the `X-Panmail-Ref` panmail signed onto that copy, verifying for the receiving tenant and the reported `Final-Recipient`/`Original-Recipient`, and the event store shows that message sent to that address. It is recorded against that address and message only; never against the sender. Anything else is stored as mail and suppresses no one. |
 | I4 | A received message is committed before it is acknowledged. |
 
@@ -167,6 +167,7 @@ run benchmarks):
 | Inbound listing / template listing | Page size defaults to 50, capped at 500 |
 | Minute-level analytics and resource samples | Pruned on a fixed horizon; hour and day counters are kept |
 | Held outbox payloads, review history | Pruned on the quarantine retention |
+| Inbound endpoint receipts | Pruned after 7 days, a fixed horizon past every provider's retry schedule |
 | Everything else | The seven retention settings (README, "Data retention"); zero means keep forever |
 
 ### 5.3 Reliability
@@ -210,11 +211,12 @@ they share:
   auth key, or through an inbound-parse service that does not post the raw
   message are not recorded. A recipient who passes on a copy with its headers
   intact hands over the means to bounce their own address, and only theirs.
-- The HTTP inbound endpoint has no idempotency key, so a provider that retries
-  the same post stores it twice.
 - A send that loses an idempotency-key race (S8) has already been charged
   against the tenant's send rate, and a `tag` filter rule may have recorded it,
   though nothing was queued for it.
+- A post to the HTTP inbound endpoint that carries neither an event id nor a
+  Message-ID is not deduplicated, and neither is a retry that arrives more than
+  7 days after the first post, when its receipt has been pruned.
 - A single slow webhook endpoint can still fill a batch when it owns more than
   a batch's worth of the oldest due notifications.
 - Webhook URLs may target private addresses by design (self-hosted targets);
