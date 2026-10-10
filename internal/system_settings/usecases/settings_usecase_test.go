@@ -43,7 +43,7 @@ func (r *memoryRepo) Seed(_ context.Context, s *entities.Settings) (bool, error)
 // deployment that has never opened the settings page has.
 func newUsecase(trigger RetentionTrigger) (SettingsUsecase, *memoryRepo) {
 	repo := &memoryRepo{}
-	return NewSettingsUsecase(repo, trigger), repo
+	return NewSettingsUsecase(repo, trigger, nil), repo
 }
 
 type spyTrigger struct{ calls int }
