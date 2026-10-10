@@ -61,6 +61,7 @@ func (s *store) Get(ctx context.Context) (*entities.Settings, error) {
 		&out.InboundRetentionDays,
 		&out.ArchiveRetentionDays,
 		&out.QuarantineRetentionDays,
+		&out.AnalyticsRetentionDays,
 		&redaction,
 		&out.UpdatedAt,
 	)
@@ -166,6 +167,7 @@ func writeArgs(in *entities.Settings) ([]any, error) {
 		in.InboundRetentionDays,
 		in.ArchiveRetentionDays,
 		in.QuarantineRetentionDays,
+		in.AnalyticsRetentionDays,
 		// Empty writes SQL NULL rather than an empty string, keeping "never
 		// chosen" a single representation instead of two.
 		nullableText(in.ContentRedaction),

@@ -117,6 +117,7 @@ describe('retentionValues', () => {
       inboundRetentionDays: 90,
       archiveRetentionDays: 365,
       quarantineRetentionDays: 30,
+      analyticsRetentionDays: 730,
     } as never);
 
     expect(values).toEqual({
@@ -128,6 +129,7 @@ describe('retentionValues', () => {
       inboundRetentionDays: 90,
       archiveRetentionDays: 365,
       quarantineRetentionDays: 30,
+      analyticsRetentionDays: 730,
     });
   });
 
@@ -135,6 +137,7 @@ describe('retentionValues', () => {
     // A store that gains retention on the backend and not here is a store that
     // grows where nobody can see it.
     const expected: RetentionKey[] = [
+      'analyticsRetentionDays',
       'appLogRetentionDays',
       'archiveRetentionDays',
       'inboundRetentionDays',

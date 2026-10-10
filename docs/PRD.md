@@ -103,7 +103,7 @@ Administrator.
 | --- | --- |
 | E1 | Every lifecycle step (PENDING, SENT, DELIVERED, OPENED, CLICKED, BOUNCED, …) is an event keyed by `message_id`. PENDING is recorded only once a message is queued. |
 | E2 | Signed open/click/unsubscribe links; the click endpoint is not an open redirect. |
-| E3 | Analytics counters by minute, hour and day, in UTC. Ranged queries read the coarsest buckets that cover the range. |
+| E3 | Analytics counters by minute, hour and day, in UTC. Ranged queries read the coarsest buckets that cover the range. Hour and day counters are kept forever unless `analytics_retention_days` is set. |
 | E4 | Outbound webhooks: durable, signed, leased like the outbox, delivered with bounded parallelism across subscriptions, and only redirected within the subscription's own host. A batch is claimed round-robin across subscriptions with a per-subscription cap, and an endpoint that times out or refuses connections twice in a row is backed off as a whole, so no one endpoint can occupy the workers or the batch. Targets on private addresses are allowed by default (self-hosted receivers); `--webhook-block-private-targets` refuses private, loopback, link-local, CGNAT, multicast and unspecified addresses (IPv4, IPv6 and IPv4-mapped) on the address actually dialled, for every connection and redirect, and refuses such a URL when a subscription is saved. |
 | E5 | Inbound ESP webhooks (SendGrid, Mailgun, Postmark, SES, generic HMAC) are verified before any event is recorded. |
 
@@ -171,10 +171,11 @@ compared on demand.
 | Event write buffer | 20,000 ops, drained on shutdown; writes after close are refused |
 | Log store | Async, drained on shutdown; one List call reads at most 20,000 entries |
 | Inbound listing / template listing | Page size defaults to 50, capped at 500 |
-| Minute-level analytics and resource samples | Pruned on a fixed horizon; hour and day counters are kept |
+| Minute-level analytics and resource samples | Pruned on a fixed horizon (minutes: 30 days, or the analytics retention if shorter) |
+| Hour and day analytics counters | `analytics_retention_days`; zero, the default, keeps them forever |
 | Held outbox payloads, review history | Pruned on the quarantine retention |
 | Inbound endpoint receipts | Pruned after 7 days, a fixed horizon past every provider's retry schedule |
-| Everything else | The seven retention settings (README, "Data retention"); zero means keep forever |
+| Everything else | The retention settings (README, "Data retention"); zero means keep forever |
 
 ### 5.3 Reliability
 

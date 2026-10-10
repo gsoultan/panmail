@@ -2035,7 +2035,7 @@ func warnAboutUnboundedRetention(repo settingsrepos.SettingsRepository) {
 	}
 
 	p := retention.Resolve(stored)
-	forever := make([]string, 0, 8)
+	forever := make([]string, 0, 9)
 	for _, c := range []struct {
 		field string
 		days  int
@@ -2048,6 +2048,7 @@ func warnAboutUnboundedRetention(repo settingsrepos.SettingsRepository) {
 		{"inbound_retention_days", p.InboundDays},
 		{"archive_retention_days", p.ArchiveDays},
 		{"quarantine_retention_days", p.QuarantineDays},
+		{"analytics_retention_days", p.AnalyticsDays},
 	} {
 		if c.days == 0 {
 			forever = append(forever, c.field)

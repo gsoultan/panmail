@@ -123,6 +123,9 @@ func retentionChanges(before, after *panmailv1.SystemSettings) []string {
 		// Destructive: a held message that expires was never decided by
 		// anyone, and shortening this is how one disappears.
 		{"quarantine", before.GetQuarantineRetentionDays(), after.GetQuarantineRetentionDays(), true},
+		// Destructive: the hour and day counters are the only history the
+		// analytics charts have once the events behind them have expired.
+		{"analytics", before.GetAnalyticsRetentionDays(), after.GetAnalyticsRetentionDays(), true},
 	}
 
 	var changes []string

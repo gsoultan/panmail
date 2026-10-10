@@ -29,6 +29,13 @@ type TelemetryPruner interface {
 	PruneResourceHistoryBefore(ctx context.Context, before time.Time) (int64, error)
 }
 
+// AnalyticsPruner is the part of the event store that keeps the hour and day
+// analytics counters a long chart is drawn from. Kept forever unless
+// Policy.AnalyticsDays is set. Optional and asserted, like TelemetryPruner.
+type AnalyticsPruner interface {
+	PruneHourDaySeriesBefore(ctx context.Context, before time.Time) (int64, error)
+}
+
 // The horizons for the telemetry classes. Fixed rather than configurable,
 // because nobody chooses to keep these: they are written for the life of the
 // process whatever the policy says, and read only over a short window.
@@ -36,7 +43,8 @@ const (
 	// MinuteSeriesDays keeps per-minute counters for a month. The dashboard
 	// asks for minute buckets over six hours at most, and a ranged total
 	// reads them only for the ragged minutes at its edges. Day and hour
-	// counters are not affected; they are kept for good.
+	// counters are not affected; they follow Policy.AnalyticsDays, and a
+	// shorter analytics retention shortens this too.
 	MinuteSeriesDays = 30
 
 	// ResourceHistoryDays keeps a week of resource samples. The performance

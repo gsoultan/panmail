@@ -21,6 +21,7 @@ const (
 
 	classQuarantine      = "quarantine"
 	classMinuteSeries    = "minute_series"
+	classAnalyticsSeries = "analytics_series"
 	classResourceHistory = "resource_history"
 )
 
@@ -215,9 +216,12 @@ func (w *Worker) jobs(p Policy) []pruneJob {
 		)
 		if telemetry, ok := events.(TelemetryPruner); ok {
 			jobs = append(jobs,
-				pruneJob{class: classMinuteSeries, days: MinuteSeriesDays, run: telemetry.PruneMinuteSeriesBefore},
+				pruneJob{class: classMinuteSeries, days: minuteSeriesDays(p), run: telemetry.PruneMinuteSeriesBefore},
 				pruneJob{class: classResourceHistory, days: ResourceHistoryDays, run: telemetry.PruneResourceHistoryBefore},
 			)
+		}
+		if analytics, ok := events.(AnalyticsPruner); ok {
+			jobs = append(jobs, pruneJob{class: classAnalyticsSeries, days: p.AnalyticsDays, run: analytics.PruneHourDaySeriesBefore})
 		}
 	}
 	if logs := w.deps.Logs; logs != nil {
@@ -234,6 +238,17 @@ func (w *Worker) jobs(p Policy) []pruneJob {
 	}
 
 	return jobs
+}
+
+// minuteSeriesDays is the minute counters' horizon: the fixed one, or the
+// analytics retention when that is shorter. Minutes kept past the hours and
+// days they add up to would answer a ranged total that the day counters, gone,
+// no longer can -- and nothing else reads them that far back.
+func minuteSeriesDays(p Policy) int {
+	if p.AnalyticsDays > 0 && p.AnalyticsDays < MinuteSeriesDays {
+		return p.AnalyticsDays
+	}
+	return MinuteSeriesDays
 }
 
 func (w *Worker) run(ctx context.Context, job pruneJob) {

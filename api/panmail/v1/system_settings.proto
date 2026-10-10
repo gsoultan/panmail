@@ -245,6 +245,12 @@ message SystemSettings {
   // anyone who opens the network tab. Stored mail is never rewritten; only what
   // leaves through the API is masked.
   ContentRedaction content_redaction = 11;
+
+  // Hour and day analytics counters, which the analytics charts and ranged
+  // totals are drawn from. Zero, the default, keeps them forever, as they
+  // always were; a horizon shorter than the 30 days minute counters are kept
+  // shortens those too.
+  optional int32 analytics_retention_days = 12;
 }
 
 // ContentRedaction is how hard the gateway looks for secrets in a message body

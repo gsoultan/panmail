@@ -672,8 +672,9 @@ Every class of data panmail stores has its own retention, set in **Settings → 
 | `app_log_retention_days` | The gateway's own logs | forever | Deleted outright |
 | `inbound_retention_days` | Received mail | forever | Deleted outright |
 | `quarantine_retention_days` | How long a held message waits for review, and how long finished review records are kept | forever | Held payload discarded; review record deleted |
+| `analytics_retention_days` | Hourly and daily analytics counts, which the charts and ranged totals read | forever | Deleted outright |
 
-Two kinds of telemetry are pruned on a fixed horizon rather than a setting: per-minute analytics counters after 30 days and resource samples after 7 days. So are the inbound endpoint's receipts of posts already accepted (hashes, not mail), after 7 days. Hour and day counters, which the analytics pages read for anything longer, are kept. Analytics buckets are in UTC; a server that was not running in UTC sees its graphs shift once by its offset at the upgrade that introduced this.
+Two kinds of telemetry are pruned on a fixed horizon rather than a setting: per-minute analytics counters after 30 days (or after `analytics_retention_days`, if that is shorter) and resource samples after 7 days. So are the inbound endpoint's receipts of posts already accepted (hashes, not mail), after 7 days. Hour and day counters, which the analytics pages read for anything longer, outlive the delivery events they count and are kept until `analytics_retention_days` says otherwise; a day's count goes only once the whole day is past the cutoff. Charts and totals for a range older than that read as empty. Analytics buckets are in UTC; a server that was not running in UTC sees its graphs shift once by its offset at the upgrade that introduced this.
 
 When events are written to both the local store and PostgreSQL (`-shared-events`, or the shadow phase), retention prunes both, and archives once.
 

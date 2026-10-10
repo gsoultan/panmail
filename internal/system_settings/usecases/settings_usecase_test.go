@@ -93,6 +93,7 @@ func TestUpdateSettingsRoundTrip(t *testing.T) {
 		// go on dropping it silently — which is exactly what happened while
 		// Policy.Apply forgot the field and every fixture here left it at zero.
 		QuarantineRetentionDays: proto.Int32(14),
+		AnalyticsRetentionDays:  proto.Int32(730),
 	})
 	if err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
@@ -122,6 +123,7 @@ func TestUpdateSettingsRoundTrip(t *testing.T) {
 		{"inbound", saved.GetInboundRetentionDays(), reloaded.GetInboundRetentionDays(), 90},
 		{"archives", saved.GetArchiveRetentionDays(), reloaded.GetArchiveRetentionDays(), 365},
 		{"quarantine", saved.GetQuarantineRetentionDays(), reloaded.GetQuarantineRetentionDays(), 14},
+		{"analytics", saved.GetAnalyticsRetentionDays(), reloaded.GetAnalyticsRetentionDays(), 730},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.saved != tc.want {
@@ -213,6 +215,7 @@ func TestAPartialUpdateDoesNotWipeRetention(t *testing.T) {
 		InboundRetentionDays:    proto.Int32(90),
 		ArchiveRetentionDays:    proto.Int32(365),
 		QuarantineRetentionDays: proto.Int32(14),
+		AnalyticsRetentionDays:  proto.Int32(730),
 	}); err != nil {
 		t.Fatalf("configuring retention: %v", err)
 	}
@@ -242,6 +245,7 @@ func TestAPartialUpdateDoesNotWipeRetention(t *testing.T) {
 		{"inbound", got.GetInboundRetentionDays(), 90},
 		{"archives", got.GetArchiveRetentionDays(), 365},
 		{"quarantine", got.GetQuarantineRetentionDays(), 14},
+		{"analytics", got.GetAnalyticsRetentionDays(), 730},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d after an update that never mentioned it; want %d",

@@ -63,7 +63,8 @@ var (
 // included, exactly as the minute range read did.
 //
 // One difference survives, and it is deliberate: minute counters are pruned
-// after a horizon while day and hour counters are kept for good. A ragged edge
+// after a horizon while day and hour counters are kept far longer -- forever
+// unless the analytics retention is set, which shortens both. A ragged edge
 // older than that horizon loses the minutes of its partial hour — a few events
 // at the edge of a months-long range, where the minute sum would have lost the
 // whole of it.

@@ -97,6 +97,7 @@ func TestPolicyRoundTripsThroughStoredSettings(t *testing.T) {
 		InboundDays:    8,
 		ArchiveDays:    9,
 		QuarantineDays: 11,
+		AnalyticsDays:  12,
 	}
 
 	for _, want := range []Policy{forever, everything} {

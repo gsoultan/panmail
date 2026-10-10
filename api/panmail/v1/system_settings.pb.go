@@ -863,8 +863,13 @@ type SystemSettings struct {
 	// anyone who opens the network tab. Stored mail is never rewritten; only what
 	// leaves through the API is masked.
 	ContentRedaction ContentRedaction `protobuf:"varint,11,opt,name=content_redaction,json=contentRedaction,proto3,enum=panmail.v1.ContentRedaction" json:"content_redaction,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Hour and day analytics counters, which the analytics charts and ranged
+	// totals are drawn from. Zero, the default, keeps them forever, as they
+	// always were; a horizon shorter than the 30 days minute counters are kept
+	// shortens those too.
+	AnalyticsRetentionDays *int32 `protobuf:"varint,12,opt,name=analytics_retention_days,json=analyticsRetentionDays,proto3,oneof" json:"analytics_retention_days,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *SystemSettings) Reset() {
@@ -974,6 +979,13 @@ func (x *SystemSettings) GetContentRedaction() ContentRedaction {
 	return ContentRedaction_CONTENT_REDACTION_UNSPECIFIED
 }
 
+func (x *SystemSettings) GetAnalyticsRetentionDays() int32 {
+	if x != nil && x.AnalyticsRetentionDays != nil {
+		return *x.AnalyticsRetentionDays
+	}
+	return 0
+}
+
 var File_panmail_v1_system_settings_proto protoreflect.FileDescriptor
 
 const file_panmail_v1_system_settings_proto_rawDesc = "" +
@@ -1024,7 +1036,7 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x1bUpdateSmtpSubmissionRequest\x128\n" +
 	"\x06config\x18\x01 \x01(\v2 .panmail.v1.SmtpSubmissionConfigR\x06config\"c\n" +
 	"\x1cUpdateSmtpSubmissionResponse\x12C\n" +
-	"\x0fsmtp_submission\x18\x01 \x01(\v2\x1a.panmail.v1.SmtpSubmissionR\x0esmtpSubmission\"\xd6\x06\n" +
+	"\x0fsmtp_submission\x18\x01 \x01(\v2\x1a.panmail.v1.SmtpSubmissionR\x0esmtpSubmission\"\xb2\a\n" +
 	"\x0eSystemSettings\x12\x1e\n" +
 	"\bbase_url\x18\x01 \x01(\tH\x00R\abaseUrl\x88\x01\x01\x121\n" +
 	"\x12log_retention_days\x18\x02 \x01(\x05H\x01R\x10logRetentionDays\x88\x01\x01\x12#\n" +
@@ -1037,7 +1049,8 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x16archive_retention_days\x18\t \x01(\x05H\aR\x14archiveRetentionDays\x88\x01\x01\x12?\n" +
 	"\x19quarantine_retention_days\x18\n" +
 	" \x01(\x05H\bR\x17quarantineRetentionDays\x88\x01\x01\x12I\n" +
-	"\x11content_redaction\x18\v \x01(\x0e2\x1c.panmail.v1.ContentRedactionR\x10contentRedactionB\v\n" +
+	"\x11content_redaction\x18\v \x01(\x0e2\x1c.panmail.v1.ContentRedactionR\x10contentRedaction\x12=\n" +
+	"\x18analytics_retention_days\x18\f \x01(\x05H\tR\x16analyticsRetentionDays\x88\x01\x01B\v\n" +
 	"\t_base_urlB\x15\n" +
 	"\x13_log_retention_daysB\x19\n" +
 	"\x17_message_retention_daysB\x18\n" +
@@ -1046,7 +1059,8 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x17_app_log_retention_daysB\x19\n" +
 	"\x17_inbound_retention_daysB\x19\n" +
 	"\x17_archive_retention_daysB\x1c\n" +
-	"\x1a_quarantine_retention_days*r\n" +
+	"\x1a_quarantine_retention_daysB\x1b\n" +
+	"\x19_analytics_retention_days*r\n" +
 	"\rSmtpBindScope\x12\x1f\n" +
 	"\x1bSMTP_BIND_SCOPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18SMTP_BIND_SCOPE_LOOPBACK\x10\x01\x12\"\n" +

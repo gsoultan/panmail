@@ -25,10 +25,13 @@ type RetentionRepository interface {
 	// The two classes with a fixed horizon rather than a policy: per-minute
 	// counters and resource samples. Both are written for the life of the
 	// process, and neither is read beyond a short window, so nobody is asked
-	// how long to keep them. Day and hour counters are deliberately absent:
-	// they are what a long chart is drawn from, and are kept for good.
+	// how long to keep them.
 	PruneMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error)
 	PruneResourceHistoryBefore(ctx context.Context, before time.Time) (int64, error)
+
+	// Day and hour counters, which a long chart is drawn from. Kept forever
+	// unless the analytics retention is set, and then pruned on it.
+	PruneHourDaySeriesBefore(ctx context.Context, before time.Time) (int64, error)
 }
 
 // ArchivedElsewhere reports which of the given event ids another store holds
@@ -47,4 +50,5 @@ type SharedPruner interface {
 	DeleteEventsBefore(ctx context.Context, before time.Time) (int64, error)
 	DeleteMessagesBefore(ctx context.Context, before time.Time) (int64, error)
 	DeleteMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error)
+	DeleteHourDaySeriesBefore(ctx context.Context, before time.Time) (int64, error)
 }
