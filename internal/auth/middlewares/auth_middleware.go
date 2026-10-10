@@ -28,9 +28,10 @@ const (
 const (
 	membershipCacheTTL = 5 * time.Second
 
-	// Keyed by user id and tenant id, both of which come from authenticated
-	// material rather than from the request body, so the key space is bounded
-	// by the number of real memberships. The limit is a backstop.
+	// Keyed by user id and tenant id. The tenant id comes from the caller's
+	// X-Tenant-ID header, so only answers that name a real membership are
+	// stored: that bounds the key space by the number of memberships rather
+	// than by how many ids a caller cares to invent. The limit is a backstop.
 	membershipCacheMaxEntries = 4096
 )
 
@@ -196,9 +197,14 @@ func (m *AuthMiddleware) switchTenant(ctx context.Context, principal *Principal,
 	return nil
 }
 
-// resolveRole returns the role the user holds in the tenant, "" for none. A
-// negative answer is cached too: a client that keeps sending a stale tenant
-// header would otherwise query on every request it makes.
+// resolveRole returns the role the user holds in the tenant, "" for none.
+//
+// Only a positive answer is cached. A negative one used to be cached as well,
+// keyed by whatever tenant id the header named, so any signed-in viewer could
+// fill the shared cache with invented ids — each costing two queries — until
+// it refused new entries and every real member's switch went back to the
+// database. A refusal is the rare case, and paying for it is the right side
+// of that trade.
 func (m *AuthMiddleware) resolveRole(ctx context.Context, userID, tenantID string) (string, error) {
 	key := userID + "\x00" + tenantID
 	if role, ok := m.resolvedRoles.Get(key); ok {
@@ -212,6 +218,8 @@ func (m *AuthMiddleware) resolveRole(ctx context.Context, userID, tenantID strin
 		return "", ErrTenantNotPermitted
 	}
 
-	m.resolvedRoles.Put(key, role)
+	if role != "" {
+		m.resolvedRoles.Put(key, role)
+	}
 	return role, nil
 }
