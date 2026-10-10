@@ -152,3 +152,32 @@ func TestUpdateUserTwoFactorGuardsSuperAdmins(t *testing.T) {
 		})
 	}
 }
+
+// A tenant administrator could demote or delete a super admin whose home was
+// their tenant: the usecase confines the target to the tenant, and the super
+// admin is in it.
+func TestUpdateUserRoleGuardsSuperAdmins(t *testing.T) {
+	for _, tc := range guardCases {
+		t.Run(tc.name, func(t *testing.T) {
+			users := guardFixtures()
+			svc := NewUserService(users, nil)
+
+			_, err := svc.UpdateUserRole(callerContext("caller", tc.caller),
+				connect.NewRequest(&panmailv1.UpdateUserRoleRequest{Id: tc.target, Role: panmailv1.UserRole_USER_ROLE_VIEWER}))
+			checkGuard(t, tc, err, users.roleChanged)
+		})
+	}
+}
+
+func TestDeleteUserGuardsSuperAdmins(t *testing.T) {
+	for _, tc := range guardCases {
+		t.Run(tc.name, func(t *testing.T) {
+			users := guardFixtures()
+			svc := NewUserService(users, nil)
+
+			_, err := svc.DeleteUser(callerContext("caller", tc.caller),
+				connect.NewRequest(&panmailv1.DeleteUserRequest{Id: tc.target}))
+			checkGuard(t, tc, err, users.deleted)
+		})
+	}
+}
