@@ -189,8 +189,26 @@ func (s *Store) GetLatestMessageForRecipient(ctx context.Context, tenantID, reci
 	return m, err
 }
 
-// TruncateMessagesBefore deletes stored bodies older than the cutoff.
+// TruncateMessagesBefore deletes stored bodies older than the cutoff, from the
+// database and from the local store.
+//
+// Both, because unless -stop-local-events is set every body is mirrored to the
+// local store — and even when it is, the local store still holds whatever was
+// written before. Bodies are never archived, so there is nothing to do once
+// rather than twice here: each copy is simply deleted. The count returned is
+// the database's; the local pass logs its own.
 func (s *Store) TruncateMessagesBefore(ctx context.Context, before time.Time) (int64, error) {
+	n, err := s.local.TruncateMessagesBefore(ctx, before)
+	logMirrorPrune("messages", n)
+	if err != nil {
+		return 0, fmt.Errorf("local store: %w", err)
+	}
+	return s.DeleteMessagesBefore(ctx, before)
+}
+
+// DeleteMessagesBefore deletes stored bodies older than the cutoff from the
+// database alone. See stores.SharedPruner.
+func (s *Store) DeleteMessagesBefore(ctx context.Context, before time.Time) (int64, error) {
 	conn, err := s.db()
 	if err != nil {
 		return 0, err

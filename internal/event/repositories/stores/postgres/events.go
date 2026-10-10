@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/event/repositories/entities"
 	"github.com/gsoultan/panmail/internal/event/repositories/stores"
@@ -365,11 +366,82 @@ type eventArchiver interface {
 // Archive first, delete second, in batches. Archiving a row that is then not
 // deleted costs a duplicate archive entry on the next pass; deleting a row that
 // was not archived loses it, and nothing recovers from that.
+//
+// The local store is pruned first, because it is being written too — unless
+// -stop-local-events is set, every event lands in both — and pruning only the
+// database left events.db growing for ever. Before the database's rows are
+// gone, so the local pass can ask which of its events the database holds and
+// archive only the rest: each expired event reaches the archive exactly once.
+// The count returned is the database's, which is the store this one answers
+// for; the local pass logs its own.
 func (s *Store) TruncateBefore(ctx context.Context, before time.Time) (int64, error) {
 	conn, err := s.db()
 	if err != nil {
 		return 0, err
 	}
+
+	if mirror, ok := s.local.(localMirror); ok {
+		n, err := mirror.TruncateBeforeArchivingOnly(ctx, before, s.heldEvents)
+		logMirrorPrune("events", n)
+		if err != nil {
+			return 0, fmt.Errorf("local store: %w", err)
+		}
+	}
+	return s.archiveAndDeleteEvents(ctx, conn, before)
+}
+
+// localMirror is the local store's prune for events it shares with the
+// database. Asserted, so a local store that cannot do it is left alone rather
+// than pruned in a way that could archive twice or not at all.
+type localMirror interface {
+	TruncateBeforeArchivingOnly(ctx context.Context, before time.Time, elsewhere stores.ArchivedElsewhere) (int64, error)
+}
+
+// heldEvents reports which of the ids are in email_events, for the local
+// store's prune to leave their archiving to this one.
+func (s *Store) heldEvents(ctx context.Context, ids []string) (map[string]bool, error) {
+	conn, err := s.db()
+	if err != nil {
+		return nil, err
+	}
+
+	// On PostgreSQL the column is a uuid, and one malformed id in an IN list
+	// fails the whole query. An id that is not a uuid cannot be in that table,
+	// so it is answered here rather than sent.
+	candidates := make([]any, 0, len(ids))
+	strict := s.isPostgres()
+	for _, id := range ids {
+		if strict {
+			if _, err := uuid.Parse(id); err != nil {
+				continue
+			}
+		}
+		candidates = append(candidates, id)
+	}
+
+	held := make(map[string]bool, len(candidates))
+	if len(candidates) == 0 {
+		return held, nil
+	}
+	rows, err := conn.QueryContext(ctx,
+		`SELECT id FROM email_events WHERE id IN (`+placeholders(len(candidates), 1)+`)`,
+		candidates...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		held[id] = true
+	}
+	return held, rows.Err()
+}
+
+// archiveAndDeleteEvents is the database half of TruncateBefore.
+func (s *Store) archiveAndDeleteEvents(ctx context.Context, conn *sql.DB, before time.Time) (int64, error) {
 
 	archiver, canArchive := s.local.(eventArchiver)
 	var total int64

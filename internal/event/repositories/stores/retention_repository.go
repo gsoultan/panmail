@@ -22,3 +22,20 @@ type RetentionRepository interface {
 	TruncateMessagesBefore(ctx context.Context, before time.Time) (int64, error)
 	PruneArchivesBefore(ctx context.Context, before time.Time) (int64, error)
 }
+
+// ArchivedElsewhere reports which of the given event ids another store holds
+// and will archive when they expire there.
+type ArchivedElsewhere func(ctx context.Context, ids []string) (map[string]bool, error)
+
+// SharedPruner is the shared store's retention over its own tables alone: no
+// archive written and no local store touched.
+//
+// It is what the shadow phase needs. There the local store is the primary and
+// archives everything it expires, so the database copy has only to be deleted
+// — archiving it as well would write every expired event twice, and pruning
+// through the shared store's full retention would prune the primary a second
+// time.
+type SharedPruner interface {
+	DeleteEventsBefore(ctx context.Context, before time.Time) (int64, error)
+	DeleteMessagesBefore(ctx context.Context, before time.Time) (int64, error)
+}

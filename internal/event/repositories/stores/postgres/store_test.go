@@ -22,6 +22,8 @@ type localStub struct {
 	archiveErr error
 	written    []*entities.EmailEvent
 	messages   []*entities.EmailMessage
+	pruned     []string
+	expiring   []*entities.EmailEvent
 }
 
 // Write and WriteMessage exist so the tests can tell whether the shared store
@@ -47,6 +49,49 @@ func (l *localStub) ArchiveEvents(_ context.Context, events []*entities.EmailEve
 }
 
 func (l *localStub) Close() error { l.closed = true; return nil }
+
+// The local store's retention, recorded so the tests can tell that the shared
+// store prunes it too — the local store is still written in shared mode, and
+// pruning only the database left it growing for ever.
+//
+// expiring stands in for the events the local store would expire: the stub
+// asks the shared store which of them it holds, as the real one does.
+func (l *localStub) TruncateBeforeArchivingOnly(ctx context.Context, _ time.Time, elsewhere stores.ArchivedElsewhere) (int64, error) {
+	l.pruned = append(l.pruned, "events")
+	ids := make([]string, len(l.expiring))
+	for i, e := range l.expiring {
+		ids[i] = e.ID
+	}
+	held, err := elsewhere(ctx, ids)
+	if err != nil {
+		return 0, err
+	}
+	var notHeld []*entities.EmailEvent
+	for _, e := range l.expiring {
+		if !held[e.ID] {
+			notHeld = append(notHeld, e)
+		}
+	}
+	if err := l.ArchiveEvents(ctx, notHeld); err != nil {
+		return 0, err
+	}
+	return int64(len(l.expiring)), nil
+}
+
+func (l *localStub) TruncateMessagesBefore(context.Context, time.Time) (int64, error) {
+	l.pruned = append(l.pruned, "messages")
+	return 0, nil
+}
+
+func (l *localStub) PruneMinuteSeriesBefore(context.Context, time.Time) (int64, error) {
+	l.pruned = append(l.pruned, "minute_series")
+	return 0, nil
+}
+
+func (l *localStub) PruneResourceHistoryBefore(context.Context, time.Time) (int64, error) {
+	l.pruned = append(l.pruned, "resource_history")
+	return 0, nil
+}
 
 func newStore(t *testing.T) (*Store, *Writer) {
 	t.Helper()
