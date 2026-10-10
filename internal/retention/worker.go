@@ -16,6 +16,8 @@ const (
 	classArchives = "archives"
 	classAppLogs  = "app_logs"
 	classInbound  = "inbound"
+
+	classQuarantine = "quarantine"
 )
 
 // Worker enforces the retention policy on a schedule.
@@ -213,6 +215,9 @@ func (w *Worker) jobs(p Policy) []pruneJob {
 	}
 	if inbound := w.deps.Inbound; inbound != nil {
 		jobs = append(jobs, pruneJob{class: classInbound, days: p.InboundDays, run: inbound.TruncateBefore})
+	}
+	if quarantine := w.deps.QuarantineHistory; quarantine != nil {
+		jobs = append(jobs, pruneJob{class: classQuarantine, days: p.QuarantineDays, run: quarantine.PruneBefore})
 	}
 
 	return jobs

@@ -81,3 +81,12 @@ func (r *heldReleaser) DiscardHeld(ctx context.Context, tenantID, messageID stri
 	}
 	return r.outbox.Delete(ctx, messageID)
 }
+
+// PruneHeld removes held messages older than the cutoff that no review can
+// still release. It satisfies emailfilter.HeldPruner, which is how the
+// quarantine's retention reaches the outbox without importing it.
+func (r *heldReleaser) PruneHeld(ctx context.Context, olderThan time.Time) (int64, error) {
+	return r.outbox.PruneHeld(ctx, olderThan)
+}
+
+var _ emailfilter.HeldPruner = (*heldReleaser)(nil)

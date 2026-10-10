@@ -37,11 +37,17 @@ type OutboxRepository interface {
 	// PruneTerminal removes messages in a terminal state last touched before
 	// the cutoff, and reports how many went.
 	//
-	// Only failures accumulate — a delivered message is deleted outright — but
-	// they accumulate forever, and each row carries the whole serialised
+	// Of what the worker settles, only failures accumulate — a delivered
+	// message is deleted outright — but they accumulate forever, and each row carries the whole serialised
 	// request including the body. Over the life of a deployment that is the
 	// largest table in the database, holding nothing anyone will read.
 	PruneTerminal(ctx context.Context, olderThan time.Time) (int64, error)
+
+	// PruneHeld removes held messages created before the cutoff whose review
+	// is no longer pending, and reports how many went. It is the backstop for
+	// a held payload nothing discarded; a message a reviewer can still release
+	// is never removed, however old.
+	PruneHeld(ctx context.Context, olderThan time.Time) (int64, error)
 
 	// Stats reports how much is queued and how old the oldest of it is.
 	//

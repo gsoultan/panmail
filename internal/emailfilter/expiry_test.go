@@ -16,6 +16,9 @@ type stubExpiry struct {
 	records []emailfilter.FilteredMessage
 	err     error
 	calls   int
+
+	pruned   int64
+	pruneErr error
 }
 
 func (s *stubExpiry) Create(context.Context, *emailfilter.FilteredMessage) error { return nil }
@@ -27,6 +30,10 @@ func (s *stubExpiry) List(context.Context, string, emailfilter.QuarantineFilter)
 }
 func (s *stubExpiry) Review(context.Context, string, string, emailfilter.Status, string, string) (*emailfilter.FilteredMessage, error) {
 	return nil, nil
+}
+
+func (s *stubExpiry) PruneTerminal(context.Context, time.Time) (int64, error) {
+	return s.pruned, s.pruneErr
 }
 
 func (s *stubExpiry) Expire(context.Context, time.Time, int) ([]emailfilter.FilteredMessage, error) {
@@ -53,7 +60,7 @@ func TestExpirySweepAnnouncesEveryMessageItExpired(t *testing.T) {
 	}}
 	n := &countingNotifier{}
 
-	count, err := emailfilter.NewExpirySweeper(q, n).Expire(context.Background(), time.Now(), 500)
+	count, err := emailfilter.NewExpirySweeper(q, n, nil).Expire(context.Background(), time.Now(), 500)
 	if err != nil {
 		t.Fatalf("Expire: %v", err)
 	}
@@ -88,7 +95,7 @@ func TestExpirySweepAnnouncesEveryMessageItExpired(t *testing.T) {
 func TestExpirySweepAnnouncesNothingWhenNothingExpired(t *testing.T) {
 	n := &countingNotifier{}
 
-	count, err := emailfilter.NewExpirySweeper(&stubExpiry{}, n).Expire(context.Background(), time.Now(), 500)
+	count, err := emailfilter.NewExpirySweeper(&stubExpiry{}, n, nil).Expire(context.Background(), time.Now(), 500)
 	if err != nil {
 		t.Fatalf("Expire: %v", err)
 	}
@@ -104,7 +111,7 @@ func TestAFailedSweepAnnouncesNothing(t *testing.T) {
 		err: errors.New("database unreachable")}
 	n := &countingNotifier{}
 
-	if _, err := emailfilter.NewExpirySweeper(q, n).Expire(context.Background(), time.Now(), 500); err == nil {
+	if _, err := emailfilter.NewExpirySweeper(q, n, nil).Expire(context.Background(), time.Now(), 500); err == nil {
 		t.Fatal("a failed sweep reported success")
 	}
 	if len(n.expired) != 0 {
@@ -117,7 +124,7 @@ func TestAFailedSweepAnnouncesNothing(t *testing.T) {
 func TestSweepingWithoutANotifierStillExpires(t *testing.T) {
 	q := &stubExpiry{records: []emailfilter.FilteredMessage{expiredRecord("q1", "t1")}}
 
-	count, err := emailfilter.NewExpirySweeper(q, nil).Expire(context.Background(), time.Now(), 500)
+	count, err := emailfilter.NewExpirySweeper(q, nil, nil).Expire(context.Background(), time.Now(), 500)
 	if err != nil {
 		t.Fatalf("Expire: %v", err)
 	}

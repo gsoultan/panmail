@@ -18,6 +18,8 @@ var (
 	outboxStatsQuery string
 	//go:embed sql/prune_terminal_outbox.sql
 	pruneTerminalOutboxQuery string
+	//go:embed sql/prune_held_outbox.sql
+	pruneHeldOutboxQuery string
 
 	//go:embed sql/create_outbox.sql
 	createOutboxQuery string
@@ -192,6 +194,22 @@ func (s *outboxStore) PruneTerminal(ctx context.Context, olderThan time.Time) (i
 	}
 	// Not every driver reports affected rows, and the count is only for the
 	// log line, so a driver that declines to say is not an error.
+	removed, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return removed, nil
+}
+
+func (s *outboxStore) PruneHeld(ctx context.Context, olderThan time.Time) (int64, error) {
+	db, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+	res, err := db.ExecContext(ctx, pruneHeldOutboxQuery, olderThan)
+	if err != nil {
+		return 0, err
+	}
 	removed, err := res.RowsAffected()
 	if err != nil {
 		return 0, nil

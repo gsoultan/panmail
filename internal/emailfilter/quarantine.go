@@ -185,4 +185,11 @@ type QuarantineRepository interface {
 	// Only rows this call transitioned. A message a reviewer decided between
 	// the read and the write keeps their decision and must not appear here.
 	Expire(ctx context.Context, now time.Time, limit int) ([]FilteredMessage, error)
+
+	// PruneTerminal deletes decisions that are over and were decided before
+	// the cutoff, and reports how many went. Over means released, rejected or
+	// expired, or a reject or tag, which is decided the moment it is
+	// recorded; decided is when that happened. A hold still waiting for a
+	// reviewer is never pruned, however old.
+	PruneTerminal(ctx context.Context, before time.Time) (int64, error)
 }

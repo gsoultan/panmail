@@ -50,6 +50,13 @@ type QuarantineExpirer interface {
 	Expire(ctx context.Context, now time.Time, limit int) (int, error)
 }
 
+// QuarantinePruner deletes review history decided before the cutoff, and the
+// held payloads no review can release any more. Days-based, on the quarantine
+// policy: a decision is kept for one quarantine period after it was made.
+type QuarantinePruner interface {
+	PruneBefore(ctx context.Context, before time.Time) (int64, error)
+}
+
 type Deps struct {
 	// Settings is where the policy is read from, once per pass. Unlike every
 	// other field it is required: a worker that cannot read the policy has no
@@ -65,6 +72,10 @@ type Deps struct {
 
 	// Quarantine is optional; without it nothing expires.
 	Quarantine QuarantineExpirer
+
+	// QuarantineHistory is optional; without it review history and the held
+	// payloads nothing discarded are kept forever, as they were before it.
+	QuarantineHistory QuarantinePruner
 
 	// Screener receives the quarantine retention the same way the outbox and
 	// webhook queues receive theirs, which is what makes a change on the

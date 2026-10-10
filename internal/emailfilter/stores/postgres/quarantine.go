@@ -276,6 +276,34 @@ func (s *quarantineStore) Expire(ctx context.Context, now time.Time, limit int) 
 	return expired, read.Err()
 }
 
+// pruneTerminalFiltered deletes decisions that are over, by when they were
+// decided: a review at reviewed_at, an expiry at expires_at, and a reject or
+// tag -- decided when it was recorded, and never reviewed -- at created_at.
+// COALESCE in that order picks exactly that. A hold still PENDING is excluded
+// by the first clause, however old it is.
+const pruneTerminalFiltered = `
+DELETE FROM filtered_messages
+ WHERE (status IN ('RELEASED', 'REJECTED', 'EXPIRED') OR action <> 'hold')
+   AND COALESCE(reviewed_at, expires_at, created_at) < $1`
+
+func (s *quarantineStore) PruneTerminal(ctx context.Context, before time.Time) (int64, error) {
+	conn, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+	result, err := conn.ExecContext(ctx, pruneTerminalFiltered, before.UTC())
+	if err != nil {
+		return 0, err
+	}
+	// The count is only for the log line; a driver that will not say is not
+	// a failed prune.
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return removed, nil
+}
+
 // placeholders renders $from..$from+n-1 for an IN list. The driver rejects a
 // query built by interpolating ids, and these ids come from the database
 // rather than from a caller, but building the list by hand once is cheaper
