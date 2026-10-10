@@ -155,6 +155,13 @@ func (s *userService) UpdateUserRole(ctx context.Context, req *connect.Request[p
 		return nil, err
 	}
 
+	// The check above stops promotion to super admin; this one stops the
+	// opposite. A super admin homed in this tenant is listed among its users,
+	// and demoting them is not an administrator's to do.
+	if err := guardTargetInTenant(ctx, s.usecase, tenantID, req.Msg.Id); err != nil {
+		return nil, err
+	}
+
 	if err := s.usecase.UpdateUserRole(ctx, tenantID, req.Msg.Id, req.Msg.Role.String()); err != nil {
 		return nil, asConnectError(err)
 	}
@@ -165,6 +172,10 @@ func (s *userService) UpdateUserRole(ctx context.Context, req *connect.Request[p
 func (s *userService) DeleteUser(ctx context.Context, req *connect.Request[panmailv1.DeleteUserRequest]) (*connect.Response[panmailv1.DeleteUserResponse], error) {
 	tenantID, err := callerTenant(ctx)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := guardTargetInTenant(ctx, s.usecase, tenantID, req.Msg.Id); err != nil {
 		return nil, err
 	}
 
