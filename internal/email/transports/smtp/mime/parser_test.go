@@ -127,6 +127,24 @@ routed body
 			wantSubject: "Latin",
 			wantText:    "café\r\n",
 		},
+		{
+			// One malformed entry used to empty the whole header: every Cc
+			// recipient then read as a Bcc, and a To with a typo in it read as
+			// having no recipients at all.
+			name: "a malformed entry drops only itself",
+			raw: `From: app@example.com
+To: "Doe, Jane" <jane@example.net>, not an address, bob@example.net
+Cc: carol@example.net, broken@,"Smith, (Dan)" <dan@example.net>, team: erin@example.net, frank@example.net;
+Subject: Mixed
+
+hi
+`,
+			wantFrom:    "app@example.com",
+			wantTo:      []string{"jane@example.net", "bob@example.net"},
+			wantCc:      []string{"carol@example.net", "dan@example.net", "erin@example.net", "frank@example.net"},
+			wantSubject: "Mixed",
+			wantText:    "hi\r\n",
+		},
 	}
 
 	parser := NewParser(1<<20, 10)

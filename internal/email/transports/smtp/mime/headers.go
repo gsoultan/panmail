@@ -56,13 +56,78 @@ func addressList(value string, decoder *mime.WordDecoder) []string {
 	parser := &mail.AddressParser{WordDecoder: decoder}
 	addresses, err := parser.ParseList(value)
 	if err != nil {
-		return nil
+		// ParseList gives up on the whole list at its first bad entry.
+		// Returning nothing here made a single malformed Cc turn every Cc
+		// recipient into a Bcc (the session treats envelope recipients missing
+		// from To and Cc as blind), and a malformed To refuse the message as
+		// having no recipients. So each entry is parsed on its own and only
+		// the ones that fail are dropped.
+		addresses = addresses[:0]
+		for _, entry := range splitAddressList(value) {
+			if parsed, err := parser.ParseList(entry); err == nil {
+				addresses = append(addresses, parsed...)
+			}
+		}
 	}
 
 	out := make([]string, 0, len(addresses))
 	for _, address := range addresses {
 		if address.Address != "" {
 			out = append(out, address.Address)
+		}
+	}
+	return out
+}
+
+// splitAddressList splits an address list at its top-level commas. A comma is
+// not a separator inside a quoted display name ("Doe, Jane" <jane@...>), an
+// angle-bracketed address, a comment, or a group ("team: a@x, b@x;"), so those
+// are tracked; a backslash escapes the next character inside quotes and
+// comments, as RFC 5322 allows.
+func splitAddressList(value string) []string {
+	var (
+		entries  []string
+		start    int
+		inQuote  bool
+		inAngle  bool
+		inGroup  bool
+		comments int
+	)
+	for i := 0; i < len(value); i++ {
+		switch c := value[i]; {
+		case c == '\\' && (inQuote || comments > 0):
+			i++
+		case inQuote:
+			if c == '"' {
+				inQuote = false
+			}
+		case c == '"':
+			inQuote = true
+		case c == '(':
+			comments++
+		case c == ')' && comments > 0:
+			comments--
+		case comments > 0:
+		case c == '<':
+			inAngle = true
+		case c == '>':
+			inAngle = false
+		case inAngle:
+		case c == ':':
+			inGroup = true
+		case c == ';':
+			inGroup = false
+		case c == ',' && !inGroup:
+			entries = append(entries, value[start:i])
+			start = i + 1
+		}
+	}
+	entries = append(entries, value[start:])
+
+	out := entries[:0]
+	for _, entry := range entries {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			out = append(out, entry)
 		}
 	}
 	return out
