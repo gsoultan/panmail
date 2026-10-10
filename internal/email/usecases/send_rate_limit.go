@@ -266,11 +266,10 @@ func (u *sendEmailUsecase) checkBacklog(ctx context.Context, tenantID string, li
 
 // maxPaceWait is the longest a delivery will sleep for its turn.
 //
-// It has to sit well inside perEmailTimeout, because the wait and the SMTP
-// exchange share one context: a message that slept its whole budget would time
-// out mid-send. Anything longer is not slept through but rescheduled, which
-// also keeps a worker goroutine from being parked for minutes behind a slow
-// provider while other tenants' mail waits.
+// The wait no longer shares a budget with the SMTP exchange -- each attempt
+// has its own timeout -- but it is still kept short. Anything longer is not
+// slept through but rescheduled, which keeps a worker goroutine from being
+// parked for minutes behind a slow provider while other tenants' mail waits.
 const maxPaceWait = 5 * time.Second
 
 // DeliveryPacedError says a queued message is not being sent yet because

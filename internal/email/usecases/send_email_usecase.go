@@ -36,6 +36,12 @@ const (
 	// is part of the signed payload, so a mismatch rejects every link.
 	trackingKindUnsubscribe = "unsubscribe"
 
+	// deliveryAttemptTimeout bounds one SMTP transaction: one recipient, one
+	// provider. deliveryPrepTimeout bounds the lookups a delivery makes before
+	// it sends anything. See doSend for why they are separate.
+	deliveryAttemptTimeout = 30 * time.Second
+	deliveryPrepTimeout    = 30 * time.Second
+
 	providerCacheTTL      = time.Minute
 	templateCacheTTL      = time.Minute
 	maxProvidersPerTenant = 1000
@@ -92,6 +98,10 @@ type sendEmailUsecase struct {
 
 	providerCache *cache.TTLCache[[]*providerEntities.EmailProvider]
 	templateCache *cache.TTLCache[*templateEntities.Template]
+
+	// attemptTimeout is deliveryAttemptTimeout, held here so a test can use a
+	// timescale it can wait for.
+	attemptTimeout time.Duration
 }
 
 // BaseURLSource supplies the public URL links are built from.
@@ -128,6 +138,7 @@ func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 		screener:        deps.Screener,
 		providerCache:   cache.New[[]*providerEntities.EmailProvider](providerCacheTTL),
 		templateCache:   cache.New[*templateEntities.Template](templateCacheTTL),
+		attemptTimeout:  deliveryAttemptTimeout,
 	}
 }
 
@@ -449,6 +460,18 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		messageID = uuid.New().String()
 	}
 
+	// Each stage of a delivery has a bound of its own, and none of them share
+	// one. The worker used to give the whole message 30 seconds, while this
+	// function sends one SMTP transaction per recipient, one after another --
+	// so the pacing wait, every recipient and every provider's retries all
+	// drew on the same budget. Forty recipients at a second each delivered
+	// twenty-nine and deferred the rest, and since every pass spent a retry, a
+	// message could not reach more than a few hundred recipients before the
+	// schedule ran out. Now the lookups before sending share prepCtx, the pace
+	// bounds its own wait, and each attempt gets deliveryAttemptTimeout.
+	prepCtx, cancelPrep := context.WithTimeout(ctx, deliveryPrepTimeout)
+	defer cancelPrep()
+
 	// The same extractor admission used, so the two cannot disagree about
 	// what domain this send is from.
 	fromDomain, err := senderDomain(req.From)
@@ -466,7 +489,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	var providers []*providerEntities.EmailProvider
 	if req.ProviderId != "" {
 		// Try to find in cached list first
-		all, _ := u.getProviders(ctx, tenantID)
+		all, _ := u.getProviders(prepCtx, tenantID)
 		var p *providerEntities.EmailProvider
 		for _, item := range all {
 			if item.ID == req.ProviderId {
@@ -477,7 +500,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 
 		if p == nil {
 			// Fallback to DB
-			p, _ = u.providerRepo.GetByID(ctx, tenantID, req.ProviderId)
+			p, _ = u.providerRepo.GetByID(prepCtx, tenantID, req.ProviderId)
 		}
 
 		if p != nil {
@@ -493,7 +516,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	}
 
 	if len(providers) == 0 {
-		allProviders, err := u.getProviders(ctx, tenantID)
+		allProviders, err := u.getProviders(prepCtx, tenantID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list providers: %w", err)
 		}
@@ -530,7 +553,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 		return nil, fmt.Errorf("no email providers available for tenant %s", tenantID)
 	}
 
-	subject, bodyHTML, bodyText, err := u.renderTemplate(ctx, tenantID, req)
+	subject, bodyHTML, bodyText, err := u.renderTemplate(prepCtx, tenantID, req)
 	if err != nil {
 		slog.Error("failed to render template for sending", "error", err, "id", messageID)
 		return nil, err
@@ -544,7 +567,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	// delivered message sent a second copy to every recipient the first pass
 	// had reached. Returned instead, the worker defers the message and tries
 	// again once the history can be read.
-	existingEvents, err := u.eventUsecase.ListByMessageID(ctx, tenantID, messageID)
+	existingEvents, err := u.eventUsecase.ListByMessageID(prepCtx, tenantID, messageID)
 	if err != nil {
 		slog.Error("failed to list existing events for message; not sending", "error", err, "id", messageID)
 		return nil, fmt.Errorf("failed to read delivery history: %w", err)
@@ -563,7 +586,7 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	// a retry schedule, or pacing -- and an unsubscribe, a complaint or an
 	// operator's suppression in that time has to stop it. Checked before the
 	// pace, so a recipient who will not be sent to does not spend allowance.
-	dropped, err := u.dropSuppressedAtDelivery(ctx, tenantID, messageID, subject, recipients, finished)
+	dropped, err := u.dropSuppressedAtDelivery(prepCtx, tenantID, messageID, subject, recipients, finished)
 	if err != nil {
 		return nil, err
 	}
@@ -590,6 +613,20 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			continue
 		}
 		if dropped[recipient] || settledMap[recipient] {
+			continue
+		}
+
+		// Shutdown's grace ran out, or the claim was lost. Every recipient
+		// left would fail at once on the dead context, each recording a
+		// DEFERRED for an attempt that never reached a server; they are
+		// reported as failed for this pass instead, unattempted, and the next
+		// pass sends to them.
+		if err := ctx.Err(); err != nil {
+			failures = append(failures, RecipientFailure{
+				Recipient: recipient,
+				Err:       err,
+				Class:     emailutil.ClassifyError(err.Error()),
+			})
 			continue
 		}
 
@@ -669,7 +706,12 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			// SENT is recorded only once the provider has actually accepted the
 			// message. Recording it before the attempt counted failures as
 			// sends and inflated both the Sent metric and the msgs/sec gauge.
-			err = sender.Send(ctx, msg)
+			//
+			// Each attempt on its own clock, derived from the message's context
+			// so shutdown and a lost claim still reach it.
+			attemptCtx, cancelAttempt := context.WithTimeout(ctx, u.attemptTimeout)
+			err = sender.Send(attemptCtx, msg)
+			cancelAttempt()
 			if err == nil {
 				slog.Info("email delivered successfully", "id", messageID, "provider", p.Name, "recipient", recipient)
 				_ = u.RecordEvent(ctx, tenantID, p.ID, messageID, panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, recipient, subject, "", nil)
