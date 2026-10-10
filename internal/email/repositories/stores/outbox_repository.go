@@ -2,6 +2,7 @@ package stores
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/gsoultan/panmail/internal/email/repositories/entities"
@@ -9,6 +10,21 @@ import (
 
 type OutboxRepository interface {
 	Create(ctx context.Context, email *entities.OutboxEmail) error
+
+	// CreateWithIdempotencyKey queues email and records key against it in one
+	// transaction, so a key is never stored for a message that was not queued
+	// and a queued message is never missing its key. A key that is already
+	// live for the tenant -- one created at or after liveSince -- queues
+	// nothing and returns ErrIdempotencyKeyTaken; an expired one is replaced.
+	CreateWithIdempotencyKey(ctx context.Context, email *entities.OutboxEmail, key *entities.IdempotencyKey, liveSince time.Time) error
+
+	// GetIdempotencyKey returns the tenant's use of key created at or after
+	// liveSince, or (nil, nil) when there is none.
+	GetIdempotencyKey(ctx context.Context, tenantID, key string, liveSince time.Time) (*entities.IdempotencyKey, error)
+
+	// PruneIdempotencyKeys removes keys created before the cutoff, and reports
+	// how many went.
+	PruneIdempotencyKeys(ctx context.Context, olderThan time.Time) (int64, error)
 
 	// GetByID returns (nil, nil) when there is no such message. A row that has
 	// gone is an answer, not a failure: a delivered or discarded message is
@@ -55,3 +71,8 @@ type OutboxRepository interface {
 	// minute or a stopped worker and cannot tell you which.
 	Stats(ctx context.Context) (pending int64, oldest time.Time, err error)
 }
+
+// ErrIdempotencyKeyTaken is CreateWithIdempotencyKey losing to a live use of
+// the same key: another request holding it was accepted first, and nothing was
+// queued for this one.
+var ErrIdempotencyKeyTaken = errors.New("idempotency key already in use")

@@ -109,6 +109,18 @@ func (s *shadowed) PruneMinuteSeriesBefore(ctx context.Context, before time.Time
 	})
 }
 
+// PruneHourDaySeriesBefore deletes expired hour and day counters from both
+// stores, since the shadow keeps its own.
+func (s *shadowed) PruneHourDaySeriesBefore(ctx context.Context, before time.Time) (int64, error) {
+	n, err := s.EventRepository.PruneHourDaySeriesBefore(ctx, before)
+	if err != nil {
+		return n, err
+	}
+	return n, s.pruneShadow(func(p SharedPruner) (int64, error) {
+		return p.DeleteHourDaySeriesBefore(ctx, before)
+	})
+}
+
 // pruneShadow runs one prune against the shadow's own tables, if it has any.
 //
 // Its failure is returned, unlike a failed shadow write. A write the shadow

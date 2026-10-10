@@ -19,10 +19,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	inboundStores "github.com/gsoultan/panmail/internal/inbound/repositories/stores"
 	"github.com/gsoultan/panmail/internal/inbound/usecases"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -56,10 +57,33 @@ var (
 type WebhookHandler struct {
 	usecase      usecases.InboundUsecase
 	providerRepo providerStores.Repository
+
+	// receipts recognises a provider's retry of a post already accepted. Nil
+	// turns deduplication off, which is what a caller with no database gets.
+	receipts inboundStores.ReceiptRepository
+
+	// sns verifies SES posts. Shared across requests on purpose: it caches
+	// the signing certificates it fetches, and one built per request would go
+	// back to AWS for the certificate on every message.
+	sns *gsmail.SNSVerifier
+
+	// snsHTTP confirms SNS subscriptions.
+	snsHTTP *http.Client
 }
 
 func NewWebhookHandler(usecase usecases.InboundUsecase, providerRepo providerStores.Repository) *WebhookHandler {
-	return &WebhookHandler{usecase: usecase, providerRepo: providerRepo}
+	return &WebhookHandler{
+		usecase:      usecase,
+		providerRepo: providerRepo,
+		sns:          &gsmail.SNSVerifier{Client: newSNSClient()},
+		snsHTTP:      newSNSClient(),
+	}
+}
+
+// WithReceipts turns on deduplication of retried posts.
+func (h *WebhookHandler) WithReceipts(receipts inboundStores.ReceiptRepository) *WebhookHandler {
+	h.receipts = receipts
+	return h
 }
 
 func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -87,23 +111,72 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authenticated before anything is parsed, so an anonymous caller learns
-	// nothing about how the payload would have been read.
-	if err := h.authenticate(r, tenantID, providerID, body); err != nil {
+	// Unknown tenant, unknown provider and a provider with nothing to
+	// authenticate with are all the same refusal, so the endpoint cannot be
+	// used to enumerate ids.
+	provider, err := h.lookupProvider(r.Context(), tenantID, providerID)
+	if err != nil {
 		slog.Warn("rejecting unauthenticated inbound post",
 			"tenant_id", tenantID, "provider_id", providerID, "error", err)
 		http.Error(w, "Inbound authentication failed", http.StatusUnauthorized)
 		return
 	}
 
-	payload, status, refusal := parsePayload(r.Header.Get("Content-Type"), body)
-	if payload == nil {
-		http.Error(w, refusal, status)
+	var payload *inboundPayload
+	if provider.Type == panmailv1.ProviderType_PROVIDER_TYPE_SES {
+		// SES posts through SNS, which signs rather than sharing a secret,
+		// and wraps the mail in an envelope of its own.
+		if payload = h.receiveSNS(w, r, provider, body); payload == nil {
+			return
+		}
+	} else {
+		// Authenticated before anything is parsed, so an anonymous caller
+		// learns nothing about how the payload would have been read.
+		if err := authenticate(r, provider, body); err != nil {
+			slog.Warn("rejecting unauthenticated inbound post",
+				"tenant_id", tenantID, "provider_id", providerID, "error", err)
+			http.Error(w, "Inbound authentication failed", http.StatusUnauthorized)
+			return
+		}
+
+		var status int
+		var refusal string
+		if payload, status, refusal = parsePayload(r.Header.Get("Content-Type"), body); payload == nil {
+			http.Error(w, refusal, status)
+			return
+		}
+	}
+
+	// A provider retries any post it did not see a 2xx for, and a slow answer
+	// looks to it exactly like a failure, so the same message can arrive more
+	// than once and on more than one instance. Each copy used to be stored,
+	// screened, bounce-checked and announced to the tenant's webhooks again.
+	key := dedupeKey(payload)
+	claim, held := h.claim(r.Context(), tenantID, providerID, key)
+	switch claim {
+	case inboundStores.ClaimDuplicate:
+		// The same answer the first post got: as far as the provider is
+		// concerned this is that post, delivered.
+		w.WriteHeader(http.StatusAccepted)
+		return
+	case inboundStores.ClaimInFlight:
+		// Not success: the post holding the claim may yet fail, and a
+		// provider told 2xx here would never send the message again.
+		w.Header().Set("Retry-After", inFlightRetryAfter)
+		http.Error(w, "The same message is being processed; retry later", http.StatusServiceUnavailable)
 		return
 	}
 
+	// Only the raw message, when the service posts it, can show a delivery
+	// report's structure: the parsed fields carry text, not parts. A post
+	// without it is stored as mail and never records a bounce.
+	var report *usecases.DeliveryReport
+	if payload.raw != nil {
+		report = usecases.ParseDeliveryReport(payload.raw.Attachments)
+	}
+
 	email := &panmailv1.InboundEmail{
-		Id:        uuid.New().String(),
+		Id:        inboundID(tenantID, providerID, key),
 		TenantId:  tenantID,
 		From:      payload.From,
 		To:        payload.To,
@@ -114,7 +187,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Headers:   payload.Headers,
 	}
 
-	if err := h.usecase.Process(r.Context(), email); err != nil {
+	if err := h.usecase.Process(r.Context(), email, report); err != nil {
 		// Logged, not returned. Process writes to the inbound store, the outbox
 		// and any webhook subscriptions, so its error can carry filesystem
 		// paths, the database user and host, or an internal endpoint's address.
@@ -122,15 +195,19 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// to retry; it has no use for any of that.
 		slog.Error("failed to process an inbound email",
 			"error", err, "tenant_id", email.TenantId, "id", email.Id)
+		held.release(r.Context())
 		http.Error(w, "Could not process the message", http.StatusInternalServerError)
 		return
 	}
 
+	held.complete(r.Context())
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// authenticate checks the post against the provider's webhook secret, which it
-// may present either way an inbound-parse service can:
+// authenticate checks a post against what the provider is configured with.
+//
+// Most providers store a shared secret, which the post may present either way
+// an inbound-parse service can:
 //
 //   - X-Panmail-Signature: sha256=<hex HMAC-SHA256 of the raw body>, for a
 //     relay that can sign; or
@@ -139,49 +216,58 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //     https://:secret@host/... with a secret that has no colon. The same
 //     convention as Postmark's delivery webhooks.
 //
-// Unknown tenant, unknown provider and wrong secret are all the same refusal,
-// so the endpoint cannot be used to enumerate ids.
-func (h *WebhookHandler) authenticate(r *http.Request, tenantID, providerID string, body []byte) error {
-	secret, err := h.inboundSecret(r.Context(), tenantID, providerID)
-	if err != nil {
-		return err
+// SendGrid's stored value is its event webhook's ECDSA *public* key, which
+// anyone may have seen, so it cannot be the credential. SendGrid Inbound Parse
+// can neither sign nor be given a header, only a URL, so it authenticates with
+// HTTP Basic against a credential kept beside the key in the same field (see
+// SplitSendGridWebhookSecret). Only Basic: the HMAC form would be keyed with
+// something a SendGrid post never carries.
+//
+// SES is not handled here; see receiveSNS.
+func authenticate(r *http.Request, provider *providerEntities.EmailProvider, body []byte) error {
+	if provider.Type == panmailv1.ProviderType_PROVIDER_TYPE_SENDGRID {
+		_, credential := providerEntities.SplitSendGridWebhookSecret(provider.WebhookSecret)
+		if credential == "" {
+			return errUnauthenticated
+		}
+		return verifyBasic(r.Header, credential)
 	}
 
+	secret := provider.WebhookSecret
 	if signature := r.Header.Get(SignatureHeader); signature != "" {
 		return verifySignature(secret, signature, body)
 	}
 	if r.Header.Get("Authorization") != "" {
-		user, pass, found := strings.Cut(secret, ":")
-		if !found {
-			user, pass = "", secret
-		}
-		if err := (gsmail.PostmarkVerifier{Username: user, Password: pass}).Verify(r.Header); err != nil {
-			return errUnauthenticated
-		}
-		return nil
+		return verifyBasic(r.Header, secret)
 	}
 	return errUnauthenticated
 }
 
-func (h *WebhookHandler) inboundSecret(ctx context.Context, tenantID, providerID string) (string, error) {
+// verifyBasic checks HTTP Basic credentials against a secret of "user:pass",
+// or of a password alone.
+func verifyBasic(header http.Header, secret string) error {
+	user, pass, found := strings.Cut(secret, ":")
+	if !found {
+		user, pass = "", secret
+	}
+	if err := (gsmail.PostmarkVerifier{Username: user, Password: pass}).Verify(header); err != nil {
+		return errUnauthenticated
+	}
+	return nil
+}
+
+// lookupProvider returns the provider a post claims to be from, under the
+// tenant in its URL, or errUnauthenticated when there is none or it has
+// nothing configured to authenticate a post with.
+func (h *WebhookHandler) lookupProvider(ctx context.Context, tenantID, providerID string) (*providerEntities.EmailProvider, error) {
 	if h.providerRepo == nil {
-		return "", errUnauthenticated
+		return nil, errUnauthenticated
 	}
 	provider, err := h.providerRepo.GetByID(ctx, tenantID, providerID)
 	if err != nil || provider == nil || provider.WebhookSecret == "" {
-		return "", errUnauthenticated
+		return nil, errUnauthenticated
 	}
-
-	// For these two the stored value is verification material, not a shared
-	// secret: SendGrid's is an ECDSA *public* key and SES's is a topic ARN.
-	// Accepting either as a password would let anyone who has seen it post
-	// mail, so a tenant receiving through one of them points inbound at a
-	// provider whose secret is a secret.
-	switch provider.Type {
-	case panmailv1.ProviderType_PROVIDER_TYPE_SENDGRID, panmailv1.ProviderType_PROVIDER_TYPE_SES:
-		return "", errUnauthenticated
-	}
-	return provider.WebhookSecret, nil
+	return provider, nil
 }
 
 func verifySignature(secret, signature string, body []byte) error {
@@ -206,6 +292,50 @@ type inboundPayload struct {
 	HTML    string            `json:"html"`
 	Text    string            `json:"text"`
 	Headers map[string]string `json:"headers"`
+
+	// Raw is the whole message as received, which some services post
+	// alongside or instead of the parsed fields (SendGrid's "email" field
+	// with "send raw" on). It is the only source of a message's parts.
+	Raw string `json:"raw"`
+
+	// EventID is the poster's own id for this delivery, the same on every
+	// retry of it. MessageID is the message's Message-ID, for a poster that
+	// sends it as a field of its own rather than among the headers.
+	EventID   string `json:"event_id"`
+	MessageID string `json:"message_id"`
+
+	// raw is Raw parsed, nil when there was none or it did not parse.
+	raw *gsmail.Email
+}
+
+// readRaw parses Raw and fills in any field the service did not post.
+func (p *inboundPayload) readRaw() {
+	if p.Raw == "" {
+		return
+	}
+	parsed, err := gsmail.ParseRawEmail([]byte(p.Raw))
+	if err != nil {
+		return
+	}
+	p.raw = &parsed
+	if p.From == "" {
+		p.From = parsed.From
+	}
+	if len(p.To) == 0 {
+		p.To = parsed.To
+	}
+	if p.Subject == "" {
+		p.Subject = parsed.Subject
+	}
+	if p.Text == "" {
+		p.Text = string(parsed.Body)
+	}
+	if p.HTML == "" {
+		p.HTML = string(parsed.HTMLBody)
+	}
+	if len(p.Headers) == 0 {
+		p.Headers = parsed.Headers
+	}
 }
 
 func (p *inboundPayload) empty() bool {
@@ -257,6 +387,7 @@ func parsePayload(contentType string, body []byte) (*inboundPayload, int, string
 		return nil, http.StatusUnsupportedMediaType, "unsupported Content-Type"
 	}
 
+	p.readRaw()
 	if p.empty() {
 		return nil, http.StatusBadRequest, "the post carried no message"
 	}
@@ -270,6 +401,13 @@ func (p *inboundPayload) fromForm(values url.Values) {
 	p.Subject = values.Get("subject")
 	p.Text = values.Get("text")
 	p.HTML = values.Get("html")
+	p.Raw = values.Get("email")
+	p.EventID = values.Get("event_id")
+	// Mailgun's routes post the header under its own name.
+	p.MessageID = values.Get("message_id")
+	if p.MessageID == "" {
+		p.MessageID = values.Get("Message-Id")
+	}
 
 	for _, field := range values["to"] {
 		for _, addr := range strings.Split(field, ",") {

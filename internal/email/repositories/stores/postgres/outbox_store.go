@@ -43,6 +43,15 @@ var (
 	deleteOutboxQuery string
 	//go:embed sql/count_pending_outbox.sql
 	countPendingOutboxQuery string
+
+	//go:embed sql/get_send_idempotency_key.sql
+	getSendIdempotencyKeyQuery string
+	//go:embed sql/delete_expired_send_idempotency_key.sql
+	deleteExpiredSendIdempotencyKeyQuery string
+	//go:embed sql/create_send_idempotency_key.sql
+	createSendIdempotencyKeyQuery string
+	//go:embed sql/prune_send_idempotency_keys.sql
+	pruneSendIdempotencyKeysQuery string
 )
 
 type outboxStore struct {
@@ -67,6 +76,82 @@ func (s *outboxStore) Create(ctx context.Context, email *entities.OutboxEmail) e
 	}
 	_, err = db.ExecContext(ctx, createOutboxQuery, email.ID, email.TenantID, string(email.Request), email.Status, email.RetryCount, email.NextRetryAt, email.LastError, email.CreatedAt, email.UpdatedAt)
 	return err
+}
+
+// CreateWithIdempotencyKey writes the key first and the message second, in one
+// transaction. The key first, because it is the write that can lose: a
+// conflict there rolls back before anything is queued.
+//
+// Times are stored and compared in UTC. SQLite compares them as text, and two
+// zones in one column would order by the wall clock rather than the instant.
+func (s *outboxStore) CreateWithIdempotencyKey(ctx context.Context, email *entities.OutboxEmail, key *entities.IdempotencyKey, liveSince time.Time) (err error) {
+	dbConn, err := s.getDB()
+	if err != nil {
+		return err
+	}
+	tx, err := dbConn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.ExecContext(ctx, deleteExpiredSendIdempotencyKeyQuery, key.TenantID, key.Key, liveSince.UTC()); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, createSendIdempotencyKeyQuery,
+		key.TenantID, key.Key, key.RequestHash, key.MessageID, key.CreatedAt.UTC())
+	if err != nil {
+		return err
+	}
+	inserted, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if inserted == 0 {
+		err = stores.ErrIdempotencyKeyTaken
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, createOutboxQuery, email.ID, email.TenantID, string(email.Request), email.Status, email.RetryCount, email.NextRetryAt, email.LastError, email.CreatedAt, email.UpdatedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *outboxStore) GetIdempotencyKey(ctx context.Context, tenantID, key string, liveSince time.Time) (*entities.IdempotencyKey, error) {
+	dbConn, err := s.getDB()
+	if err != nil {
+		return nil, err
+	}
+	k := &entities.IdempotencyKey{}
+	err = dbConn.QueryRowContext(ctx, getSendIdempotencyKeyQuery, tenantID, key, liveSince.UTC()).
+		Scan(&k.TenantID, &k.Key, &k.RequestHash, &k.MessageID, &k.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return k, nil
+}
+
+func (s *outboxStore) PruneIdempotencyKeys(ctx context.Context, olderThan time.Time) (int64, error) {
+	dbConn, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+	res, err := dbConn.ExecContext(ctx, pruneSendIdempotencyKeysQuery, olderThan.UTC())
+	if err != nil {
+		return 0, err
+	}
+	removed, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return removed, nil
 }
 
 func (s *outboxStore) GetByID(ctx context.Context, id string) (*entities.OutboxEmail, error) {

@@ -61,6 +61,9 @@ func TestRunCreatesTheFullSchema(t *testing.T) {
 		// Membership: which tenants a user may act in, beyond the one
 		// users.tenant_id gives them.
 		"user_tenants",
+		// What a send's idempotency key was accepted for. Not on outbox: a
+		// delivered message's row is deleted, and the key has to outlive it.
+		"send_idempotency_keys",
 	}
 	for _, table := range tables {
 		t.Run(table, func(t *testing.T) {

@@ -22,6 +22,7 @@ const (
 	headerTo              = "To"
 	headerCc              = "Cc"
 	headerSubject         = "Subject"
+	headerMessageID       = "Message-Id"
 	headerContentType     = "Content-Type"
 	headerContentEncoding = "Content-Transfer-Encoding"
 	headerDisposition     = "Content-Disposition"
@@ -116,6 +117,7 @@ func (p *Parser) Parse(r io.Reader, envelopeFrom string) (*Message, error) {
 
 	return &Message{
 		ProviderID: strings.TrimSpace(parsed.Header.Get(ProviderHeader)),
+		MessageID:  strings.TrimSpace(parsed.Header.Get(headerMessageID)),
 		Request:    req,
 	}, nil
 }

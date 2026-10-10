@@ -76,8 +76,8 @@ export function secretFieldFor(type: ProviderType): SecretField | null {
       return {
         label: 'Event webhook verification key',
         description:
-          'The public key SendGrid shows when you enable signed event webhooks. Panmail checks every event against it.',
-        placeholder: 'Base64 public key',
+          'The public key SendGrid shows when you enable signed event webhooks. Panmail checks every event against it. To receive mail through Inbound Parse as well, add a space and inbound=user:password, and give Inbound Parse the /inbound/ URL with those credentials in it.',
+        placeholder: 'Base64 public key [inbound=user:password]',
       };
     case ProviderType.MAILGUN:
       return {
@@ -97,7 +97,7 @@ export function secretFieldFor(type: ProviderType): SecretField | null {
       return {
         label: 'SNS topic ARN',
         description:
-          'SES events arrive through SNS, which signs them, so there is no shared secret. Panmail still needs the topic ARN: a valid signature only proves a message came from SNS, not that it came from your topic.',
+          'SES events arrive through SNS, which signs them, so there is no shared secret. Panmail still needs the topic ARN: a valid signature only proves a message came from SNS, not that it came from your topic. If a receipt rule publishes received mail to a different topic, list both, separated by a comma.',
         placeholder: 'arn:aws:sns:us-east-1:123456789012:ses-events',
       };
     default:

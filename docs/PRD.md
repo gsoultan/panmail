@@ -62,11 +62,14 @@ Administrator.
 - Being an MTA. Panmail relays through providers; it does not deliver to MX
   hosts itself.
 - Marketing automation (segments, journeys, A/B tests).
-- MySQL/MariaDB. The query layer uses PostgreSQL-style placeholders; those
-  drivers connect but every query fails.
-- Exactly-once delivery. Neither SMTP nor the RPC carries an idempotency key,
-  so a lost acknowledgement can produce a duplicate. Clients are told never
-  to retry an unknown outcome.
+- MySQL/MariaDB. The query layer uses PostgreSQL-style placeholders, so a
+  `mysql` or `mariadb` database type is refused at startup and by the setup
+  wizard, with an error naming PostgreSQL and SQLite.
+- Exactly-once delivery to the recipient. An idempotency key (S8) makes
+  *submission* safe to retry, but a send without a key — or an SMTP
+  submission without a Message-ID — can still be duplicated by a lost
+  acknowledgement, and a provider that accepts a message and then times out
+  can still deliver it twice.
 
 ## 4. Functional requirements
 
@@ -77,10 +80,11 @@ Administrator.
 | S1 | `EmailService.SendEmail` over ConnectRPC/gRPC/JSON, authenticated by an API key with the `email:send` scope, or by a console session. |
 | S2 | An SMTP submission listener (off by default) feeding the same pipeline, with AUTH only over TLS on any non-loopback listener. |
 | S3 | `provider_id` is required; panmail never guesses which provider a message leaves through. A `From` outside the provider's `AllowedDomains` is refused. |
-| S4 | Refusals are decisions with stable codes (rate limited, backlog full, suppressed, invalid, unauthenticated, permission denied) and are made **before** anything is queued or recorded. Only `unknown` is worth retrying. |
+| S4 | Refusals are decisions with stable codes (rate limited, backlog full, suppressed, invalid, unauthenticated, permission denied) and are made **before** anything is queued or recorded. Only `unknown` and `aborted` (S8) are worth retrying. |
 | S5 | Each recipient receives its own copy (personal tracking), with the full visible To/Cc audience in the headers and only that recipient in the envelope. Bcc is never a header. |
 | S6 | Handlebars and Go `html/template` bodies, with date formatting and time zones; a template that will not render is refused, not sent blank. |
 | S7 | Attachments up to the configured request bound. |
+| S8 | An optional idempotency key per send (`idempotency_key`, or the `Idempotency-Key` header; they must agree if both are set), at most 255 printable ASCII characters. Scoped to the tenant and remembered for 24 hours from acceptance, written in the same transaction as the outbox row. A repeat with the same request returns the first response and queues nothing; the same key with a different request is `already_exists`. Concurrent repeats queue once (unique key); a loser whose winner cannot be read yet gets `aborted`. Refusals store nothing. SMTP submissions use their Message-ID plus envelope recipients as the key. Expired keys are pruned by the outbox worker. |
 
 ### 4.2 Delivery
 
@@ -99,8 +103,8 @@ Administrator.
 | --- | --- |
 | E1 | Every lifecycle step (PENDING, SENT, DELIVERED, OPENED, CLICKED, BOUNCED, …) is an event keyed by `message_id`. PENDING is recorded only once a message is queued. |
 | E2 | Signed open/click/unsubscribe links; the click endpoint is not an open redirect. |
-| E3 | Analytics counters by minute, hour and day, in UTC. Ranged queries read the coarsest buckets that cover the range. |
-| E4 | Outbound webhooks: durable, signed, leased like the outbox, delivered with bounded parallelism across subscriptions, and only redirected within the subscription's own host. |
+| E3 | Analytics counters by minute, hour and day, in UTC. Ranged queries read the coarsest buckets that cover the range. Hour and day counters are kept forever unless `analytics_retention_days` is set. |
+| E4 | Outbound webhooks: durable, signed, leased like the outbox, delivered with bounded parallelism across subscriptions, and only redirected within the subscription's own host. A batch is claimed round-robin across subscriptions with a per-subscription cap, and an endpoint that times out or refuses connections twice in a row is backed off as a whole, so no one endpoint can occupy the workers or the batch. Targets on private addresses are allowed by default (self-hosted receivers); `--webhook-block-private-targets` refuses private, loopback, link-local, CGNAT, multicast and unspecified addresses (IPv4, IPv6 and IPv4-mapped) on the address actually dialled, for every connection and redirect, and refuses such a URL when a subscription is saved. |
 | E5 | Inbound ESP webhooks (SendGrid, Mailgun, Postmark, SES, generic HMAC) are verified before any event is recorded. |
 
 ### 4.4 Inbound mail
@@ -108,8 +112,8 @@ Administrator.
 | ID | Requirement |
 | --- | --- |
 | I1 | IMAP/POP3 polling and IMAP IDLE per provider; an IDLE session restarts when its provider's settings change. |
-| I2 | An HTTP parse endpoint at `/inbound/{tenant_id}/{provider_id}`, authenticated with the provider's webhook secret (HMAC header or HTTP Basic). The tenant comes from the credential, never from the body. JSON, multipart and urlencoded bodies are accepted; anything unparseable is refused. |
-| I3 | A received bounce report is recorded against its `Final-Recipient`/`Original-Recipient` only; never against the sender. |
+| I2 | An HTTP parse endpoint at `/inbound/{tenant_id}/{provider_id}`, authenticated with the provider's webhook secret (HMAC header or HTTP Basic). SendGrid Inbound Parse authenticates with HTTP Basic against an `inbound=` credential kept beside the event key in the same field; SES receipt rules post through SNS and are authenticated by SNS's signature (versions 1 and 2) from a topic the provider names, with the signing certificate fetched only from that topic's regional SNS endpoint and a subscription confirmed only for that topic. The tenant comes from the credential, never from the body. JSON, multipart and urlencoded bodies are accepted; anything unparseable is refused. A retried post is stored once: deduplicated per tenant and provider on the poster's event id, else on the Message-ID with a digest of the message, through a receipt in the shared database that holds under concurrent posts and on any instance. A duplicate is answered as a success; one whose first post is still in flight is asked to retry. |
+| I3 | A received bounce is recorded only when it is a delivery status notification (a `message/delivery-status` part) whose returned headers carry the `X-Panmail-Ref` panmail signed onto that copy, verifying for the receiving tenant and the reported `Final-Recipient`/`Original-Recipient`, and the event store shows that message sent to that address. It is recorded against that address and message only; never against the sender. Anything else is stored as mail and suppresses no one. |
 | I4 | A received message is committed before it is acknowledged. |
 
 ### 4.5 Filtering and review
@@ -125,8 +129,8 @@ Administrator.
 | --- | --- |
 | A1 | Four roles (Super Administrator, Administrator, Editor, Viewer). One account may belong to several tenants, with a role per tenant. |
 | A2 | A session's role and tenant are re-read from the account (cached a few seconds), so deletion and demotion take effect promptly. If the account cannot be read, the request is answered 503, not 401. |
-| A3 | Administrators cannot demote, delete or disable two-factor for a Super Administrator, nor act on users outside their tenant. |
-| A4 | System settings and the SMTP listener are Super Administrator only. Application logs are scoped: a tenant sees only entries that name it; only a Super Administrator sees the unfiltered log. |
+| A3 | Administrators cannot demote, delete or disable two-factor for a Super Administrator, nor act on users outside their tenant. Two-factor belongs to the account, so an Administrator changes it only for users whose home tenant is theirs, not for guest members. |
+| A4 | System settings, the SMTP listener and the host's performance metrics are Super Administrator only. Application logs are scoped: a tenant sees only entries that name it; only a Super Administrator sees the unfiltered log. |
 | A5 | Passwords are at least 12 characters, for the first admin and every later account. TOTP two-factor; sign-in and TOTP attempts are limited per account and hold under concurrent bursts and floods. |
 | A6 | First-run setup writes its config only after the admin exists, so a failed setup can be retried. |
 | A7 | A tenant that still holds data cannot be deleted; the refusal says what remains. |
@@ -140,8 +144,12 @@ sustained ~193 sends/s on one instance with `outboxConcurrency = 200`;
 throughput is a function of the provider's latency and limits, and operators
 should benchmark their own setup rather than rely on a headline figure.
 
-Paths that must not regress (guarded by ordinary tests, because CI does not
-run benchmarks):
+Paths that must not regress. Each is guarded twice: by an ordinary test that
+pins its shape (a round-trip count, an allocation budget), which runs on every
+change, and by a benchmark that the nightly `bench` workflow compares against
+the previous `main` with benchstat, failing on more than 25% more time/op or
+allocs/op at p < 0.05. Per-change CI does not run benchmarks; a branch is
+compared on demand.
 
 - Admission costs one suppression round trip whatever the recipient count, and
   stays inside an allocation budget.
@@ -150,6 +158,8 @@ run benchmarks):
   already supplied what the event needs.
 - Filter rules are compiled once per tenant, not once per message.
 - Link rewriting is a single regexp pass per body.
+- A ranged metrics total is tiled from day counters, reading hour and minute
+  counters only at the ragged edges, so its cost follows the number of days.
 
 ### 5.2 Resource bounds
 
@@ -161,15 +171,19 @@ run benchmarks):
 | Event write buffer | 20,000 ops, drained on shutdown; writes after close are refused |
 | Log store | Async, drained on shutdown; one List call reads at most 20,000 entries |
 | Inbound listing / template listing | Page size defaults to 50, capped at 500 |
-| Minute-level analytics and resource samples | Pruned on a fixed horizon; hour and day counters are kept |
+| Minute-level analytics and resource samples | Pruned on a fixed horizon (minutes: 30 days, or the analytics retention if shorter) |
+| Hour and day analytics counters | `analytics_retention_days`; zero, the default, keeps them forever |
 | Held outbox payloads, review history | Pruned on the quarantine retention |
-| Everything else | The seven retention settings (README, "Data retention"); zero means keep forever |
+| Inbound endpoint receipts | Pruned after 7 days, a fixed horizon past every provider's retry schedule |
+| Everything else | The retention settings (README, "Data retention"); zero means keep forever |
 
 ### 5.3 Reliability
 
 - Startup retries the database with backoff and exits if it never comes up, so
-  a supervisor restarts it; a failed migration stops the process rather than
-  serving a half-migrated schema.
+  a supervisor restarts it; a configuration that can never work (an
+  unsupported engine such as MySQL/MariaDB, a SQLite database with no path)
+  exits at once. A failed migration stops the process rather than serving a
+  half-migrated schema.
 - Shutdown: readiness fails first, streams end, HTTP and workers drain within
   the 30-second termination grace, then provider pools and Pebble stores close.
 - Liveness (`/healthz`) checks nothing external; readiness (`/readyz`) checks
@@ -189,8 +203,8 @@ The Go and PHP clients live in
 [gsoultan/panmail-sdk](https://github.com/gsoultan/panmail-sdk). Requirements
 they share:
 
-- One call to send; typed refusals; no retry of an unknown outcome; an opt-in
-  retry of rate-limit refusals only.
+- One call to send; typed refusals; no retry of an unknown outcome unless the
+  send carries an idempotency key (S8); an opt-in retry of rate-limit refusals.
 - Bounded responses: at most 1 MiB is read, at most 64 KiB more is discarded,
   and refusal messages are cut to 4 KiB.
 - Refusals are classified from status and code even when the body was cut
@@ -199,14 +213,21 @@ they share:
 
 ## 7. Known gaps
 
-- Bounce detection on mail fetched over IMAP is a heuristic; anyone who can
-  mail the tenant's mailbox can forge a bounce report naming an address.
-- The HTTP inbound endpoint has no idempotency key, so a provider that retries
-  the same post stores it twice.
-- A single slow webhook endpoint can still fill a batch when it owns more than
-  a batch's worth of the oldest due notifications.
-- `GetPerformanceMetrics` is Administrator-level but reports host-wide figures.
-- An Administrator can disable two-factor for a guest member of their tenant,
-  which affects that person's whole account.
-- Webhook URLs may target private addresses by design (self-hosted targets);
-  there is no egress allow-list.
+- A bounce report counts only when it returns panmail's signed reference, so
+  reports about mail sent before the reference existed, from a gateway with no
+  auth key, or through an inbound-parse service that does not post the raw
+  message are not recorded. A recipient who passes on a copy with its headers
+  intact hands over the means to bounce their own address, and only theirs.
+- A send that loses an idempotency-key race (S8) has already been charged
+  against the tenant's send rate, and a `tag` filter rule may have recorded it,
+  though nothing was queued for it.
+- SES mail delivered by a receipt rule's S3 action (any message over 150 KB)
+  is stored with its headers and the bucket and key only; panmail does not
+  fetch it from S3. SNS raw message delivery cannot be verified and is refused.
+- A post to the HTTP inbound endpoint that carries neither an event id nor a
+  Message-ID is not deduplicated, and neither is a retry that arrives more than
+  7 days after the first post, when its receipt has been pruned.
+- Webhook URLs may target private addresses unless the operator starts the
+  gateway with `--webhook-block-private-targets`; that is a block-list of
+  reserved ranges, not an allow-list of destinations, and with it on the
+  environment's HTTP proxy is not used for webhooks.

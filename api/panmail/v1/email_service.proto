@@ -26,6 +26,12 @@ message SendEmailRequest {
   string template_id = 7;
   google.protobuf.Struct template_data = 8;
   repeated Attachment attachments = 11;
+  // Makes a retried send safe. A second request from the same tenant with the
+  // same key within 24 hours of the first being accepted is answered with the
+  // first one's response and queues nothing; the same key with a different
+  // request is refused with ALREADY_EXISTS. At most 255 printable ASCII
+  // characters. May be sent as the Idempotency-Key HTTP header instead.
+  string idempotency_key = 14;
 }
 
 message SendEmailResponse {

@@ -41,6 +41,7 @@ func TestSaveRoundTripsEveryField(t *testing.T) {
 		InboundRetentionDays:    90,
 		ArchiveRetentionDays:    365,
 		QuarantineRetentionDays: 14,
+		AnalyticsRetentionDays:  730,
 	}
 	if err := s.Save(t.Context(), want); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -76,6 +77,7 @@ func TestSaveRoundTripsEveryField(t *testing.T) {
 		{"inbound", got.InboundRetentionDays, want.InboundRetentionDays},
 		{"archives", got.ArchiveRetentionDays, want.ArchiveRetentionDays},
 		{"quarantine", got.QuarantineRetentionDays, want.QuarantineRetentionDays},
+		{"analytics", got.AnalyticsRetentionDays, want.AnalyticsRetentionDays},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d; want %d", tc.name, tc.got, tc.want)

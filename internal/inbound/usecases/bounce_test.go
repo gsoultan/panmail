@@ -2,154 +2,290 @@ package usecases
 
 import (
 	"context"
-	"runtime"
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
+	"github.com/gsoultan/panmail/pkg/tracking"
 )
 
 // A bounce read from the inbox suppresses the address it names, permanently
-// when it is a hard one. So the address has to be the one the report is about,
-// and nothing else.
+// when it is a hard one, and the inbox accepts mail from anyone. So a report
+// is believed only when it is a real delivery status notification and it hands
+// back the reference panmail signed onto the copy it reports on.
+
+const (
+	otherTenant = "22222222-2222-2222-2222-222222222222"
+	sentMessage = "9b2f6c1e-0000-4000-8000-000000000001"
+	gone        = "gone@example.org"
+	victim      = "victim@example.org"
+)
 
 type recordedBounce struct {
 	eventType panmailv1.EmailEventType
+	messageID string
 	recipient string
 }
 
+// recordingEvents records bounces and answers ListByMessageID from what it was
+// told was sent, keyed by tenant and message as the real store is.
 type recordingEvents struct {
 	eventusecases.ProcessEventUsecase
+	sent     map[string][]*panmailv1.EmailEvent
 	recorded []recordedBounce
 }
 
-func (r *recordingEvents) RecordEvent(_ context.Context, _, _, _ string, eventType panmailv1.EmailEventType, recipient, _, _ string, _ map[string]any) error {
-	r.recorded = append(r.recorded, recordedBounce{eventType, recipient})
+func newRecordingEvents() *recordingEvents {
+	return &recordingEvents{sent: map[string][]*panmailv1.EmailEvent{}}
+}
+
+func (r *recordingEvents) markSent(tenantID, messageID, recipient string) {
+	r.sent[tenantID+"/"+messageID] = append(r.sent[tenantID+"/"+messageID], &panmailv1.EmailEvent{
+		TenantId: tenantID, MessageId: messageID, Recipient: recipient,
+		Type: panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT,
+	})
+}
+
+func (r *recordingEvents) ListByMessageID(_ context.Context, tenantID, messageID string) ([]*panmailv1.EmailEvent, error) {
+	return r.sent[tenantID+"/"+messageID], nil
+}
+
+func (r *recordingEvents) RecordEvent(_ context.Context, _, _, messageID string, eventType panmailv1.EmailEventType, recipient, _, _ string, _ map[string]any) error {
+	r.recorded = append(r.recorded, recordedBounce{eventType, messageID, recipient})
 	return nil
 }
 
-// Postfix's report, as it arrives. The address line has a space after the
-// semicolon, which is how every major MTA writes it and what the old parser
-// cut on, leaving the recipient empty.
-const postfixDSN = `This is the mail system at host mx.example.net.
+var testSigner = tracking.NewSigner([]byte("bounce-test-key"))
 
-I'm sorry to have to inform you that your message could not
-be delivered to one or more recipients.
+func newBounceUsecase(events *recordingEvents) InboundUsecase {
+	u := NewInboundUsecase(newFakeRepo(), events, &fakeWebhooks{})
+	return u.(*inboundUsecase).WithBounceSigner(testSigner)
+}
 
-<gone@example.org>: host mx.example.org[192.0.2.1] said: 550 5.1.1
-    <gone@example.org>: Recipient address rejected: User unknown
+// dsn renders a multipart/report the way Postfix does, reporting on
+// finalRecipient and returning the original headers with ref in them ("" for
+// none).
+func dsn(finalRecipient, action, status, ref string) string {
+	returned := "From: news@sender.example\r\nTo: " + gone + "\r\nSubject: Hello\r\nMessage-ID: <abc@sender.example>\r\n"
+	if ref != "" {
+		returned += tracking.BounceRefHeader + ": " + ref + "\r\n"
+	}
+	return "From: MAILER-DAEMON@mx.example.net\r\n" +
+		"To: bounces@sender.example\r\n" +
+		"Subject: Undelivered Mail Returned to Sender\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/report; report-type=delivery-status; boundary=\"B\"\r\n" +
+		"\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\n" +
+		"<" + finalRecipient + ">: host mx.example.org said: 550 5.1.1 User unknown\r\n" +
+		"--B\r\nContent-Type: message/delivery-status\r\n\r\n" +
+		"Reporting-MTA: dns; mx.example.net\r\n" +
+		"Arrival-Date: Sat, 10 Oct 2026 09:12:01 +0000\r\n" +
+		"\r\n" +
+		"Final-Recipient: rfc822; " + finalRecipient + "\r\n" +
+		"Original-Recipient: rfc822;" + finalRecipient + "\r\n" +
+		"Action: " + action + "\r\n" +
+		"Status: " + status + "\r\n" +
+		"Diagnostic-Code: smtp; 550 5.1.1 <" + finalRecipient + ">: Recipient address rejected: User unknown\r\n" +
+		"\r\n" +
+		"--B\r\nContent-Type: text/rfc822-headers\r\n\r\n" +
+		returned +
+		"--B--\r\n"
+}
 
-Reporting-MTA: dns; mx.example.net
-X-Postfix-Queue-ID: 4F1C2A0123
-Arrival-Date: Sat, 10 Oct 2026 09:12:01 +0000 (UTC)
+// receive parses raw as the IMAP and POP3 receivers do and hands it to the
+// usecase the way the poller does.
+func receive(t *testing.T, u InboundUsecase, tenantID, raw string) {
+	t.Helper()
+	parsed, err := gsmail.ParseRawEmail([]byte(raw))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	e := &panmailv1.InboundEmail{
+		Id: fmt.Sprintf("in-%x", sha256.Sum256([]byte(raw))), TenantId: tenantID,
+		From: parsed.From, To: parsed.To, Subject: parsed.Subject,
+		BodyText: string(parsed.Body), BodyHtml: string(parsed.HTMLBody),
+		Headers: parsed.Headers,
+	}
+	if err := u.Process(context.Background(), e, ParseDeliveryReport(parsed.Attachments)); err != nil {
+		t.Fatalf("process: %v", err)
+	}
+}
 
-Final-Recipient: rfc822; gone@example.org
-Original-Recipient: rfc822;gone@example.org
-Action: failed
-Status: 5.1.1
-Remote-MTA: dns; mx.example.org
-Diagnostic-Code: smtp; 550 5.1.1 <gone@example.org>: Recipient address
-    rejected: User unknown
-`
+func TestAGenuineReportForAMessagePanmailSentIsRecorded(t *testing.T) {
+	events := newRecordingEvents()
+	events.markSent(dedupTenant, sentMessage, gone)
+	u := newBounceUsecase(events)
 
-func TestTheBouncedAddressIsReadFromTheReport(t *testing.T) {
+	receive(t, u, dedupTenant, dsn(gone, "failed", "5.1.1", testSigner.BounceRef(dedupTenant, sentMessage, gone)))
+
+	want := recordedBounce{panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE, sentMessage, gone}
+	if len(events.recorded) != 1 || events.recorded[0] != want {
+		t.Fatalf("recorded %+v, want exactly %+v", events.recorded, want)
+	}
+}
+
+// The send path may record a recipient in its display-name form; the report
+// names the bare address.
+func TestAReportMatchesARecipientSentToByDisplayName(t *testing.T) {
+	events := newRecordingEvents()
+	events.markSent(dedupTenant, sentMessage, "gone person <"+gone+">")
+	u := newBounceUsecase(events)
+
+	receive(t, u, dedupTenant, dsn(gone, "failed", "5.1.1", testSigner.BounceRef(dedupTenant, sentMessage, gone)))
+
+	if len(events.recorded) != 1 {
+		t.Fatalf("recorded %+v, want one bounce", events.recorded)
+	}
+}
+
+func TestADelayReportIsASoftBounceAndADeliveryReportIsNothing(t *testing.T) {
+	events := newRecordingEvents()
+	events.markSent(dedupTenant, sentMessage, gone)
+	u := newBounceUsecase(events)
+	ref := testSigner.BounceRef(dedupTenant, sentMessage, gone)
+
+	receive(t, u, dedupTenant, dsn(gone, "delayed", "4.2.2", ref))
+	receive(t, u, dedupTenant, dsn(gone, "delivered", "2.0.0", ref))
+
+	if len(events.recorded) != 1 || events.recorded[0].eventType != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SOFT_BOUNCE {
+		t.Errorf("recorded %+v, want one soft bounce", events.recorded)
+	}
+}
+
+// Each of these is something anyone who can mail the tenant's mailbox can
+// send. None of them may record anything against anyone.
+func TestForgedBounceReportsSuppressNoOne(t *testing.T) {
+	victimRef := testSigner.BounceRef(dedupTenant, sentMessage, victim)
+
 	cases := []struct {
-		name string
-		body string
-		html string
-		want string
+		name   string
+		tenant string
+		raw    string
 	}{
-		{name: "postfix, space after the semicolon", body: postfixDSN, want: "gone@example.org"},
-		{name: "no space after the semicolon", body: "Final-Recipient: rfc822;a@example.org\r\nAction: failed\r\n", want: "a@example.org"},
-		{name: "lower-case field name", body: "final-recipient: RFC822; b@example.org\n", want: "b@example.org"},
-		{name: "bracketed address", body: "Final-Recipient: rfc822; <c@example.org>\n", want: "c@example.org"},
-		{name: "only Original-Recipient", body: "Original-Recipient: rfc822; d@example.org\n", want: "d@example.org"},
-		{name: "in the HTML part", html: "<p>Final-Recipient: rfc822; e@example.org<br>Action: failed</p>", want: "e@example.org"},
-		{name: "at the very end", body: "Final-Recipient: rfc822; f@example.org", want: "f@example.org"},
+		{
+			// What the old detector acted on: the right subject, the right
+			// words, a Final-Recipient line. No report structure at all.
+			name:   "plain-text user unknown naming the victim",
+			tenant: dedupTenant,
+			raw: "From: MAILER-DAEMON@mx.example.net\r\nSubject: Delivery Status Notification (Failure)\r\n\r\n" +
+				"Delivery failed: user unknown\r\nFinal-Recipient: rfc822; " + victim + "\r\nAction: failed\r\nStatus: 5.1.1\r\n",
+		},
+		{
+			name:   "a real report structure that returns no reference",
+			tenant: dedupTenant,
+			raw:    dsn(victim, "failed", "5.1.1", ""),
+		},
+		{
+			// The forger received a copy of the message themselves and quotes
+			// their own reference, naming someone else.
+			name:   "naming an address the reference was not minted for",
+			tenant: dedupTenant,
+			raw:    dsn(victim, "failed", "5.1.1", testSigner.BounceRef(dedupTenant, sentMessage, gone)),
+		},
+		{
+			// A genuine reference, but nothing in the event store says the
+			// message ever went to this address.
+			name:   "naming an address panmail never mailed",
+			tenant: dedupTenant,
+			raw:    dsn(victim, "failed", "5.1.1", victimRef),
+		},
+		{
+			name:   "for another tenant's message",
+			tenant: dedupTenant,
+			raw:    dsn(gone, "failed", "5.1.1", testSigner.BounceRef(otherTenant, sentMessage, gone)),
+		},
+		{
+			name:   "with a reference made up by the forger",
+			tenant: dedupTenant,
+			raw:    dsn(gone, "failed", "5.1.1", "v1."+sentMessage+".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			events := &recordingEvents{}
-			u := NewInboundUsecase(newFakeRepo(), events, &fakeWebhooks{})
+			events := newRecordingEvents()
+			// gone@ was mailed in both tenants; victim@ never was.
+			events.markSent(dedupTenant, sentMessage, gone)
+			events.markSent(otherTenant, sentMessage, gone)
+			u := newBounceUsecase(events)
 
-			e := inbound("bounce-1", "Delivery Status Notification (Failure)")
-			e.From = "MAILER-DAEMON@mx.example.net"
-			e.BodyText, e.BodyHtml = tc.body, tc.html
-			if err := u.Process(context.Background(), e); err != nil {
-				t.Fatalf("process: %v", err)
-			}
+			receive(t, u, tc.tenant, tc.raw)
 
-			if len(events.recorded) != 1 {
-				t.Fatalf("recorded %d bounces, want 1", len(events.recorded))
-			}
-			if got := events.recorded[0].recipient; got != tc.want {
-				t.Errorf("recorded the bounce against %q, want %q", got, tc.want)
+			if len(events.recorded) != 0 {
+				t.Errorf("recorded %+v for a forged report", events.recorded)
 			}
 		})
 	}
 }
 
-func TestAPostfixReportIsAHardBounce(t *testing.T) {
-	events := &recordingEvents{}
-	u := NewInboundUsecase(newFakeRepo(), events, &fakeWebhooks{})
+// A forged report is still mail: it is stored, it is just not believed.
+func TestARefusedReportIsStillStoredAsInboundMail(t *testing.T) {
+	repo := newFakeRepo()
+	u := NewInboundUsecase(repo, newRecordingEvents(), &fakeWebhooks{}).(*inboundUsecase).WithBounceSigner(testSigner)
 
-	e := inbound("bounce-1", "Delivery Status Notification (Failure)")
-	e.BodyText = postfixDSN
-	u.Process(context.Background(), e)
-
-	if len(events.recorded) != 1 || events.recorded[0].eventType != panmailv1.EmailEventType_EMAIL_EVENT_TYPE_HARD_BOUNCE {
-		t.Errorf("recorded %+v, want one hard bounce", events.recorded)
+	parsed, _ := gsmail.ParseRawEmail([]byte(dsn(victim, "failed", "5.1.1", "")))
+	e := inbound("forged-1", parsed.Subject)
+	if err := u.Process(context.Background(), e, ParseDeliveryReport(parsed.Attachments)); err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if repo.writes != 1 {
+		t.Errorf("stored %d messages, want 1", repo.writes)
 	}
 }
 
-// The attack this closes: a message dressed as a bounce, naming no recipient,
-// from the address the sender wants suppressed. Falling back to From
-// suppressed it, permanently.
-func TestABounceThatNamesNoRecipientIsNotPinnedOnTheSender(t *testing.T) {
-	events := &recordingEvents{}
-	u := NewInboundUsecase(newFakeRepo(), events, &fakeWebhooks{})
+// Without the key there is nothing to verify a reference against, so nothing
+// is believed -- rather than everything.
+func TestWithoutTheTrackingKeyNoReportIsRecorded(t *testing.T) {
+	events := newRecordingEvents()
+	events.markSent(dedupTenant, sentMessage, gone)
+	u := NewInboundUsecase(newFakeRepo(), events, &fakeWebhooks{}).(*inboundUsecase).WithBounceSigner(tracking.NewSigner(nil))
 
-	e := inbound("forged-1", "Undeliverable: hello")
-	e.From = "victim@example.com"
-	e.BodyText = "Delivery failed: user unknown"
-	if err := u.Process(context.Background(), e); err != nil {
-		t.Fatalf("process: %v", err)
-	}
+	receive(t, u, dedupTenant, dsn(gone, "failed", "5.1.1", testSigner.BounceRef(dedupTenant, sentMessage, gone)))
 
-	for _, r := range events.recorded {
-		if strings.EqualFold(r.recipient, e.From) {
-			t.Fatalf("recorded a %s against the sender %q", r.eventType, r.recipient)
-		}
-	}
 	if len(events.recorded) != 0 {
-		t.Errorf("recorded %+v for a report that names nobody", events.recorded)
+		t.Errorf("recorded %+v with no key to verify against", events.recorded)
 	}
 }
 
-// Bounce detection used to lower-case the whole of text+HTML afresh for each
-// phrase it looked for, so a large message with a bounce-like subject cost
-// several times its own size in garbage: about 200 MiB for a 25 MiB body.
-func TestBounceDetectionDoesNotCopyALargeBodyRepeatedly(t *testing.T) {
-	const bodySize = 25 << 20
-	body := postfixDSN + strings.Repeat("x", bodySize)
-
-	u := NewInboundUsecase(newFakeRepo(), &recordingEvents{}, &fakeWebhooks{})
-	e := inbound("big-bounce", "Delivery Status Notification (Failure)")
-	e.BodyText = body
-
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	if err := u.Process(context.Background(), e); err != nil {
-		t.Fatalf("process: %v", err)
+func TestTheReportedAddressIsReadFromTheStatusPart(t *testing.T) {
+	cases := []struct {
+		name, field, want string
+	}{
+		{"space after the semicolon", "Final-Recipient: rfc822; a@example.org", "a@example.org"},
+		{"no space", "Final-Recipient: rfc822;b@example.org", "b@example.org"},
+		{"upper case", "Final-Recipient: RFC822; C@Example.org", "c@example.org"},
+		{"bracketed", "Final-Recipient: rfc822; <d@example.org>", "d@example.org"},
+		{"only Original-Recipient", "Original-Recipient: rfc822; e@example.org", "e@example.org"},
+		{"not an Internet address", "Final-Recipient: x400; /c=us/o=x/", ""},
 	}
-	runtime.ReadMemStats(&after)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			report := ParseDeliveryReport([]gsmail.Attachment{{
+				ContentType: "message/delivery-status",
+				Data:        []byte("Reporting-MTA: dns; mx.example.net\r\n\r\n" + tc.field + "\r\nAction: failed\r\nStatus: 5.1.1\r\n"),
+			}})
+			got := ""
+			if report != nil {
+				got = report.Recipients[0].Address
+			}
+			if got != tc.want {
+				t.Errorf("read %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
-	// Well under one copy of the body. Anything proportional to the body is
-	// the regression.
-	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > bodySize/4 {
-		t.Errorf("processing a %d MiB bounce allocated %d MiB", bodySize>>20, allocated>>20)
+func TestAMessageWithoutADeliveryStatusPartIsNotAReport(t *testing.T) {
+	report := ParseDeliveryReport([]gsmail.Attachment{
+		{ContentType: "text/rfc822-headers", Data: []byte("X-Panmail-Ref: v1.x.y\r\n\r\n")},
+		{ContentType: "application/pdf", Data: []byte(strings.Repeat("Final-Recipient: rfc822; v@example.org\r\n", 2))},
+	})
+	if report != nil {
+		t.Errorf("read a report from %+v", report)
 	}
 }

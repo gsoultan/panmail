@@ -58,6 +58,11 @@ func TestAuthorizeUserRoles(t *testing.T) {
 		{"super admin may configure the SMTP listener", panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure, userContext(RoleSuperAdmin), false},
 		{"admin may not configure the SMTP listener", panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure, userContext(RoleAdmin), true},
 		{"api key may not configure the SMTP listener", panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure, apiKeyContext(entities.ScopeEmailSend, entities.ScopeProvidersWrite), true},
+		// Performance metrics are host-wide (CPU, memory, every tenant's send
+		// rate), so they are the deployment operator's, like settings.
+		{"super admin may read performance metrics", panmailv1connect.EventServiceGetPerformanceMetricsProcedure, userContext(RoleSuperAdmin), false},
+		{"admin may not read performance metrics", panmailv1connect.EventServiceGetPerformanceMetricsProcedure, userContext(RoleAdmin), true},
+		{"api key may not read performance metrics", panmailv1connect.EventServiceGetPerformanceMetricsProcedure, apiKeyContext(entities.ScopeEmailSend, entities.ScopeProvidersWrite), true},
 		// Logs stay with tenant administrators: they are filtered to the
 		// caller's tenant.
 		{"admin may read logs", panmailv1connect.LogServiceListLogsProcedure, userContext(RoleAdmin), false},

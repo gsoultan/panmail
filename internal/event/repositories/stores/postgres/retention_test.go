@@ -26,6 +26,7 @@ func TestSharedRetentionPrunesTheLocalStoreToo(t *testing.T) {
 		{"messages", func(s *Store) (int64, error) { return s.TruncateMessagesBefore(t.Context(), cutoff) }, "messages"},
 		{"minute series", func(s *Store) (int64, error) { return s.PruneMinuteSeriesBefore(t.Context(), cutoff) }, "minute_series"},
 		{"resource history", func(s *Store) (int64, error) { return s.PruneResourceHistoryBefore(t.Context(), cutoff) }, "resource_history"},
+		{"analytics series", func(s *Store) (int64, error) { return s.PruneHourDaySeriesBefore(t.Context(), cutoff) }, "analytics_series"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -135,6 +136,46 @@ func TestMinutePruneKeepsDayAndHourRows(t *testing.T) {
 		{"minute", now.Format("2006-01-02 15:04"), 1},
 		{"hour", old.Format("2006-01-02 15"), 1},
 		{"day", old.Format("2006-01-02"), 1},
+	} {
+		got, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, tt.granularity)
+		if err != nil {
+			t.Fatalf("%s series: %v", tt.granularity, err)
+		}
+		if got[tt.bucket]["SENT"] != tt.want {
+			t.Errorf("%s %s = %d; want %d", tt.granularity, tt.bucket, got[tt.bucket]["SENT"], tt.want)
+		}
+	}
+}
+
+// With an analytics retention set, hour and day rows before it go and minute
+// rows are left to their own horizon. A day row goes only once the whole day
+// is past the cutoff, so the cutoff's own day keeps its count.
+func TestHourDayPruneKeepsMinutesAndTheCutoffDay(t *testing.T) {
+	s, w := newStore(t)
+	now := time.Now().UTC()
+	old := now.AddDate(0, 0, -400).Truncate(time.Minute)
+	writeEvents(t, s, w,
+		ev("old", "a@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, old),
+		ev("new", "b@example.com", panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SENT, now))
+
+	removed, err := s.DeleteHourDaySeriesBefore(t.Context(), now.AddDate(0, 0, -365))
+	if err != nil {
+		t.Fatalf("DeleteHourDaySeriesBefore: %v", err)
+	}
+	if removed != 2 {
+		t.Errorf("removed %d rows; want the old hour and the old day", removed)
+	}
+
+	for _, tt := range []struct {
+		granularity string
+		bucket      string
+		want        int64
+	}{
+		{"hour", old.Format("2006-01-02 15"), 0},
+		{"day", old.Format("2006-01-02"), 0},
+		{"minute", old.Format("2006-01-02 15:04"), 1},
+		{"hour", now.Format("2006-01-02 15"), 1},
+		{"day", now.Format("2006-01-02"), 1},
 	} {
 		got, err := s.GetTimeSeriesMetrics(t.Context(), storetest.TenantA, time.Time{}, time.Time{}, tt.granularity)
 		if err != nil {

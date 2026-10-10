@@ -88,7 +88,8 @@ export function goApiSnippet(values: SnippetValues, baseUrl: string): string {
     '\tres, err := http.DefaultClient.Do(req)',
     '\tif err != nil {',
     '\t\t// The one outcome where you cannot know whether the gateway took the',
-    '\t\t// message. Sending is not idempotent, so do not retry blindly.',
+    '\t\t// message. Retry only with an Idempotency-Key header set, which makes',
+    '\t\t// a repeat within 24 hours return the first message instead of a copy.',
     '\t\tlog.Fatal(err)',
     '\t}',
     '\tdefer res.Body.Close()',
@@ -155,7 +156,8 @@ curl_setopt_array($ch, [
 $response = curl_exec($ch);
 if ($response === false) {
     // The one outcome where you cannot know whether the gateway took the
-    // message. Sending is not idempotent, so do not retry blindly.
+    // message. Retry only with an Idempotency-Key header set, which makes a
+    // repeat within 24 hours return the first message instead of a copy.
     throw new RuntimeException('the send did not complete: ' . curl_error($ch));
 }
 

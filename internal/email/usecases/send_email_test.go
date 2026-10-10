@@ -720,6 +720,17 @@ func (m *mockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time.Time)
 
 func (m *mockOutboxRepo) PruneHeld(context.Context, time.Time) (int64, error) { return 0, nil }
 
+// Keys are not remembered here; the idempotency tests use the real store.
+func (m *mockOutboxRepo) CreateWithIdempotencyKey(ctx context.Context, e *entities.OutboxEmail, _ *entities.IdempotencyKey, _ time.Time) error {
+	return m.Create(ctx, e)
+}
+func (m *mockOutboxRepo) GetIdempotencyKey(context.Context, string, string, time.Time) (*entities.IdempotencyKey, error) {
+	return nil, nil
+}
+func (m *mockOutboxRepo) PruneIdempotencyKeys(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockOutboxRepo) Stats(context.Context) (int64, time.Time, error) {
 	return int64(len(m.emails)), time.Now(), nil
 }

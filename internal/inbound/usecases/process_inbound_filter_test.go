@@ -95,7 +95,7 @@ func TestAHeldInboundMessageIsStoredButNotAnnounced(t *testing.T) {
 	screener := &stubScreener{decision: decisionOf(emailfilter.ActionHold, "external invoice")}
 	u, repo, trigger := harness(t, screener)
 
-	if err := u.Process(context.Background(), inboundOf()); err != nil {
+	if err := u.Process(context.Background(), inboundOf(), nil); err != nil {
 		t.Fatalf("Process: %v", err)
 	}
 	if len(repo.written) != 1 {
@@ -115,7 +115,7 @@ func TestARejectedInboundMessageIsDroppedWithoutAnError(t *testing.T) {
 	screener := &stubScreener{decision: decisionOf(emailfilter.ActionReject, "known bad sender")}
 	u, repo, trigger := harness(t, screener)
 
-	if err := u.Process(context.Background(), inboundOf()); err != nil {
+	if err := u.Process(context.Background(), inboundOf(), nil); err != nil {
 		t.Fatalf("Process returned %v, want nil so the poller stops offering it", err)
 	}
 	if len(repo.written) != 0 {
@@ -133,7 +133,7 @@ func TestATaggedInboundMessageIsDeliveredNormally(t *testing.T) {
 	screener := &stubScreener{decision: decisionOf(emailfilter.ActionTag, "watch")}
 	u, repo, trigger := harness(t, screener)
 
-	if err := u.Process(context.Background(), inboundOf()); err != nil {
+	if err := u.Process(context.Background(), inboundOf(), nil); err != nil {
 		t.Fatalf("Process: %v", err)
 	}
 	if len(repo.written) != 1 || trigger.enqueued != 1 {
@@ -151,7 +151,7 @@ func TestAnInboundScreeningFailureStillDelivers(t *testing.T) {
 	screener := &stubScreener{screenErr: errors.New("database unreachable")}
 	u, repo, trigger := harness(t, screener)
 
-	if err := u.Process(context.Background(), inboundOf()); err != nil {
+	if err := u.Process(context.Background(), inboundOf(), nil); err != nil {
 		t.Fatalf("Process: %v", err)
 	}
 	if len(repo.written) != 1 || trigger.enqueued != 1 {
@@ -163,7 +163,7 @@ func TestInboundHeadersReachTheRules(t *testing.T) {
 	screener := &stubScreener{}
 	u, _, _ := harness(t, screener)
 
-	if err := u.Process(context.Background(), inboundOf()); err != nil {
+	if err := u.Process(context.Background(), inboundOf(), nil); err != nil {
 		t.Fatalf("Process: %v", err)
 	}
 	// Lower-cased, because a rule writes X-Spam-Score and the wire may carry
@@ -176,7 +176,7 @@ func TestInboundHeadersReachTheRules(t *testing.T) {
 func TestWithoutAScreenerInboundIsUnchanged(t *testing.T) {
 	u, repo, trigger := harness(t, nil)
 
-	if err := u.Process(context.Background(), inboundOf()); err != nil {
+	if err := u.Process(context.Background(), inboundOf(), nil); err != nil {
 		t.Fatalf("Process: %v", err)
 	}
 	if len(repo.written) != 1 || trigger.enqueued != 1 {

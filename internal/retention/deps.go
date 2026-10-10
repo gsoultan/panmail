@@ -70,6 +70,10 @@ type Deps struct {
 	Outbox   RetentionSetter
 	Webhooks RetentionSetter
 
+	// InboundReceipts is optional; without it the inbound endpoint's receipts
+	// are never pruned.
+	InboundReceipts InboundReceiptPruner
+
 	// Quarantine is optional; without it nothing expires.
 	Quarantine QuarantineExpirer
 

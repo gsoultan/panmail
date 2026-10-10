@@ -88,6 +88,11 @@ func (l *localStub) PruneMinuteSeriesBefore(context.Context, time.Time) (int64, 
 	return 0, nil
 }
 
+func (l *localStub) PruneHourDaySeriesBefore(context.Context, time.Time) (int64, error) {
+	l.pruned = append(l.pruned, "analytics_series")
+	return 0, nil
+}
+
 func (l *localStub) PruneResourceHistoryBefore(context.Context, time.Time) (int64, error) {
 	l.pruned = append(l.pruned, "resource_history")
 	return 0, nil

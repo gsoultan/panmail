@@ -55,6 +55,7 @@ import (
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
 	"github.com/gsoultan/panmail/internal/health"
 	inboundstores "github.com/gsoultan/panmail/internal/inbound/repositories/stores/pebble"
+	inboundpostgres "github.com/gsoultan/panmail/internal/inbound/repositories/stores/postgres"
 	inboundservices "github.com/gsoultan/panmail/internal/inbound/services"
 	inboundhttp "github.com/gsoultan/panmail/internal/inbound/transports/http"
 	inboundusecases "github.com/gsoultan/panmail/internal/inbound/usecases"
@@ -279,6 +280,14 @@ func main() {
 		"How long to report not-ready before closing the listener on shutdown; 0 to close at once")
 	smtpReconcileIntervalFlag := flag.Duration("smtp-reconcile-interval", smtpusecases.DefaultReconcileInterval,
 		"How often to re-read the stored SMTP submission configuration; ignored when --smtp-addr is set")
+	// Off by default: a self-hosted gateway posting to a service on its own
+	// network is the ordinary case, and refusing that would break it. On a
+	// gateway that hosts tenants who do not run the network, a webhook URL is
+	// otherwise a way to make the gateway POST to anything the operator can
+	// reach. A flag rather than a setting because it is the operator's call,
+	// not a tenant administrator's, and has to hold on every instance.
+	webhookBlockPrivateFlag := flag.Bool("webhook-block-private-targets", false,
+		"Refuse outbound webhooks to private, loopback, link-local, CGNAT, multicast and unspecified addresses (checked when the connection is made, and when a subscription is saved)")
 	flag.Parse()
 
 	if *versionFlag {
@@ -483,7 +492,11 @@ func main() {
 
 	filterRuleStore := emailfilterpostgres.NewRuleStore(conn)
 	filterQuarantineStore := emailfilterpostgres.NewQuarantineStore(conn)
-	webhookUsecase := webhookusecases.NewWebhookUsecase(webhookRepo)
+	var webhookOptions []webhookusecases.Option
+	if *webhookBlockPrivateFlag {
+		webhookOptions = append(webhookOptions, webhookusecases.RestrictTargets(nil))
+	}
+	webhookUsecase := webhookusecases.NewWebhookUsecase(webhookRepo, webhookOptions...)
 	webhookService := webhookservices.NewWebhookService(webhookUsecase)
 
 	// Background work runs under a context this process controls, so shutdown
@@ -497,6 +510,10 @@ func main() {
 	// bounced is silent, unrecoverable loss.
 	webhookDeliveryRepo := webhookstores.NewDeliveryStore(conn)
 	outboundWebhookWorker := webhookworker.NewDurableWorker(webhookDeliveryRepo, webhookUsecase)
+	if *webhookBlockPrivateFlag {
+		outboundWebhookWorker.RestrictEgress()
+		slog.Info("outbound webhooks are restricted to public addresses")
+	}
 
 	// After the webhook worker, because a held message notifies the tenant and
 	// a hold nobody is told about is a message that quietly expires unreviewed.
@@ -533,8 +550,18 @@ func main() {
 	}); ok {
 		inboundUsecase = screenable.WithScreener(filterScreener)
 	}
+	// A delivery report read from a tenant's mailbox is believed only when it
+	// quotes back the reference the send path signed with this key.
+	if verifying, ok := inboundUsecase.(interface {
+		WithBounceSigner(*tracking.Signer) inboundusecases.InboundUsecase
+	}); ok {
+		inboundUsecase = verifying.WithBounceSigner(trackingSigner)
+	}
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
-	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase, providerRepo)
+	// Receipts live in the shared database rather than beside the mail, so a
+	// provider's retry is recognised whichever instance it lands on.
+	inboundReceipts := inboundpostgres.NewReceiptStore(conn)
+	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase, providerRepo).WithReceipts(inboundReceipts)
 
 	warnIfUnsubscribeLinksWillNotWork(settingsProvider.BaseURL())
 	// One limiter shared by the API path and the outbox worker, so a tenant
@@ -610,6 +637,9 @@ func main() {
 		Inbound:  inboundRepo,
 		Outbox:   queueWorker,
 		Webhooks: outboundWebhookWorker,
+		// Pruned on a fixed horizon, not the inbound policy: see
+		// retention.InboundReceiptDays.
+		InboundReceipts: inboundReceipts,
 		// The sweeper rather than the store: it announces each expiry to the
 		// tenant's subscribers and hands retention back the count it wants.
 		Quarantine: filterExpiry,
@@ -2005,7 +2035,7 @@ func warnAboutUnboundedRetention(repo settingsrepos.SettingsRepository) {
 	}
 
 	p := retention.Resolve(stored)
-	forever := make([]string, 0, 8)
+	forever := make([]string, 0, 9)
 	for _, c := range []struct {
 		field string
 		days  int
@@ -2018,6 +2048,7 @@ func warnAboutUnboundedRetention(repo settingsrepos.SettingsRepository) {
 		{"inbound_retention_days", p.InboundDays},
 		{"archive_retention_days", p.ArchiveDays},
 		{"quarantine_retention_days", p.QuarantineDays},
+		{"analytics_retention_days", p.AnalyticsDays},
 	} {
 		if c.days == 0 {
 			forever = append(forever, c.field)

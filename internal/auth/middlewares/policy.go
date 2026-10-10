@@ -94,6 +94,12 @@ var procedurePolicy = map[string]access{
 	// credential able to widen the surface on which its own kind is accepted.
 	panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure: {minRole: RoleSuperAdmin},
 
+	// Performance metrics are the host's: CPU, memory, load, disk, open files
+	// and the send rate summed over every tenant. None of it is scoped to the
+	// caller's tenant, so a tenant administrator reading it would be watching
+	// every other tenant's traffic and the machine they share.
+	panmailv1connect.EventServiceGetPerformanceMetricsProcedure: {minRole: RoleSuperAdmin},
+
 	// --- Administrator ------------------------------------------------------
 	panmailv1connect.ApiKeyServiceCreateApiKeyProcedure:      {minRole: RoleAdmin},
 	panmailv1connect.ApiKeyServiceListApiKeysProcedure:       {minRole: RoleAdmin},
@@ -161,13 +167,12 @@ var procedurePolicy = map[string]access{
 	panmailv1connect.InboundServiceGetInboundEmailProcedure:      {minRole: RoleViewer, scope: entities.ScopeInboundRead},
 	panmailv1connect.SystemSettingsServiceGetSettingsProcedure:   {minRole: RoleViewer},
 
-	// Archives and host metrics describe the deployment rather than one
-	// tenant's mail, so they stay with signed-in operators only.
-	panmailv1connect.EventServiceListArchivesProcedure:          {minRole: RoleViewer},
-	panmailv1connect.EventServiceDownloadArchiveProcedure:       {minRole: RoleViewer},
-	panmailv1connect.EventServiceGetPerformanceMetricsProcedure: {minRole: RoleAdmin},
-	panmailv1connect.LogServiceListLogsProcedure:                {minRole: RoleAdmin},
-	panmailv1connect.LogServiceStreamLogsProcedure:              {minRole: RoleAdmin},
+	// Archives describe the deployment rather than one tenant's mail, so they
+	// stay with signed-in operators only.
+	panmailv1connect.EventServiceListArchivesProcedure:    {minRole: RoleViewer},
+	panmailv1connect.EventServiceDownloadArchiveProcedure: {minRole: RoleViewer},
+	panmailv1connect.LogServiceListLogsProcedure:          {minRole: RoleAdmin},
+	panmailv1connect.LogServiceStreamLogsProcedure:        {minRole: RoleAdmin},
 }
 
 // lookupPolicy returns the rule for a procedure and whether one exists.

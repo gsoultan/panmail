@@ -44,6 +44,7 @@ type Settings struct {
 	InboundRetentionDays    int
 	ArchiveRetentionDays    int
 	QuarantineRetentionDays int
+	AnalyticsRetentionDays  int
 
 	// ContentRedaction is the stored form of internal/redact.Level ("off",
 	// "passwords", "codes", "secrets"). Empty means nobody has chosen, which
@@ -79,6 +80,7 @@ func FromConfig(cfg *config.Config) *Settings {
 	s.InboundRetentionDays = cfg.App.InboundRetentionDays
 	s.ArchiveRetentionDays = cfg.App.ArchiveRetentionDays
 	s.QuarantineRetentionDays = cfg.App.QuarantineRetentionDays
+	s.AnalyticsRetentionDays = cfg.App.AnalyticsRetentionDays
 	// Deliberately not seeded from the config file: redaction never lived
 	// there, so an upgrading deployment has nothing to carry across and gets
 	// the default.

@@ -2,8 +2,11 @@ package smtp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/emersion/go-sasl"
@@ -166,6 +169,7 @@ func (s *session) Data(r io.Reader) error {
 	// Reconstructing it here keeps blind recipients out of the headers the
 	// pipeline builds from To and Cc.
 	req.Bcc = blindRecipients(s.rcpts, req.To, req.Cc)
+	req.IdempotencyKey = submissionKey(parsed.MessageID, s.rcpts)
 
 	ctx, cancel := context.WithTimeout(s.server.baseCtx, s.server.sendTimeout)
 	defer cancel()
@@ -194,6 +198,36 @@ func (s *session) Data(r io.Reader) error {
 		"recipients", len(s.rcpts),
 	)
 	return nil
+}
+
+// submissionKey makes a submission's Message-ID its idempotency key, so a
+// client that resubmits after losing the reply to DATA -- the SMTP form of a
+// timed-out request -- gets the first message's acceptance rather than a second
+// copy.
+//
+// The envelope recipients are part of the key, not just of the request it is
+// compared against. A relay that splits one message into several transactions
+// for different recipients sends the same Message-ID each time, and each of
+// those is a message to queue, not a repeat to refuse. Hashed, so a Message-ID
+// of any length or content makes a key the API accepts. No Message-ID, no key:
+// the submission is queued as it always was.
+func submissionKey(messageID string, rcpts []string) string {
+	if messageID == "" {
+		return ""
+	}
+	envelope := make([]string, 0, len(rcpts))
+	for _, rcpt := range rcpts {
+		envelope = append(envelope, normaliseAddress(rcpt))
+	}
+	slices.Sort(envelope)
+
+	h := sha256.New()
+	h.Write([]byte(messageID))
+	for _, rcpt := range envelope {
+		h.Write([]byte{0})
+		h.Write([]byte(rcpt))
+	}
+	return "smtp:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // resolveProvider decides which provider carries this message. A header on the

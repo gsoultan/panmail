@@ -16,7 +16,8 @@ export type RetentionKey =
   | 'webhookRetentionDays'
   | 'appLogRetentionDays'
   | 'inboundRetentionDays'
-  | 'quarantineRetentionDays';
+  | 'quarantineRetentionDays'
+  | 'analyticsRetentionDays';
 
 export type RetentionGroup = 'delivery' | 'queues' | 'system';
 
@@ -78,6 +79,15 @@ export const RETENTION_FIELDS: RetentionField[] = [
       'The JSONL files written when delivery events expire, listed on the Archives page. This is the escape hatch for the events above, so deleting them ends the delivery record for good.',
     destructive: true,
     foreverHint: 'Keep every archive file forever.',
+  },
+  {
+    key: 'analyticsRetentionDays',
+    group: 'delivery',
+    label: 'Analytics history',
+    description:
+      'The hourly and daily counts the analytics charts are drawn from. They outlive the delivery events they count, so this is the only history a long chart has once the events have expired. Per-minute counts are kept for 30 days, or for this long if it is shorter.',
+    destructive: true,
+    foreverHint: 'Keep every hourly and daily count forever.',
   },
   {
     key: 'outboxRetentionDays',

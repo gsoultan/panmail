@@ -65,3 +65,23 @@ func TestAStoreWithoutTelemetryIsLeftAlone(t *testing.T) {
 		t.Error("the event policy did not run")
 	}
 }
+
+type fakeReceipts struct{ call }
+
+func (f *fakeReceipts) PruneBefore(_ context.Context, before time.Time) (int64, error) {
+	f.call = call{before: before, ran: true}
+	return 1, nil
+}
+
+// The inbound endpoint's receipts are written on every post and were the one
+// table it added with no bound. Like telemetry they have a fixed horizon, so
+// they are pruned even when received mail itself is kept forever.
+func TestInboundReceiptsArePrunedOnTheirOwnHorizon(t *testing.T) {
+	receipts := &fakeReceipts{}
+	w, now := workerFor(&entities.Settings{InboundRetentionDays: 0}, Deps{InboundReceipts: receipts})
+	w.RunOnce(t.Context())
+
+	if want := now.AddDate(0, 0, -InboundReceiptDays); !receipts.ran || !receipts.before.Equal(want) {
+		t.Errorf("receipts pruned=%v before %v; want before %v", receipts.ran, receipts.before, want)
+	}
+}

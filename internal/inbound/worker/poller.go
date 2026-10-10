@@ -139,7 +139,10 @@ func (p *Poller) pollProvider(ctx context.Context, tenantID string, provider *pr
 			Headers:   headers,
 		}
 
-		if err := p.inboundUsecase.Process(ctx, inbound); err != nil {
+		// The parts the message carried are read for a delivery report here,
+		// where they still exist: the stored message keeps only its text.
+		report := inboundUsecases.ParseDeliveryReport(e.Attachments)
+		if err := p.inboundUsecase.Process(ctx, inbound, report); err != nil {
 			slog.Error("poller: failed to process inbound email", "error", err)
 		}
 	}

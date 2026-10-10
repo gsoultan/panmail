@@ -61,12 +61,38 @@ func asConnectError(err error) error {
 // demote, delete or strip the second factor from the account that administers
 // the whole deployment.
 func guardTargetInTenant(ctx context.Context, users usecases.UserUsecase, tenantID, targetID string) error {
+	_, err := resolveTargetInTenant(ctx, users, tenantID, targetID)
+	return err
+}
+
+func resolveTargetInTenant(ctx context.Context, users usecases.UserUsecase, tenantID, targetID string) (*entities.User, error) {
 	target, err := users.GetInTenant(ctx, tenantID, targetID)
 	if err != nil {
-		return asConnectError(err)
+		return nil, asConnectError(err)
 	}
 	if target.Role == middlewares.RoleSuperAdmin && middlewares.GetRole(ctx) != middlewares.RoleSuperAdmin {
-		return connect.NewError(connect.CodePermissionDenied, errors.New("insufficient permissions to modify a Super Admin"))
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("insufficient permissions to modify a Super Admin"))
+	}
+	return target, nil
+}
+
+// guardTwoFactorTarget is guardTargetInTenant for a change to somebody's
+// second factor, which also refuses a tenant administrator acting on a guest.
+//
+// Two-factor is a property of the account, not of a membership: it guards the
+// sign-in to every tenant the person belongs to. A guest's account lives in
+// their home tenant, so turning it off from a tenant they only visit would
+// weaken their sign-in everywhere on the say of an administrator who answers
+// for none of it. That is the home tenant's administrator's call, or a super
+// admin's.
+func guardTwoFactorTarget(ctx context.Context, users usecases.UserUsecase, tenantID, targetID string) error {
+	target, err := resolveTargetInTenant(ctx, users, tenantID, targetID)
+	if err != nil {
+		return err
+	}
+	if target.TenantID != tenantID && middlewares.GetRole(ctx) != middlewares.RoleSuperAdmin {
+		return connect.NewError(connect.CodePermissionDenied,
+			errors.New("two-factor belongs to the account: only an administrator of the user's home tenant or a super admin may change it"))
 	}
 	return nil
 }
@@ -192,7 +218,7 @@ func (s *userService) UpdateUserTwoFactor(ctx context.Context, req *connect.Requ
 		return nil, err
 	}
 
-	if err := guardTargetInTenant(ctx, s.usecase, tenantID, req.Msg.Id); err != nil {
+	if err := guardTwoFactorTarget(ctx, s.usecase, tenantID, req.Msg.Id); err != nil {
 		return nil, err
 	}
 

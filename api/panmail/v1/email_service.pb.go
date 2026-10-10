@@ -33,14 +33,20 @@ type SendEmailRequest struct {
 	// Deprecated: Marked as deprecated in panmail/v1/email_service.proto.
 	Body string `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
 	// Deprecated: Marked as deprecated in panmail/v1/email_service.proto.
-	IsHtml        bool             `protobuf:"varint,6,opt,name=is_html,json=isHtml,proto3" json:"is_html,omitempty"`
-	BodyHtml      string           `protobuf:"bytes,9,opt,name=body_html,json=bodyHtml,proto3" json:"body_html,omitempty"`
-	BodyText      string           `protobuf:"bytes,10,opt,name=body_text,json=bodyText,proto3" json:"body_text,omitempty"`
-	TemplateId    string           `protobuf:"bytes,7,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
-	TemplateData  *structpb.Struct `protobuf:"bytes,8,opt,name=template_data,json=templateData,proto3" json:"template_data,omitempty"`
-	Attachments   []*Attachment    `protobuf:"bytes,11,rep,name=attachments,proto3" json:"attachments,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	IsHtml       bool             `protobuf:"varint,6,opt,name=is_html,json=isHtml,proto3" json:"is_html,omitempty"`
+	BodyHtml     string           `protobuf:"bytes,9,opt,name=body_html,json=bodyHtml,proto3" json:"body_html,omitempty"`
+	BodyText     string           `protobuf:"bytes,10,opt,name=body_text,json=bodyText,proto3" json:"body_text,omitempty"`
+	TemplateId   string           `protobuf:"bytes,7,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
+	TemplateData *structpb.Struct `protobuf:"bytes,8,opt,name=template_data,json=templateData,proto3" json:"template_data,omitempty"`
+	Attachments  []*Attachment    `protobuf:"bytes,11,rep,name=attachments,proto3" json:"attachments,omitempty"`
+	// Makes a retried send safe. A second request from the same tenant with the
+	// same key within 24 hours of the first being accepted is answered with the
+	// first one's response and queues nothing; the same key with a different
+	// request is refused with ALREADY_EXISTS. At most 255 printable ASCII
+	// characters. May be sent as the Idempotency-Key HTTP header instead.
+	IdempotencyKey string `protobuf:"bytes,14,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SendEmailRequest) Reset() {
@@ -166,6 +172,13 @@ func (x *SendEmailRequest) GetAttachments() []*Attachment {
 	return nil
 }
 
+func (x *SendEmailRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
 type SendEmailResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MessageId     string                 `protobuf:"bytes,1,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
@@ -231,7 +244,7 @@ var File_panmail_v1_email_service_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_service_proto_rawDesc = "" +
 	"\n" +
 	"\x1epanmail/v1/email_service.proto\x12\n" +
-	"panmail.v1\x1a\x16panmail/v1/event.proto\x1a\x17panmail/v1/common.proto\x1a\x1cgoogle/protobuf/struct.proto\"\x9b\x03\n" +
+	"panmail.v1\x1a\x16panmail/v1/event.proto\x1a\x17panmail/v1/common.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xc4\x03\n" +
 	"\x10SendEmailRequest\x12\x1f\n" +
 	"\vprovider_id\x18\x01 \x01(\tR\n" +
 	"providerId\x12\x12\n" +
@@ -248,7 +261,8 @@ const file_panmail_v1_email_service_proto_rawDesc = "" +
 	"\vtemplate_id\x18\a \x01(\tR\n" +
 	"templateId\x12<\n" +
 	"\rtemplate_data\x18\b \x01(\v2\x17.google.protobuf.StructR\ftemplateData\x128\n" +
-	"\vattachments\x18\v \x03(\v2\x16.panmail.v1.AttachmentR\vattachments\"|\n" +
+	"\vattachments\x18\v \x03(\v2\x16.panmail.v1.AttachmentR\vattachments\x12'\n" +
+	"\x0fidempotency_key\x18\x0e \x01(\tR\x0eidempotencyKey\"|\n" +
 	"\x11SendEmailResponse\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x122\n" +

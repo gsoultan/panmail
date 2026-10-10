@@ -86,7 +86,7 @@ Panmail is designed with a "Security First" mindset:
 - **Security First**: Integrated **Two-Factor Authentication (TOTP)**, login rate limiting, and role-based access control (RBAC).
 - **Outbound Webhooks**: Standardized HTTP hooks for delivery events and inbound emails.
 - **Automated Maintenance**: Per-class data retention set from the UI — events, message content, archives, queues, logs and inbound mail — with automatic JSONL archiving of delivery events for long-term auditability.
-- **Database Support**: PostgreSQL and SQLite, with automatic migrations. MySQL/MariaDB are not currently supported: the query layer uses PostgreSQL-style positional parameters, so those drivers connect but every query fails.
+- **Database Support**: PostgreSQL and SQLite, with automatic migrations. MySQL/MariaDB are not supported: the query layer uses PostgreSQL-style positional parameters, so a `mysql` or `mariadb` database type is refused at startup (and by the setup wizard) with an error naming PostgreSQL and SQLite.
 - **Production Ready**: Structured logging, gRPC health checking (`/healthz`), and graceful shutdown.
 
 ## 🏗️ Architecture
@@ -231,6 +231,10 @@ Panmail can notify your external applications when email events occur or when ne
    }
    ```
 
+Deliveries are retried on a growing schedule (10s, 30s, 2m, 10m, 30m, 2h, 6h). An endpoint that times out or refuses the connection twice in a row is backed off as a whole: its waiting notifications are held until the next retry is due instead of each one waiting out the timeout, and other subscriptions keep being delivered meanwhile.
+
+Webhook URLs may point at private addresses, which is what a self-hosted receiver on the same network needs. A gateway serving tenants who should not reach the operator's network can be started with `--webhook-block-private-targets`: subscriptions whose URL is or resolves to a private, loopback, link-local (including `169.254.169.254`), CGNAT, multicast or unspecified address are refused when saved, and every delivery connection (redirects included) is checked against the address actually dialled, so a DNS record changed later does not get round it. Refused deliveries fail without retrying. With the flag on, webhooks ignore `HTTP_PROXY`/`HTTPS_PROXY`. Set it on every instance.
+
 ### Sending from another application
 
 Panmail exposes the same ConnectRPC API the dashboard uses. It is **asynchronous**: a successful call means the gateway has written the message to its outbox and taken responsibility for delivering it, returning `PENDING` and a `message_id`. Delivery itself is reported afterwards through events and webhooks, all keyed by that id — so store it next to whatever prompted the send.
@@ -283,7 +287,7 @@ log.Printf("queued as %s", result.MessageID)
 
 None of the SDKs depends on this repo — they speak the wire protocol directly, which is written down in full in [`docs/WIRE.md`](https://github.com/gsoultan/panmail-sdk/blob/main/docs/WIRE.md). That document is also what you want if you would rather not take a dependency at all: it covers the JSON contract *and* the SMTP door below.
 
-**No SDK retries a send whose outcome it does not know.** Sending is not idempotent and there is no de-duplication key, so retrying after a timeout is retrying a message that may already be on its way. The one safe case is a refusal, where the gateway says plainly that it did not accept the message — `WithRateLimitRetries(n)` and its equivalents turn that on.
+**No SDK retries a send whose outcome it does not know — unless the send carries an idempotency key.** Without one, retrying after a timeout is retrying a message that may already be on its way. The other safe case is a refusal, where the gateway says plainly that it did not accept the message — `WithRateLimitRetries(n)` and its equivalents turn that on.
 
 > The in-repo `pkg/panmail` was the SDK's predecessor. It was deprecated when the clients moved out and is **removed** as of v1.4.0 — use `github.com/gsoultan/panmail-sdk`, which resolves today.
 
@@ -322,6 +326,24 @@ curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
   }'
 ```
 
+#### Retrying safely: idempotency keys
+
+Set `idempotency_key` in the request (or send it as an `Idempotency-Key` header) and a send becomes safe to repeat:
+
+```bash
+curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: pm_your_api_key_here" \
+  -H "Idempotency-Key: order-1042-receipt" \
+  -d '{ "provider_id": "...", "from": "...", "to": ["..."], "subject": "...", "body_text": "..." }'
+```
+
+- A repeat **from the same tenant** with the same key within **24 hours** of the first being accepted gets the first response back — the same `message_id`, status `PENDING` — and nothing new is queued. It is not charged against the send rate.
+- The same key with a **different request** is refused with `already_exists` ("idempotency key reused with a different request"). The request is compared by a hash of everything in it except the key.
+- Two requests with one key **at the same moment** queue once: a unique constraint decides, and the loser is answered with the winner's message. If the winner's outcome cannot be read yet the loser gets `aborted`, which is safe to retry.
+- Only **accepted** sends are remembered. A refusal — rate limit, suppression, invalid request — stores nothing, so retrying after one is decided afresh.
+- A key is at most 255 printable ASCII characters. If both the field and the header are set they must match; otherwise `invalid_argument`.
+
 #### What the refusals mean
 
 | Response | Meaning | What to do |
@@ -329,7 +351,9 @@ curl -X POST https://mail.example.com/panmail.v1.EmailService/SendEmail \
 | `resource_exhausted` **with** `Retry-After` | Over the tenant's configured send rate. Not accepted. | Wait the stated delay and send again. Safe to repeat. |
 | `resource_exhausted` **without** `Retry-After` | The tenant's queue is already deeper than its rate can drain. Not accepted. | Stop sending. There is no delay to wait out, and retrying makes the wait longer for everything queued. |
 | `failed_precondition` | A recipient is on the tenant's suppression list. The **whole** message is refused, not just that recipient's copy. | Remove the address from the send, or lift the suppression. Retrying changes nothing until one of those happens. |
-| `invalid_argument` | The provider or template named does not exist, or the template will not render against the data sent. | Fix the request. Retrying never helps. |
+| `invalid_argument` | The provider or template named does not exist, the template will not render against the data sent, or the idempotency key is unusable. | Fix the request. Retrying never helps. |
+| `already_exists` | The idempotency key was already used, within 24 hours, for a different request. Not accepted. | Use a new key, or resend exactly what was sent the first time. |
+| `aborted` | A concurrent request with the same idempotency key is still being decided. Not accepted. | Retry with the same key; it will return that request's message. |
 | `unauthenticated` | Key missing, unknown or revoked. | Fix the key. Retrying never helps. |
 | `permission_denied` | The key lacks the `email:send` scope. | Add the scope. |
 | `unknown` | Something failed rather than refused — storage, a provider connection. | Retry with backoff. |
@@ -430,11 +454,16 @@ Every failure code above is returned *before* the message is written to the
 outbox, so a client that retries one cannot produce a duplicate send. The `250`
 is written only after the message is queued.
 
-One caveat inherent to SMTP: if the connection drops in the moment between
-panmail queueing a message and the `250` reaching the client, the client will
-retry and the message will be sent twice. SMTP carries no idempotency key for
-panmail to de-duplicate on. The RPC API has the same property, which is why the
-Go client [never retries a send whose outcome it does not know](#what-the-refusals-mean).
+If the connection drops in the moment between panmail queueing a message and
+the `250` reaching the client, the client will resubmit. A submission that
+carries a `Message-ID` header is de-duplicated: its Message-ID together with
+the envelope recipients is the send's [idempotency key](#retrying-safely-idempotency-keys),
+so a resubmission within 24 hours gets a `250` for the message already queued
+rather than a second copy. A relay that splits one message into several
+transactions for different recipients still has each of them queued. The same
+Message-ID to the same recipients with *different* content is refused with
+`550 5.7.1`. A submission without a Message-ID cannot be de-duplicated, and a
+resubmission of it is sent twice.
 
 ### 🧬 Advanced Templating
 
@@ -643,8 +672,9 @@ Every class of data panmail stores has its own retention, set in **Settings → 
 | `app_log_retention_days` | The gateway's own logs | forever | Deleted outright |
 | `inbound_retention_days` | Received mail | forever | Deleted outright |
 | `quarantine_retention_days` | How long a held message waits for review, and how long finished review records are kept | forever | Held payload discarded; review record deleted |
+| `analytics_retention_days` | Hourly and daily analytics counts, which the charts and ranged totals read | forever | Deleted outright |
 
-Two kinds of telemetry are pruned on a fixed horizon rather than a setting: per-minute analytics counters after 30 days and resource samples after 7 days. Hour and day counters, which the analytics pages read for anything longer, are kept. Analytics buckets are in UTC; a server that was not running in UTC sees its graphs shift once by its offset at the upgrade that introduced this.
+Two kinds of telemetry are pruned on a fixed horizon rather than a setting: per-minute analytics counters after 30 days (or after `analytics_retention_days`, if that is shorter) and resource samples after 7 days. So are the inbound endpoint's receipts of posts already accepted (hashes, not mail), after 7 days. Hour and day counters, which the analytics pages read for anything longer, outlive the delivery events they count and are kept until `analytics_retention_days` says otherwise; a day's count goes only once the whole day is past the cutoff. Charts and totals for a range older than that read as empty. Analytics buckets are in UTC; a server that was not running in UTC sees its graphs shift once by its offset at the upgrade that introduced this.
 
 When events are written to both the local store and PostgreSQL (`-shared-events`, or the shadow phase), retention prunes both, and archives once.
 
@@ -663,11 +693,16 @@ The endpoint is authenticated with that provider's **webhook secret** (the same 
 - **HMAC signature** — `X-Panmail-Signature: sha256=<hex HMAC-SHA256 of the raw request body, keyed with the secret>`, for a relay you control.
 - **HTTP Basic** — for a service that can only be given a URL: `https://:<secret>@<your-gateway>/inbound/...`, or `https://<user>:<pass>@...` when the secret is stored as `user:pass`.
 
-The tenant is the one the provider belongs to; a `tenant_id` in the body is ignored. A post without valid credentials, to an unknown provider, or to a provider with no secret is refused with `401`. A SendGrid or SES provider cannot authenticate inbound mail, because what they store is a public key or a topic ARN rather than a secret: point inbound at a provider whose webhook secret is a shared secret instead.
+The tenant is the one the provider belongs to; a `tenant_id` in the body is ignored. A post without valid credentials, to an unknown provider, or to a provider with no secret is refused with `401`.
 
-The body may be JSON (`from`, `to` as an array, `subject`, `text`, `html`, `headers` as an object), `multipart/form-data` or `application/x-www-form-urlencoded` (`from`, `to` comma-separated, `subject`, `text`, `html`, `headers` as a raw header block). A post that yields no message is refused with `400`, and an unsupported `Content-Type` with `415`.
+Two provider types store something other than a shared secret, and authenticate differently:
 
-A received message that looks like a bounce is recorded against the address its `Final-Recipient` (or `Original-Recipient`) line names. One that names neither is stored as mail but not recorded as a bounce.
+- **SendGrid.** The webhook secret holds the event webhook's public key, which is public and so cannot be a credential. Add the Inbound Parse credential to the same field after a space — `<public key> inbound=<user>:<pass>` (or `inbound=<pass>`), or just `inbound=<user>:<pass>` if you do not use the event webhook — and give Inbound Parse the URL `https://<user>:<pass>@<your-gateway>/inbound/{tenant_id}/{provider_id}`. Only HTTP Basic is accepted for SendGrid.
+- **SES.** Create a receipt rule with an **SNS action** publishing to a topic, and subscribe `https://<your-gateway>/inbound/{tenant_id}/{provider_id}` to that topic over HTTPS, with raw message delivery off. Add the topic's ARN to the provider's webhook secret (comma-separated alongside the delivery-events topic, if they differ). Each post is verified by its SNS signature (SignatureVersion 1 or 2), and only from a topic listed there; the signing certificate is fetched only from `https://sns.<topic's region>.amazonaws.com` and cached, and redirects are not followed. The subscription confirmation is followed only for a listed topic and only to that same endpoint — panmail confirms it itself, so mail starts arriving once the ARN is saved and the subscription is created. Limits: the SNS action carries messages up to 150 KB, inline; mail delivered by an **S3 action** arrives with its headers only and is stored with `X-Panmail-Ses-S3-Bucket` and `X-Panmail-Ses-S3-Object-Key` headers saying where the rest is — panmail does not read from S3. A notification that is not received mail (a bounce sent to the wrong topic) is refused with `400`, and one whose certificate AWS could not serve gets `503` so SNS retries.
+
+The body may be JSON (`from`, `to` as an array, `subject`, `text`, `html`, `headers` as an object, `raw` as the whole message), `multipart/form-data` or `application/x-www-form-urlencoded` (`from`, `to` comma-separated, `subject`, `text`, `html`, `headers` as a raw header block, `email` as the whole message — SendGrid's "send raw"). A post that yields no message is refused with `400`, and an unsupported `Content-Type` with `415`.
+
+A received message is recorded as a bounce only when it is a real delivery status notification (a `multipart/report` with a `message/delivery-status` part) **and** the original headers it returns carry the `X-Panmail-Ref` header panmail put on that copy. The reference is signed with the tracking key over the tenant, the message and the one recipient, so it must verify for the tenant whose mailbox received the report and for the `Final-Recipient` (or `Original-Recipient`) the report names, and the event store must show that message was sent to that address. Anything else — a plain "user unknown" message, a report naming an address panmail never mailed, a report about another tenant's message — is stored as mail and suppresses no one. Over HTTP, only a post that includes the raw message can carry a report.
 
 ### UI Integration
 
@@ -701,21 +736,26 @@ Two things stay in CI and are deliberately not in `make check`: the second test 
 against PostgreSQL, which needs a server (`scripts/ci/services.sh up` starts one and
 exports `PANMAIL_TEST_POSTGRES`), and `govulncheck`, which needs the network.
 
-## ⬆️ Upgrading: changes that need attention
+The hot-path benchmarks (admission, API-key verification, `RecordEvent`, the filter
+rule cache, link rewriting, ranged `GetMetrics`) are not part of either. The `bench`
+workflow runs them nightly on `main` against the previous `main` commit, and on demand
+(**Actions → bench → Run workflow**) for any branch against its merge-base with
+`main`; it uploads the `benchstat` comparison and fails when time/op or allocs/op
+grows by more than 25% with p < 0.05. The same comparison runs locally:
 
-The October 2026 hardening pass changed a few things an operator or integrator
-will notice. Everything else is a fix with no action needed.
+```bash
+git worktree add ../panmail-base origin/main
+BENCH_COUNT=6 scripts/ci/bench.sh run ../panmail-base . /tmp/bench
+scripts/ci/bench.sh compare /tmp/bench   # needs benchstat on PATH
+```
 
-| Change | What to do |
-| :--- | :--- |
-| `/inbound/` now requires `/inbound/{tenant_id}/{provider_id}` and the provider's webhook secret | Repoint each inbound parse integration and set a shared secret on its provider (see [Inbound Processing](#inbound-processing)). Unsigned posts get `401`. |
-| Settings and the SMTP listener are Super Administrator only | Have a Super Administrator make those changes. |
-| Passwords need at least 12 characters | Existing passwords keep working; new accounts and the setup wizard enforce it. |
-| Analytics buckets are UTC | Nothing; graphs on a non-UTC server shift once by the offset. |
-| A gateway that cannot reach its database at boot exits after about two minutes | Run it under a supervisor that restarts it (systemd, Kubernetes, Docker `restart:`). |
-| Shutdown waits `--shutdown-delay` (5s) before closing the port | Keep `terminationGracePeriodSeconds` at 30; use `--shutdown-delay=0` in development. |
-| Deleting a tenant that still has users, keys or providers is refused, with a list of what remains | Remove those first. |
-| Webhook deliveries follow redirects only within the subscription's own host | Point a subscription at its final URL. |
+## ⬆️ Upgrading
+
+Changes that need attention when you upgrade (inbound URL and secret,
+Super Administrator-only settings and metrics, 12-character passwords, the
+database at boot, `--shutdown-delay` and more) are listed per release in
+[docs/upgrading.md](docs/upgrading.md). Read every section between the version
+you run and the one you are moving to.
 
 ## 📜 License
 

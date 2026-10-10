@@ -102,6 +102,11 @@ type AppConfig struct {
 	// until someone decides, which is safer than one that expires unreviewed.
 	QuarantineRetentionDays int `yaml:"quarantine_retention_days"`
 
+	// Hour and day analytics counters. Forever by default: they are what a
+	// long chart is drawn from, and they cost a key per tenant, event type and
+	// hour rather than per message.
+	AnalyticsRetentionDays int `yaml:"analytics_retention_days"`
+
 	RetryPattern []string `yaml:"retry_pattern"`
 }
 

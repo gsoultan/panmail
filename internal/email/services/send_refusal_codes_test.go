@@ -89,6 +89,24 @@ func TestRefusalsThatAreDecisionsGetTheirOwnCode(t *testing.T) {
 			want: connect.CodeInvalidArgument,
 		},
 		{
+			name: "idempotency key unusable",
+			err:  &usecases.InvalidIdempotencyKeyError{Reason: "is too long"},
+			want: connect.CodeInvalidArgument,
+		},
+		{
+			// The key names a different, accepted send. Retrying as it
+			// stands cannot help.
+			name: "idempotency key reused for a different request",
+			err:  &usecases.IdempotencyKeyConflictError{MessageID: "m1"},
+			want: connect.CodeAlreadyExists,
+		},
+		{
+			// The one idempotency answer that is worth retrying.
+			name: "idempotency key held by a request still in flight",
+			err:  &usecases.IdempotencyKeyInFlightError{},
+			want: connect.CodeAborted,
+		},
+		{
 			// The capacity refusals keep the code they already had.
 			name: "backlog full",
 			err:  &usecases.BacklogFullError{},

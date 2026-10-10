@@ -46,6 +46,10 @@ type Policy struct {
 
 	// QuarantineDays is how long a held message waits for a reviewer.
 	QuarantineDays int
+
+	// AnalyticsDays is how long hour and day analytics counters are kept.
+	// Minute counters have a fixed horizon of their own, MinuteSeriesDays.
+	AnalyticsDays int
 }
 
 // Resolve reads the effective policy out of stored settings, applying the
@@ -77,6 +81,7 @@ func Resolve(s *entities.Settings) Policy {
 	p.InboundDays = clampDays(s.InboundRetentionDays)
 	p.ArchiveDays = clampDays(s.ArchiveRetentionDays)
 	p.QuarantineDays = clampDays(s.QuarantineRetentionDays)
+	p.AnalyticsDays = clampDays(s.AnalyticsRetentionDays)
 	return p
 }
 
@@ -107,6 +112,7 @@ func (p Policy) Apply(s *entities.Settings) {
 	s.InboundRetentionDays = clampDays(p.InboundDays)
 	s.ArchiveRetentionDays = clampDays(p.ArchiveDays)
 	s.QuarantineRetentionDays = clampDays(p.QuarantineDays)
+	s.AnalyticsRetentionDays = clampDays(p.AnalyticsDays)
 }
 
 // Duration converts a retention in days to the duration the outbox and webhook

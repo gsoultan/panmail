@@ -163,6 +163,9 @@ Shared, and must be the same everywhere:
   click its link against another.
 - `PANMAIL_SECRET_KEY` — the key stored credentials are encrypted under. An
   instance without it cannot read any provider configuration.
+- `--webhook-block-private-targets`, if used. Whichever instance claims a
+  notification makes the connection, so one instance without it delivers to
+  private addresses the others refuse.
 
 Per-instance, and must **not** be shared:
 
@@ -406,7 +409,7 @@ across the event and application-log stores — roughly **4.7 GB per million
 messages**, or 330 MB/hour at 1,200 messages a minute.
 
 Retention was off for that run, so this is the unbounded rate rather than a
-steady state. It is also the *normal* configuration: six of the eight retention
+steady state. It is also the *normal* configuration: seven of the nine retention
 classes default to keeping data forever. That default is deliberate — panmail
 holds the only copy of a received message or an archive, and a version bump must
 never start deleting what nobody agreed to lose — but it means growth is the
@@ -417,7 +420,7 @@ The gateway says so once at startup, naming the classes:
 ```
 INFO some data is kept forever by policy classes=message_retention_days,
      outbox_retention_days,app_log_retention_days,inbound_retention_days,
-     archive_retention_days,quarantine_retention_days
+     archive_retention_days,quarantine_retention_days,analytics_retention_days
 ```
 
 and publishes a gauge per store:

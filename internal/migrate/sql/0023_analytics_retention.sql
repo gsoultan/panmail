@@ -1,0 +1,11 @@
+-- How long hour and day analytics counters are kept.
+--
+-- Migration 0015 keeps them forever by design: they are what a long chart is
+-- drawn from, and losing them is what emptied the charts before it. Forever is
+-- still the default -- zero, as for every retention here -- so upgrading
+-- deletes nothing. A deployment with many tenants and years of history can now
+-- choose a horizon; the retention pass prunes both families before it.
+--
+-- Not nullable: the default is zero, so "never set" and "chosen forever" mean
+-- the same thing and need no distinction.
+ALTER TABLE system_settings ADD COLUMN analytics_retention_days INTEGER NOT NULL DEFAULT 0;

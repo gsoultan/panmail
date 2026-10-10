@@ -35,11 +35,12 @@ describe('settings field presence', () => {
       inboundRetentionDays: 0,
       archiveRetentionDays: 0,
       quarantineRetentionDays: 0,
+      analyticsRetentionDays: 0,
     });
     const back = fromBinary(SystemSettingsSchema, toBinary(SystemSettingsSchema, msg));
     for (const k of ['logRetentionDays', 'messageRetentionDays', 'outboxRetentionDays',
       'webhookRetentionDays', 'appLogRetentionDays', 'inboundRetentionDays',
-      'archiveRetentionDays', 'quarantineRetentionDays'] as const) {
+      'archiveRetentionDays', 'quarantineRetentionDays', 'analyticsRetentionDays'] as const) {
       expect(back[k], `${k} was dropped from the payload`).not.toBeUndefined();
     }
   });

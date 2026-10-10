@@ -175,6 +175,7 @@ func applyPresentRetention(s *panmailv1.SystemSettings, stored *entities.Setting
 		{s.InboundRetentionDays, &p.InboundDays},
 		{s.ArchiveRetentionDays, &p.ArchiveDays},
 		{s.QuarantineRetentionDays, &p.QuarantineDays},
+		{s.AnalyticsRetentionDays, &p.AnalyticsDays},
 	} {
 		if f.value != nil {
 			*f.field = int(*f.value)
@@ -195,6 +196,7 @@ func applyPolicy(s *panmailv1.SystemSettings, p retention.Policy) {
 	s.InboundRetentionDays = proto.Int32(int32(p.InboundDays))
 	s.ArchiveRetentionDays = proto.Int32(int32(p.ArchiveDays))
 	s.QuarantineRetentionDays = proto.Int32(int32(p.QuarantineDays))
+	s.AnalyticsRetentionDays = proto.Int32(int32(p.AnalyticsDays))
 }
 
 // storedRedaction reads the raw column, tolerating a nil row on a first run.

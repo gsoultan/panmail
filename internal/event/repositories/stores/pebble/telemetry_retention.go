@@ -1,6 +1,7 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,12 @@ var (
 	minuteSeriesRanges = []keyRange{
 		{name: "timeseries:minute", lower: minuteCounters.prefix, upper: "timeseries:minute;"},
 	}
+	// The day family's prefix is the parent of the other two, so its span
+	// holds them as well; the walk skips them by these.
+	hourDaySeriesRanges = []keyRange{
+		{name: "timeseries:hour", lower: hourCounters.prefix, upper: "timeseries:hour;"},
+		{name: "timeseries", lower: dayCounters.prefix, upper: "timeseries;"},
+	}
 	resourceRanges = []keyRange{
 		{name: "resource", lower: "resource:", upper: "resource;"},
 	}
@@ -28,38 +35,78 @@ var (
 // a day for a tenant using five types, for ever. Nothing reads them at range:
 // the dashboard asks for minutes over six hours at most, and a ranged total
 // reads them only for the ragged edge of a range (see rangeCounters). Day and
-// hour counters are kept for good, deliberately — they are what a long chart
-// is drawn from, and migration 0015 exists because losing them emptied it.
-//
-// Walked per tenant: a tenant's minute keys sort by bucket, so once one is at
-// or after the cutoff the rest of that tenant is too, and the walk seeks past
-// it rather than reading every live minute.
+// hour counters have a retention of their own, PruneHourDaySeriesBefore, which
+// is forever unless an administrator sets one.
 func (s *store) PruneMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error) {
 	if before.IsZero() {
 		return 0, errors.New("retention: refusing to prune with a zero cutoff")
 	}
-	cutoff := bucketTime(before).Format(minuteLayout)
+	p := newPruneBatch(s.db)
+	if err := s.pruneCounters(ctx, p, minuteCounters, minuteSeriesRanges[0], nil, before); err != nil {
+		return p.abandon(err)
+	}
+	return p.finish(minuteSeriesRanges)
+}
+
+// PruneHourDaySeriesBefore removes hour and day counters for buckets before
+// the cutoff, returning how many it removed.
+//
+// These are what a long chart is drawn from, and they are kept forever unless
+// the analytics retention is set (migration 0015 is why that is the default).
+// A day bucket goes only once the whole day is before the cutoff, so the day
+// the cutoff falls in keeps its counter.
+func (s *store) PruneHourDaySeriesBefore(ctx context.Context, before time.Time) (int64, error) {
+	if before.IsZero() {
+		return 0, errors.New("retention: refusing to prune with a zero cutoff")
+	}
+	p := newPruneBatch(s.db)
+	if err := s.pruneCounters(ctx, p, hourCounters, hourDaySeriesRanges[0], nil, before); err != nil {
+		return p.abandon(err)
+	}
+	skip := []keyRange{minuteSeriesRanges[0], hourDaySeriesRanges[0]}
+	if err := s.pruneCounters(ctx, p, dayCounters, hourDaySeriesRanges[1], skip, before); err != nil {
+		return p.abandon(err)
+	}
+	return p.finish(hourDaySeriesRanges)
+}
+
+// pruneCounters stages the deletion of one family's counters for buckets
+// before the cutoff. skip names spans inside this one that belong to another
+// family, which the walk seeks over.
+//
+// Walked per tenant: a tenant's keys sort by bucket, so once one is at or
+// after the cutoff the rest of that tenant is too, and the walk seeks past it
+// rather than reading every live bucket.
+func (s *store) pruneCounters(ctx context.Context, p *pruneBatch, family counterFamily, span keyRange, skip []keyRange, before time.Time) error {
+	cutoff := bucketTime(before).Format(family.layout)
 
 	iter, err := s.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte(minuteSeriesRanges[0].lower),
-		UpperBound: []byte(minuteSeriesRanges[0].upper),
+		LowerBound: []byte(span.lower),
+		UpperBound: []byte(span.upper),
 	})
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer iter.Close()
 
-	p := newPruneBatch(s.db)
+walk:
 	for valid := iter.First(); valid; {
 		if err := ctx.Err(); err != nil {
-			return p.abandon(err)
+			return err
 		}
 
-		// timeseries:minute:{tenant}:{yyyy-mm-dd hh:mm}:{type}. The bucket
-		// has a colon of its own, so it is found by its fixed width from the
-		// end rather than by splitting.
 		key := iter.Key()
-		tenantPrefix, bucket, ok := splitMinuteKey(key)
+		for _, other := range skip {
+			if bytes.HasPrefix(key, []byte(other.lower)) {
+				valid = iter.SeekGE([]byte(other.upper))
+				continue walk
+			}
+		}
+
+		// {prefix}{tenant}:{bucket}:{type}. The hour and minute buckets have
+		// a space or a colon of their own, so the bucket is found by its
+		// fixed width from the end rather than by splitting.
+		tenantPrefix, bucket, ok := splitCounterKey(key, family)
 		if !ok {
 			valid = iter.Next()
 			continue
@@ -71,23 +118,20 @@ func (s *store) PruneMinuteSeriesBefore(ctx context.Context, before time.Time) (
 		}
 
 		if err := p.delete(key); err != nil {
-			return p.abandon(err)
+			return err
 		}
 		valid = iter.Next()
 	}
-	return p.finish(minuteSeriesRanges)
+	return nil
 }
 
-// splitMinuteKey returns a minute counter key's prefix up to and including the
+// splitCounterKey returns a counter key's prefix up to and including the
 // tenant's separator, and its bucket.
-func splitMinuteKey(key []byte) (tenantPrefix []byte, bucket string, ok bool) {
+func splitCounterKey(key []byte, family counterFamily) (tenantPrefix []byte, bucket string, ok bool) {
 	// The type follows the last colon.
-	end := len(key) - 1
-	for end >= 0 && key[end] != ':' {
-		end--
-	}
-	start := end - len(minuteLayout)
-	if start < len(minuteCounters.prefix)+1 || key[start-1] != ':' {
+	end := bytes.LastIndexByte(key, ':')
+	start := end - len(family.layout)
+	if end < 0 || start < len(family.prefix)+1 || key[start-1] != ':' {
 		return nil, "", false
 	}
 	return key[:start], string(key[start:end]), true

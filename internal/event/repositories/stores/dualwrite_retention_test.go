@@ -31,6 +31,11 @@ func (p *retentionPrimary) PruneMinuteSeriesBefore(context.Context, time.Time) (
 	return 3, nil
 }
 
+func (p *retentionPrimary) PruneHourDaySeriesBefore(context.Context, time.Time) (int64, error) {
+	p.pruned = append(p.pruned, "analytics_series")
+	return 3, nil
+}
+
 // prunableShadow is the shared store as the shadow phase sees it: its own
 // tables, deleted without archiving.
 type prunableShadow struct {
@@ -54,6 +59,11 @@ func (s *prunableShadow) DeleteMinuteSeriesBefore(context.Context, time.Time) (i
 	return 3, s.err
 }
 
+func (s *prunableShadow) DeleteHourDaySeriesBefore(context.Context, time.Time) (int64, error) {
+	s.deleted = append(s.deleted, "analytics_series")
+	return 3, s.err
+}
+
 // The shadow is written for the whole of the shadow phase, so it has to be
 // pruned for the whole of it. The wrapper embedded the primary, which answered
 // retention alone: email_events and email_messages grew without bound while
@@ -73,6 +83,9 @@ func TestShadowRetentionReachesBothStores(t *testing.T) {
 		}},
 		{"minute_series", func(r stores.EventRepository) (int64, error) {
 			return r.PruneMinuteSeriesBefore(context.Background(), cutoff)
+		}},
+		{"analytics_series", func(r stores.EventRepository) (int64, error) {
+			return r.PruneHourDaySeriesBefore(context.Background(), cutoff)
 		}},
 	}
 	for _, tt := range tests {
