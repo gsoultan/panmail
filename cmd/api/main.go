@@ -528,7 +528,7 @@ func main() {
 		inboundUsecase = screenable.WithScreener(filterScreener)
 	}
 	inboundService := inboundservices.NewInboundService(inboundUsecase)
-	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase)
+	inboundWebhookHandler := inboundhttp.NewWebhookHandler(inboundUsecase, providerRepo)
 
 	warnIfUnsubscribeLinksWillNotWork(settingsProvider.BaseURL())
 	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo)
