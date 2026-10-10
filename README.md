@@ -29,6 +29,21 @@ Panmail implements a strict 4-tier Role-Based Access Control system to ensure se
 - **Editor**: Configuration management. Manages Email Providers, Templates, Webhooks, and Suppressions. Can send test emails.
 - **Viewer**: Read-only access to analytics, logs, and configurations. Cannot perform any modifications.
 
+Deployment-wide settings — **Settings** (base URL, retention, content redaction) and the
+**SMTP submission** listener — belong to the Super Administrator alone, because one change
+there reaches every tenant. An Administrator sees the SMTP panel read-only and no Settings
+page. An Administrator also cannot demote, delete or turn off two-factor for a Super
+Administrator.
+
+The **Logs** page is scoped the same way: a tenant's users see only the gateway log lines
+that name their tenant, and only a Super Administrator sees the whole log.
+
+A session's role is re-read from the account (cached for a few seconds) on every request, so
+deleting, demoting or removing super admin from an account takes effect within seconds rather
+than when the 24-hour session token expires.
+
+For the product requirements behind all of this, see [docs/PRD.md](docs/PRD.md).
+
 ### One account, several tenants
 
 A user does not need a separate login per tenant. A Super Administrator can assign an
@@ -53,7 +68,8 @@ home tenant and can only be deleted from there.
 Panmail is designed with a "Security First" mindset:
 
 - **Two-Factor Authentication (2FA)**: Users can enable TOTP-based 2FA (e.g., Google Authenticator) in their profile settings. Administrators can enforce 2FA for their team members.
-- **Login Rate Limiting**: The system automatically blocks an account after 5 failed login attempts for 15 minutes to prevent brute-force attacks.
+- **Login Rate Limiting**: The system automatically blocks an account after 5 failed login attempts for 15 minutes to prevent brute-force attacks. The limit holds under concurrent bursts (an attempt is reserved before the password is checked) and under floods of invented addresses (a full table evicts idle entries, never a locked one).
+- **Password Length**: Every account, including the first administrator created by the setup wizard, needs a password of at least 12 characters.
 - **API Key Scoping**: API keys are tied to a single tenant and carry an explicit set of scopes (e.g. `email:send`, `providers:read`). A key only grants what it was issued for, and can be expired or revoked at any time.
 - **Secret Storage**: API keys are stored only as SHA-256 hashes and are never recoverable. Provider credentials (SMTP/IMAP/POP3 passwords, webhook signing secrets) must be readable to be used, so they are encrypted at rest with AES-256-GCM and redacted from every API response. Set `PANMAIL_SECRET_KEY` to a 64-character hex key to keep the encryption key out of the config file; otherwise a key is generated at setup and stored in `~/.panmail/db_config.yaml`, which protects against a stolen database but not a stolen disk.
 - **Signed Tracking Links**: Open and click URLs are HMAC-signed, so delivery events cannot be forged and the click endpoint cannot be used as an open redirect.
@@ -150,6 +166,17 @@ endpoint is public, so the body is the dependency name and nothing more:
 ```json
 {"status":"not ready","failed":["database"]}
 ```
+
+The answer is shared by concurrent probes and held for one second, so a flood of
+probes costs one database round trip a second, and a failing dependency is
+logged when it starts and stops failing rather than on every probe. From SIGTERM
+on, `/readyz` answers `503 {"status":"shutting down"}` while the port stays open
+for `--shutdown-delay` (default 5s), so a load balancer stops routing before
+connections are refused. Set `--shutdown-delay=0` for local development.
+
+A configured gateway that cannot reach its database at boot retries with backoff
+for about two minutes and then exits non-zero, so its supervisor restarts it; a
+failed migration exits at once rather than serving a half-migrated schema.
 
 - **gRPC**: Implements the standard [gRPC Health Checking Protocol](https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
 
@@ -593,10 +620,13 @@ Panmail also supports gRPC for high-performance integrations.
 
 ### 📈 Performance & Reliability
 
-- **High Throughput**: Capable of handling over 1000 messages per second using parallel background workers and asynchronous batch writing.
+- **Throughput**: Delivery runs up to 200 sends at once per instance and is bound by the provider's round-trip time, not CPU — a sustained soak measured about 190 sends/s on one instance. Benchmark against your own provider rather than relying on a headline figure.
+- **Large recipient lists**: Each recipient's send has its own timeout, and a pass that delivers to anyone does not use up a retry, so a long list is not cut short by a per-message deadline.
+- **Leased delivery**: An instance confirms and renews its claim on a message while sending it, so a slow batch never lets a second instance send the same row.
 - **Intelligent Retries**:
-    - **Soft Bounce**: Temporary failures (e.g., mailbox full, rate limited) are retried using a tenant-specific backoff pattern.
-    - **Hard Bounce**: Permanent failures (e.g., invalid address) are immediately suppressed to protect your sender reputation.
+    - **Soft Bounce**: Temporary failures (e.g., mailbox full, rate limited, greylisting, any `4xx` reply) are retried using a tenant-specific backoff pattern.
+    - **Hard Bounce**: Permanent failures that name the recipient (e.g., `550 5.1.1 user unknown`) are immediately suppressed to protect your sender reputation.
+    - **Not the recipient's fault**: An authentication or TLS failure, a blocklisting, a network error or a content filter's refusal (`554 5.7.1 message rejected as spam`) never suppresses anyone. The classifier reads only the server's reply — never the recipient's address or the provider's IP in front of it — and matches status codes whole.
 - **Automated Archiving**: To maintain performance, delivery logs are truncated after a retention period (default 14 days) and archived into compressed JSONL files in the `archives/` directory.
 
 #### Data retention
@@ -612,6 +642,11 @@ Every class of data panmail stores has its own retention, set in **Settings → 
 | `webhook_retention_days` | Finished notifications | 7 days | Deleted outright |
 | `app_log_retention_days` | The gateway's own logs | forever | Deleted outright |
 | `inbound_retention_days` | Received mail | forever | Deleted outright |
+| `quarantine_retention_days` | How long a held message waits for review, and how long finished review records are kept | forever | Held payload discarded; review record deleted |
+
+Two kinds of telemetry are pruned on a fixed horizon rather than a setting: per-minute analytics counters after 30 days and resource samples after 7 days. Hour and day counters, which the analytics pages read for anything longer, are kept. Analytics buckets are in UTC; a server that was not running in UTC sees its graphs shift once by its offset at the upgrade that introduced this.
+
+When events are written to both the local store and PostgreSQL (`-shared-events`, or the shadow phase), retention prunes both, and archives once.
 
 Only the two defaults that panmail has always enforced are non-zero, so upgrading does not start deleting anything. Message content is the one worth setting deliberately: bodies and attachments are never archived, and until you give them a retention they outlive the delivery events that explain them.
 
@@ -665,6 +700,22 @@ make check-frontend
 Two things stay in CI and are deliberately not in `make check`: the second test pass
 against PostgreSQL, which needs a server (`scripts/ci/services.sh up` starts one and
 exports `PANMAIL_TEST_POSTGRES`), and `govulncheck`, which needs the network.
+
+## ⬆️ Upgrading: changes that need attention
+
+The October 2026 hardening pass changed a few things an operator or integrator
+will notice. Everything else is a fix with no action needed.
+
+| Change | What to do |
+| :--- | :--- |
+| `/inbound/` now requires `/inbound/{tenant_id}/{provider_id}` and the provider's webhook secret | Repoint each inbound parse integration and set a shared secret on its provider (see [Inbound Processing](#inbound-processing)). Unsigned posts get `401`. |
+| Settings and the SMTP listener are Super Administrator only | Have a Super Administrator make those changes. |
+| Passwords need at least 12 characters | Existing passwords keep working; new accounts and the setup wizard enforce it. |
+| Analytics buckets are UTC | Nothing; graphs on a non-UTC server shift once by the offset. |
+| A gateway that cannot reach its database at boot exits after about two minutes | Run it under a supervisor that restarts it (systemd, Kubernetes, Docker `restart:`). |
+| Shutdown waits `--shutdown-delay` (5s) before closing the port | Keep `terminationGracePeriodSeconds` at 30; use `--shutdown-delay=0` in development. |
+| Deleting a tenant that still has users, keys or providers is refused, with a list of what remains | Remove those first. |
+| Webhook deliveries follow redirects only within the subscription's own host | Point a subscription at its final URL. |
 
 ## 📜 License
 
