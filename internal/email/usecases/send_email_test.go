@@ -681,6 +681,10 @@ func (m *mockSenderFunc) Validate(ctx context.Context, email string) error { ret
 func (m *mockSenderFunc) Ping(ctx context.Context) error                   { return nil }
 func (m *mockSenderFunc) SetRetryConfig(config gsmail.RetryConfig)         {}
 
+func (m *mockOutboxRepo) RenewClaim(context.Context, string, string, time.Time) (bool, error) {
+	return true, nil
+}
+
 func (m *mockOutboxRepo) ClaimPending(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.OutboxEmail, error) {
 	return m.ListPending(ctx, limit)
 }
