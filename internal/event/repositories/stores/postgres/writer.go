@@ -150,10 +150,37 @@ func (w *Writer) Start(ctx context.Context) {
 	}
 }
 
-// Stop ends the loop and waits for the final flush.
+// Stop ends the loop, waits for its final flush, and then writes whatever was
+// queued after the loop had already gone.
+//
+// The loop ends with the worker context, and shutdown cancels that before the
+// outbox has finished: its in-flight sends still complete, and each records
+// SENT or DELIVERED through Write afterwards. Those events sat in the channel
+// with nothing reading it and were lost at exit. Stop is reached through the
+// event store's Close, which runs after the workers have drained, so flushing
+// here is the last point at which every one of them has arrived.
 func (w *Writer) Stop() {
 	w.stopOnce.Do(func() { close(w.stop) })
 	w.wg.Wait()
+
+	batch := make([]*entities.EmailEvent, 0, batchSize)
+	for {
+		select {
+		case e := <-w.ch:
+			batch = append(batch, e)
+			if len(batch) < batchSize {
+				continue
+			}
+			w.flush(context.Background(), batch)
+			batch = batch[:0]
+			continue
+		default:
+		}
+		break
+	}
+	if len(batch) > 0 {
+		w.flush(context.Background(), batch)
+	}
 }
 
 // Stats reports what the writer has done, for the metrics that make step two's

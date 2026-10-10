@@ -111,3 +111,33 @@ func TestAShadowThatCannotBePrunedIsReported(t *testing.T) {
 		t.Errorf("removed = %d; want the primary's deletions still counted", removed)
 	}
 }
+
+type closingPrimary struct {
+	primaryStub
+	closed bool
+}
+
+func (p *closingPrimary) Close() error { p.closed = true; return nil }
+
+type stoppableShadow struct {
+	shadowStub
+	stopped bool
+}
+
+func (s *stoppableShadow) StopWriter() { s.stopped = true }
+
+// Closing the wrapper flushes the shadow's writer. The embedded primary's
+// Close used to answer alone, so events recorded after the worker context
+// ended (an outbox send finishing during shutdown) never reached the shadow.
+func TestClosingFlushesTheShadow(t *testing.T) {
+	primary, shadow := &closingPrimary{}, &stoppableShadow{}
+	if err := stores.WithShadow(primary, shadow).Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if !shadow.stopped {
+		t.Error("the shadow's writer was not flushed")
+	}
+	if !primary.closed {
+		t.Error("the primary was not closed")
+	}
+}

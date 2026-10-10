@@ -125,6 +125,20 @@ func (s *shadowed) pruneShadow(prune func(SharedPruner) (int64, error)) error {
 	return nil
 }
 
+// Close flushes the shadow's writer and then closes the primary.
+//
+// The embedded primary's Close used to answer alone, so the shadow's batching
+// writer was never stopped: it ended with the worker context and took any
+// event recorded after that — an outbox send finishing during shutdown — with
+// it. The shadow itself is not closed, because the local store it would close
+// is the primary.
+func (s *shadowed) Close() error {
+	if w, ok := s.shadow.(interface{ StopWriter() }); ok {
+		w.StopWriter()
+	}
+	return s.EventRepository.Close()
+}
+
 // WriteMessage shadows the stored body on the same terms.
 func (s *shadowed) WriteMessage(ctx context.Context, message *entities.EmailMessage) error {
 	if err := s.EventRepository.WriteMessage(ctx, message); err != nil {
