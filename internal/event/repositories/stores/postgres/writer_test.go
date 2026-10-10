@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -121,5 +122,38 @@ func TestAFullQueueDropsRatherThanBlocking(t *testing.T) {
 
 	if _, dropped, _ := w.Stats(); dropped == 0 {
 		t.Error("a full queue blocked instead of dropping")
+	}
+}
+
+// Shutdown cancels the worker context before the outbox has finished: its
+// in-flight sends still complete and record SENT and DELIVERED through Write,
+// after the loop has already returned. Those events used to sit in the channel
+// with nothing reading it and were lost at exit. Stop, reached through the
+// store's Close after the workers have drained, writes them.
+func TestEventsQueuedAfterTheLoopEndsAreWrittenOnStop(t *testing.T) {
+	conn := storetest.NewConnection(t)
+	w := NewWriter(conn)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { w.Start(ctx); close(done) }()
+	cancel()
+	<-done
+
+	const late = batchSize + 7 // more than one batch, so the drain loops
+	for i := range late {
+		w.Write(event(t, fmt.Sprintf("late-%d", i), "late@example.com"))
+	}
+	w.Stop()
+
+	if written, _, failed := w.Stats(); written != late || failed != 0 {
+		t.Fatalf("written %d, failed %d; want all %d late events written", written, failed, late)
+	}
+	var stored int
+	if err := conn.GetDB().QueryRow(`SELECT count(*) FROM email_events`).Scan(&stored); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if stored != late {
+		t.Errorf("%d events in the table; want %d", stored, late)
 	}
 }

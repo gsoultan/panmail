@@ -252,10 +252,17 @@ func (s *Store) GetResourceHistory(ctx context.Context, since time.Time) ([]enti
 // local store first would be closing the thing archives are served from while
 // a flush is still in flight.
 func (s *Store) Close() error {
+	s.StopWriter()
+	return s.local.Close()
+}
+
+// StopWriter flushes and stops the batching writer without closing the local
+// store. It is what the shadow wrapper calls on the way down, since there the
+// local store is the primary and is closed by the wrapper itself.
+func (s *Store) StopWriter() {
 	if s.writer != nil {
 		s.writer.Stop()
 	}
-	return s.local.Close()
 }
 
 // --- encoding ---
