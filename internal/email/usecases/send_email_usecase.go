@@ -361,9 +361,14 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 			case emailfilter.ActionHold:
 				// The outbox is where it waits. The claim query takes PENDING,
 				// DEFERRED and expired SENDING rows, so a HELD one is already
-				// invisible to the worker — the bytes are durable, bounded by
-				// the outbox's own retention, and releasing is a status flip
-				// rather than a second copy of the same request.
+				// invisible to the worker — the bytes are durable, and
+				// releasing is a status flip rather than a second copy of the
+				// same request.
+				//
+				// Not bounded by the outbox's own retention, which prunes only
+				// FAILED rows. A reject or an expiry discards the row, and
+				// retention's quarantine pass removes any held row whose review
+				// is over and that nothing discarded.
 				outboxStatus = entities.OutboxStatusHeld
 				record.PayloadRef = messageID
 				held = &record

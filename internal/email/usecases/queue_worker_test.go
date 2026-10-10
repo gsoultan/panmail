@@ -252,6 +252,8 @@ func (m *workerMockOutboxRepo) PruneTerminal(ctx context.Context, olderThan time
 	return removed, nil
 }
 
+func (m *workerMockOutboxRepo) PruneHeld(context.Context, time.Time) (int64, error) { return 0, nil }
+
 func (m *workerMockOutboxRepo) Stats(context.Context) (int64, time.Time, error) {
 	oldest := time.Now()
 	for _, e := range m.emails {

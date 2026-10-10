@@ -561,9 +561,10 @@ func main() {
 
 	// Built here rather than above because releasing a held message has to be
 	// able to wake the worker, and the worker does not exist until now.
+	heldReleaser := emailusecases.NewHeldReleaser(outboxRepo, queueWorker)
 	filterReviewer := emailfilter.NewReviewer(
 		filterQuarantineStore,
-		emailusecases.NewHeldReleaser(outboxRepo, queueWorker),
+		heldReleaser,
 		inboundusecases.NewHeldReleaser(inboundRepo, outboundWebhookWorker),
 		filterNotifier,
 	)
@@ -588,6 +589,10 @@ func main() {
 	// and hands the outbox and webhook queues their own cutoffs, so all seven
 	// policies come from the settings page and a change applies without a
 	// restart. Started last because it needs the workers it configures.
+	//
+	// The quarantine sweeper is given the outbox releaser, so an expired hold's
+	// payload is discarded rather than left in the outbox for good.
+	filterExpiry := emailfilter.NewExpirySweeper(filterQuarantineStore, filterNotifier, heldReleaser)
 	retentionWorker := retention.NewWorker(retention.Deps{
 		// The repository rather than the provider. A pass runs immediately
 		// after a save, and the provider is a snapshot up to a refresh
@@ -601,8 +606,11 @@ func main() {
 		Webhooks: outboundWebhookWorker,
 		// The sweeper rather than the store: it announces each expiry to the
 		// tenant's subscribers and hands retention back the count it wants.
-		Quarantine: emailfilter.NewExpirySweeper(filterQuarantineStore, filterNotifier),
-		Screener:   filterScreener,
+		Quarantine: filterExpiry,
+		// The same sweeper: decided reviews and the held payloads nothing
+		// discarded are pruned on the quarantine policy.
+		QuarantineHistory: filterExpiry,
+		Screener:          filterScreener,
 	})
 	runWorker(&workers, workerCtx, "retention", func() { retentionWorker.Start(workerCtx) })
 
