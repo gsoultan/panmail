@@ -144,8 +144,12 @@ sustained ~193 sends/s on one instance with `outboxConcurrency = 200`;
 throughput is a function of the provider's latency and limits, and operators
 should benchmark their own setup rather than rely on a headline figure.
 
-Paths that must not regress (guarded by ordinary tests, because CI does not
-run benchmarks):
+Paths that must not regress. Each is guarded twice: by an ordinary test that
+pins its shape (a round-trip count, an allocation budget), which runs on every
+change, and by a benchmark that the nightly `bench` workflow compares against
+the previous `main` with benchstat, failing on more than 25% more time/op or
+allocs/op at p < 0.05. Per-change CI does not run benchmarks; a branch is
+compared on demand.
 
 - Admission costs one suppression round trip whatever the recipient count, and
   stays inside an allocation budget.
@@ -154,6 +158,8 @@ run benchmarks):
   already supplied what the event needs.
 - Filter rules are compiled once per tenant, not once per message.
 - Link rewriting is a single regexp pass per body.
+- A ranged metrics total is tiled from day counters, reading hour and minute
+  counters only at the ragged edges, so its cost follows the number of days.
 
 ### 5.2 Resource bounds
 

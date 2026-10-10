@@ -735,6 +735,19 @@ Two things stay in CI and are deliberately not in `make check`: the second test 
 against PostgreSQL, which needs a server (`scripts/ci/services.sh up` starts one and
 exports `PANMAIL_TEST_POSTGRES`), and `govulncheck`, which needs the network.
 
+The hot-path benchmarks (admission, API-key verification, `RecordEvent`, the filter
+rule cache, link rewriting, ranged `GetMetrics`) are not part of either. The `bench`
+workflow runs them nightly on `main` against the previous `main` commit, and on demand
+(**Actions → bench → Run workflow**) for any branch against its merge-base with
+`main`; it uploads the `benchstat` comparison and fails when time/op or allocs/op
+grows by more than 25% with p < 0.05. The same comparison runs locally:
+
+```bash
+git worktree add ../panmail-base origin/main
+BENCH_COUNT=6 scripts/ci/bench.sh run ../panmail-base . /tmp/bench
+scripts/ci/bench.sh compare /tmp/bench   # needs benchstat on PATH
+```
+
 ## ⬆️ Upgrading
 
 Changes that need attention when you upgrade (inbound URL and secret,

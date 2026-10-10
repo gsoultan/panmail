@@ -71,7 +71,7 @@ func Engine() string {
 }
 
 // newPostgresDB gives the test its own schema on a shared server.
-func newPostgresDB(t *testing.T, dsn string) *sql.DB {
+func newPostgresDB(t testing.TB, dsn string) *sql.DB {
 	t.Helper()
 
 	// Named after the test so a failure leaves something identifiable behind,
@@ -172,7 +172,7 @@ var nonAlphanumeric = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 // On disk rather than in memory: `:memory:` gives each pooled connection its
 // own private database, so a write on one connection is invisible to the next
 // read, which surfaces as tests that pass alone and fail in a package run.
-func NewDB(t *testing.T) *sql.DB {
+func NewDB(t testing.TB) *sql.DB {
 	t.Helper()
 
 	if dsn := os.Getenv(EnvPostgresDSN); dsn != "" {
@@ -201,7 +201,7 @@ func NewDB(t *testing.T) *sql.DB {
 // without these rows a store test fails on the insert rather than on the
 // behaviour it meant to assert. Leaving foreign keys off instead would hide the
 // case where a row is written against a tenant that does not exist.
-func seedTenants(t *testing.T, sqlDB *sql.DB) {
+func seedTenants(t testing.TB, sqlDB *sql.DB) {
 	t.Helper()
 	now := time.Now().UTC()
 	for _, id := range []string{TenantA, TenantB} {
@@ -216,7 +216,10 @@ func seedTenants(t *testing.T, sqlDB *sql.DB) {
 }
 
 // NewConnection wraps NewDB in the db.Connection the stores take.
-func NewConnection(t *testing.T) db.Connection {
+//
+// Both take testing.TB so a benchmark can stand on the same fixture as the
+// tests beside it.
+func NewConnection(t testing.TB) db.Connection {
 	t.Helper()
 	return db.NewConnection(NewDB(t))
 }
