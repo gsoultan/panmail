@@ -174,15 +174,20 @@ func (u *inboundUsecase) detectAndRecordBounce(ctx context.Context, email *panma
 		eventType = panmailv1.EmailEventType_EMAIL_EVENT_TYPE_SOFT_BOUNCE
 	}
 
-	// Try a very simple extraction of recipient from body if possible
-	// (e.g. "Final-Recipient: rfc822; user@example.com")
-	recipient := email.From
-	body := email.BodyText + email.BodyHtml
-	if idx := strings.Index(body, "Final-Recipient: rfc822;"); idx != -1 {
-		rest := body[idx+len("Final-Recipient: rfc822;"):]
-		if endIdx := strings.IndexAny(rest, " \n\r\t"); endIdx != -1 {
-			recipient = strings.TrimSpace(rest[:endIdx])
-		}
+	// The bounced address comes from the report itself and from nowhere else.
+	//
+	// This used to fall back to the message's From when no Final-Recipient was
+	// found, and From is whoever sent the bounce -- usually MAILER-DAEMON, but
+	// on anything that is not a real mail server's report it is an address the
+	// sender chose. A hard bounce suppresses permanently, so the fallback let
+	// any message with the right subject and wording suppress any address the
+	// sender liked. With no recipient there is nothing to attribute the bounce
+	// to, and recording nothing is the honest outcome.
+	recipient := dsnRecipient(email.BodyText + "\n" + email.BodyHtml)
+	if recipient == "" {
+		slog.Debug("inbound bounce names no recipient; not recording it",
+			"id", email.Id, "tenant_id", email.TenantId)
+		return
 	}
 
 	metadata := map[string]any{
@@ -229,6 +234,60 @@ func (u *inboundUsecase) toProto(e *entities.InboundEmail) *panmailv1.InboundEma
 		BodyText:  e.BodyText,
 		Timestamp: timestamppb.New(e.Timestamp),
 		Headers:   e.Headers,
+	}
+}
+
+// dsnRecipient returns the address a delivery status notification reports on,
+// or "" when it names none.
+//
+// RFC 3464 writes the field as `Final-Recipient: rfc822; user@example.com` --
+// an address type, a semicolon, then usually a space before the address. The
+// parser this replaces cut at the first whitespace after the semicolon, which
+// in the common spelling is immediately, so every real report yielded an empty
+// recipient. Original-Recipient is the fallback for a report that carries only
+// that.
+func dsnRecipient(body string) string {
+	for _, field := range []string{"final-recipient:", "original-recipient:"} {
+		if r := dsnField(body, field); r != "" {
+			return r
+		}
+	}
+	return ""
+}
+
+func dsnField(body, field string) string {
+	lower := strings.ToLower(body)
+	from := 0
+	for {
+		idx := strings.Index(lower[from:], field)
+		if idx < 0 {
+			return ""
+		}
+		start := from + idx + len(field)
+		from = start
+
+		value := body[start:]
+		if end := strings.IndexAny(value, "\r\n"); end >= 0 {
+			value = value[:end]
+		}
+		// The address type is optional in practice even though the RFC
+		// requires it, so a value with no semicolon is taken as the address.
+		if _, after, found := strings.Cut(value, ";"); found {
+			value = after
+		}
+		value = strings.TrimSpace(value)
+		// Some servers bracket the address. Past it, an HTML part carries the
+		// line on with markup and a text one may carry a trailing comment;
+		// neither is part of the address.
+		if rest, ok := strings.CutPrefix(value, "<"); ok {
+			value, _, _ = strings.Cut(rest, ">")
+		}
+		if end := strings.IndexAny(value, " \t<"); end >= 0 {
+			value = value[:end]
+		}
+		if strings.Contains(value, "@") {
+			return value
+		}
 	}
 }
 
