@@ -71,6 +71,9 @@ func TestShadowRetentionReachesBothStores(t *testing.T) {
 		{"messages", func(r stores.EventRepository) (int64, error) {
 			return r.TruncateMessagesBefore(context.Background(), cutoff)
 		}},
+		{"minute_series", func(r stores.EventRepository) (int64, error) {
+			return r.PruneMinuteSeriesBefore(context.Background(), cutoff)
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.class, func(t *testing.T) {

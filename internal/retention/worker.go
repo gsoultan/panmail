@@ -17,7 +17,9 @@ const (
 	classAppLogs  = "app_logs"
 	classInbound  = "inbound"
 
-	classQuarantine = "quarantine"
+	classQuarantine      = "quarantine"
+	classMinuteSeries    = "minute_series"
+	classResourceHistory = "resource_history"
 )
 
 // Worker enforces the retention policy on a schedule.
@@ -209,6 +211,12 @@ func (w *Worker) jobs(p Policy) []pruneJob {
 			// considered by the same cutoff that governs the rest.
 			pruneJob{class: classArchives, days: p.ArchiveDays, run: events.PruneArchivesBefore},
 		)
+		if telemetry, ok := events.(TelemetryPruner); ok {
+			jobs = append(jobs,
+				pruneJob{class: classMinuteSeries, days: MinuteSeriesDays, run: telemetry.PruneMinuteSeriesBefore},
+				pruneJob{class: classResourceHistory, days: ResourceHistoryDays, run: telemetry.PruneResourceHistoryBefore},
+			)
+		}
 	}
 	if logs := w.deps.Logs; logs != nil {
 		jobs = append(jobs, pruneJob{class: classAppLogs, days: p.AppLogDays, run: logs.TruncateBefore})

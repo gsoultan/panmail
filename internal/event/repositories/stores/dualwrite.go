@@ -96,6 +96,18 @@ func (s *shadowed) TruncateMessagesBefore(ctx context.Context, before time.Time)
 	})
 }
 
+// PruneMinuteSeriesBefore deletes expired per-minute counters from both
+// stores, since the shadow keeps its own.
+func (s *shadowed) PruneMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error) {
+	n, err := s.EventRepository.PruneMinuteSeriesBefore(ctx, before)
+	if err != nil {
+		return n, err
+	}
+	return n, s.pruneShadow(func(p SharedPruner) (int64, error) {
+		return p.DeleteMinuteSeriesBefore(ctx, before)
+	})
+}
+
 // pruneShadow runs one prune against the shadow's own tables, if it has any.
 //
 // Its failure is returned, unlike a failed shadow write. A write the shadow

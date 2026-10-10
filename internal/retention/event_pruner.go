@@ -18,3 +18,28 @@ type EventPruner interface {
 	TruncateMessagesBefore(ctx context.Context, before time.Time) (int64, error)
 	PruneArchivesBefore(ctx context.Context, before time.Time) (int64, error)
 }
+
+// TelemetryPruner is the part of the event store that keeps derived,
+// high-volume telemetry: per-minute event counters and resource samples.
+//
+// Optional, and asserted rather than added to EventPruner, so a store without
+// these has nothing to implement.
+type TelemetryPruner interface {
+	PruneMinuteSeriesBefore(ctx context.Context, before time.Time) (int64, error)
+	PruneResourceHistoryBefore(ctx context.Context, before time.Time) (int64, error)
+}
+
+// The horizons for the telemetry classes. Fixed rather than configurable,
+// because nobody chooses to keep these: they are written for the life of the
+// process whatever the policy says, and read only over a short window.
+const (
+	// MinuteSeriesDays keeps per-minute counters for a month. The dashboard
+	// asks for minute buckets over six hours at most, and a ranged total
+	// reads them only for the ragged minutes at its edges. Day and hour
+	// counters are not affected; they are kept for good.
+	MinuteSeriesDays = 30
+
+	// ResourceHistoryDays keeps a week of resource samples. The performance
+	// page reads the last 24 hours.
+	ResourceHistoryDays = 7
+)
