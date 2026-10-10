@@ -457,7 +457,7 @@ func main() {
 		// dashboard with a blank Content tab.
 		shadowEvents = eventpostgres.NewWriter(conn)
 		eventRepo = eventrepos.WithShadow(eventRepo,
-			eventpostgres.NewStore(conn, eventRepo, shadowEvents))
+			eventpostgres.NewShadow(conn, eventRepo, shadowEvents))
 		slog.Info("delivery events are being written to the shared database as well",
 			"note", "nothing reads them yet; compare panmail_event_shadow_written_total with the dashboard's own counts")
 	}

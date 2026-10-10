@@ -58,6 +58,19 @@ func NewStore(conn db.Connection, local stores.EventRepository, writer *Writer) 
 	return &Store{conn: conn, local: local, writer: writer}
 }
 
+// NewShadow builds the shared store as the shadow for stores.WithShadow: it
+// writes the database only.
+//
+// The shadow phase wraps the local store as the primary, and the wrapper
+// already writes every event and body to it. A shadow that mirrored to the
+// same local store as well, as NewStore does, wrote each of them there twice —
+// harmless for the rows, which land on the same key, but every counter was
+// merged twice, so the dashboard's figures doubled for as long as the shadow
+// ran.
+func NewShadow(conn db.Connection, local stores.EventRepository, writer *Writer) *Store {
+	return NewStore(conn, local, writer).WithoutLocalWrites()
+}
+
 // WithoutLocalWrites stops the local event and message writes.
 //
 // The last step of docs/design/0002-shared-event-store.md, and the only one a
