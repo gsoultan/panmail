@@ -137,6 +137,9 @@ func (m *mockEventRepo) Close() error { return nil }
 type mockEventUsecase struct {
 	events   []*evententities.EmailEvent
 	messages []*panmailv1.EmailMessage
+	// listErr, when set, is what ListByMessageID answers: the delivery
+	// history could not be read.
+	listErr error
 }
 
 func (m *mockEventUsecase) RecordEvent(ctx context.Context, tenantID, providerID, messageID string, eventType panmailv1.EmailEventType, recipient string, subject string, errorMessage string, metadata map[string]any) error {
@@ -166,6 +169,9 @@ func (m *mockEventUsecase) GetEvent(ctx context.Context, tenantID string, id str
 	return nil, nil, nil
 }
 func (m *mockEventUsecase) ListByMessageID(ctx context.Context, tenantID string, messageID string) ([]*panmailv1.EmailEvent, error) {
+	if m.listErr != nil {
+		return nil, m.listErr
+	}
 	var res []*panmailv1.EmailEvent
 	for _, e := range m.events {
 		if e.MessageID == messageID {
