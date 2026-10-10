@@ -3,6 +3,7 @@ package pebble
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -14,11 +15,17 @@ import (
 	"github.com/gsoultan/panmail/pkg/pebbleopt"
 )
 
+// ErrClosed is returned by a write that arrives after Close.
+var ErrClosed = errors.New("inbound store is closed")
+
 type store struct {
-	db     *pebble.DB
-	opChan chan *entities.InboundEmail
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	db *pebble.DB
+
+	// mu orders writes against Close. Writes hold it shared, so they run
+	// concurrently; Close takes it exclusively, so it waits for every write
+	// already in progress to commit before the database goes away.
+	mu     sync.RWMutex
+	closed bool
 }
 
 func NewStore(dir string) (stores.InboundRepository, error) {
@@ -33,46 +40,7 @@ func NewStore(dir string) (stores.InboundRepository, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &store{
-		db:     db,
-		opChan: make(chan *entities.InboundEmail, 5000),
-		stopCh: make(chan struct{}),
-	}
-	s.wg.Add(1)
-	go s.worker()
-	return s, nil
-}
-
-func (s *store) worker() {
-	defer s.wg.Done()
-	batch := s.db.NewBatch()
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-
-	count := 0
-	for {
-		select {
-		case e := <-s.opChan:
-			_ = s.performWrite(batch, e)
-			count++
-			if count >= 200 {
-				_ = batch.Commit(nil)
-				batch = s.db.NewBatch()
-				count = 0
-			}
-		case <-ticker.C:
-			if count > 0 {
-				_ = batch.Commit(nil)
-				batch = s.db.NewBatch()
-				count = 0
-			}
-		case <-s.stopCh:
-			if count > 0 {
-				_ = batch.Commit(nil)
-			}
-			return
-		}
-	}
+	return &store{db: db}, nil
 }
 
 func (s *store) performWrite(batch *pebble.Batch, e *entities.InboundEmail) error {
@@ -92,16 +60,32 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.InboundEmail) erro
 	return batch.Set(idxKey, []byte(tsDescStr), nil)
 }
 
+// Write stores a message and returns once it is committed.
+//
+// It used to hand the message to a background goroutine and return nil
+// straight away. Three things followed from that. A commit error was
+// discarded, so a failed write was reported to the caller as a success and
+// the message was gone. Close stopped the goroutine without draining its
+// queue, so a shutdown lost whatever was queued -- most of it, under load.
+// And a GetByID straight after Write missed, which is the check that keeps
+// the poller and IDLE from both processing one message: each saw it as new,
+// and the bounce was recorded and the tenant's webhook fired twice.
+//
+// Pebble already groups concurrent synchronous commits into one WAL sync, so
+// writing through costs little that the batching goroutine was saving.
 func (s *store) Write(ctx context.Context, e *entities.InboundEmail) error {
-	select {
-	case s.opChan <- e:
-		return nil
-	default:
-		// Queue full, block if necessary for inbound to avoid losing data
-		// Inbound emails are precious
-		s.opChan <- e
-		return nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return ErrClosed
 	}
+
+	batch := s.db.NewBatch()
+	defer batch.Close()
+	if err := s.performWrite(batch, e); err != nil {
+		return err
+	}
+	return batch.Commit(pebble.Sync)
 }
 
 func (s *store) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.InboundEmail, string, error) {
@@ -209,8 +193,12 @@ func (s *store) Count(ctx context.Context, tenantID string, startTime, endTime t
 }
 
 func (s *store) Close() error {
-	close(s.stopCh)
-	s.wg.Wait()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
+	s.closed = true
 	return s.db.Close()
 }
 
