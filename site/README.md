@@ -84,7 +84,7 @@ re-checking before each publish, because they are the ones most likely to drift:
 | Claim | Source |
 | --- | --- |
 | "over a thousand messages per second" | README performance section — the FAQ deliberately qualifies it, since the real ceiling is the provider's rate limit |
-| PostgreSQL and SQLite only | MySQL/MariaDB connect but fail every query; the FAQ says so plainly |
+| PostgreSQL and SQLite only | A MySQL/MariaDB database type is refused at startup (`pkg/db.Connect`); the FAQ says so plainly |
 | AES-256-GCM at rest, API keys as SHA-256 hashes | README security section |
 
 **The pricing tiers, volume limits, SLA and support response times are placeholders.**

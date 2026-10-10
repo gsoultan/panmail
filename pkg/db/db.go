@@ -102,7 +102,7 @@ func Connect(cfg Config) (*sql.DB, error) {
 		// moment it can still be acted on.
 		return nil, invalidConfig(fmt.Errorf(
 			"database type %q is not supported: the query layer uses PostgreSQL-style "+
-				"positional parameters, so %s connects but every query fails. Use postgres or sqlite",
+				"positional parameters, which %s rejects. Use PostgreSQL (type postgres) or SQLite (type sqlite)",
 			cfg.Type, cfg.Type))
 	case "sqlite":
 		driverName = "sqlite"

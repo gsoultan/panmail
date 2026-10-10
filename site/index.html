@@ -716,7 +716,7 @@ log.<span class="c-fn">Info</span>(<span class="c-st">"queued"</span>, <span cla
 
       <details class="faq__item reveal">
         <summary>Which databases are supported?</summary>
-        <div class="faq__body"><p>PostgreSQL and SQLite, both with automatic migrations. MySQL and MariaDB are not supported — the query layer uses PostgreSQL-style positional parameters, so those drivers connect and then fail on every query. We'd rather say so here than have you find out in staging.</p></div>
+        <div class="faq__body"><p>PostgreSQL and SQLite, both with automatic migrations. MySQL and MariaDB are not supported — the query layer uses PostgreSQL-style positional parameters, so panmail refuses to start on either and says why. We'd rather say so here than have you find out in staging.</p></div>
       </details>
 
       <details class="faq__item reveal">

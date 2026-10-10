@@ -74,8 +74,9 @@ does not implement — that one query fails on SQLite. Use `--db postgres` when
 you are working on provider search or anything else engine-specific.
 
 MySQL and MariaDB are not usable: the embedded queries use `$1` positional
-parameters, which those drivers reject. Setup succeeds and then every query
-fails.
+parameters, which those drivers reject. `db.Connect` refuses either type with
+`ErrInvalidConfig`, so the gateway exits at startup instead of retrying, and
+the setup wizard does not offer them.
 
 The container is managed for you: Apple's [`container`](https://github.com/apple/container)
 on macOS 26+, no Docker required. `docker` and `podman` are accepted as

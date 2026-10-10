@@ -86,7 +86,7 @@ Panmail is designed with a "Security First" mindset:
 - **Security First**: Integrated **Two-Factor Authentication (TOTP)**, login rate limiting, and role-based access control (RBAC).
 - **Outbound Webhooks**: Standardized HTTP hooks for delivery events and inbound emails.
 - **Automated Maintenance**: Per-class data retention set from the UI — events, message content, archives, queues, logs and inbound mail — with automatic JSONL archiving of delivery events for long-term auditability.
-- **Database Support**: PostgreSQL and SQLite, with automatic migrations. MySQL/MariaDB are not currently supported: the query layer uses PostgreSQL-style positional parameters, so those drivers connect but every query fails.
+- **Database Support**: PostgreSQL and SQLite, with automatic migrations. MySQL/MariaDB are not supported: the query layer uses PostgreSQL-style positional parameters, so a `mysql` or `mariadb` database type is refused at startup (and by the setup wizard) with an error naming PostgreSQL and SQLite.
 - **Production Ready**: Structured logging, gRPC health checking (`/healthz`), and graceful shutdown.
 
 ## 🏗️ Architecture

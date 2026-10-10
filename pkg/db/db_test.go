@@ -21,9 +21,17 @@ func TestMySQLIsRefusedRatherThanHalfSupported(t *testing.T) {
 			continue
 		}
 		// The message has to say what to use instead, or an operator sees a
-		// refusal with no route forward.
-		if !strings.Contains(err.Error(), "postgres") || !strings.Contains(err.Error(), "sqlite") {
-			t.Errorf("%s: error %q does not say what is supported", engine, err)
+		// refusal with no route forward: the engines by name, and the value
+		// to put in the config for each.
+		for _, want := range []string{"PostgreSQL", "postgres", "SQLite", "sqlite"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: error %q does not name %q", engine, err, want)
+			}
+		}
+		// It must not repeat the old claim that the driver connects: it no
+		// longer does.
+		if strings.Contains(err.Error(), "connects") {
+			t.Errorf("%s: error %q still says the driver connects", engine, err)
 		}
 	}
 }

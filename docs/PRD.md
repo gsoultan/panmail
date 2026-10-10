@@ -62,8 +62,9 @@ Administrator.
 - Being an MTA. Panmail relays through providers; it does not deliver to MX
   hosts itself.
 - Marketing automation (segments, journeys, A/B tests).
-- MySQL/MariaDB. The query layer uses PostgreSQL-style placeholders; those
-  drivers connect but every query fails.
+- MySQL/MariaDB. The query layer uses PostgreSQL-style placeholders, so a
+  `mysql` or `mariadb` database type is refused at startup and by the setup
+  wizard, with an error naming PostgreSQL and SQLite.
 - Exactly-once delivery. Neither SMTP nor the RPC carries an idempotency key,
   so a lost acknowledgement can produce a duplicate. Clients are told never
   to retry an unknown outcome.
@@ -168,8 +169,10 @@ run benchmarks):
 ### 5.3 Reliability
 
 - Startup retries the database with backoff and exits if it never comes up, so
-  a supervisor restarts it; a failed migration stops the process rather than
-  serving a half-migrated schema.
+  a supervisor restarts it; a configuration that can never work (an
+  unsupported engine such as MySQL/MariaDB, a SQLite database with no path)
+  exits at once. A failed migration stops the process rather than serving a
+  half-migrated schema.
 - Shutdown: readiness fails first, streams end, HTTP and workers drain within
   the 30-second termination grace, then provider pools and Pebble stores close.
 - Liveness (`/healthz`) checks nothing external; readiness (`/readyz`) checks
