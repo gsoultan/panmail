@@ -2,11 +2,14 @@ package services
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"connectrpc.com/connect"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/api/panmail/v1/panmailv1connect"
 	authmiddlewares "github.com/gsoultan/panmail/internal/auth/middlewares"
+	"github.com/gsoultan/panmail/internal/webhook/egress"
 	"github.com/gsoultan/panmail/internal/webhook/usecases"
 )
 
@@ -22,7 +25,7 @@ func (s *webhookService) CreateWebhook(ctx context.Context, req *connect.Request
 	tenantID := authmiddlewares.GetTenantID(ctx)
 	webhook, err := s.usecase.Create(ctx, tenantID, req.Msg)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, saveError(err)
 	}
 	return connect.NewResponse(&panmailv1.CreateWebhookResponse{Webhook: webhook}), nil
 }
@@ -51,7 +54,18 @@ func (s *webhookService) UpdateWebhook(ctx context.Context, req *connect.Request
 	tenantID := authmiddlewares.GetTenantID(ctx)
 	webhook, err := s.usecase.Update(ctx, tenantID, req.Msg)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, saveError(err)
 	}
 	return connect.NewResponse(&panmailv1.UpdateWebhookResponse{Webhook: webhook}), nil
+}
+
+// saveError maps a failed create or update to a status. A URL the operator's
+// egress policy refuses is the caller's to fix, and says so; anything else is
+// ours.
+func saveError(err error) error {
+	if errors.Is(err, egress.ErrDisallowed) {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("%w; this gateway only delivers webhooks to public addresses", err))
+	}
+	return connect.NewError(connect.CodeInternal, err)
 }

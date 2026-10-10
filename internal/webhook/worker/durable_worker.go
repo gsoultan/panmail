@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	"github.com/gsoultan/panmail/internal/webhook/egress"
 	"github.com/gsoultan/panmail/internal/webhook/repositories/entities"
 	"github.com/gsoultan/panmail/internal/webhook/repositories/stores"
 	"github.com/gsoultan/panmail/internal/webhook/usecases"
@@ -122,7 +124,7 @@ func NewDurableWorker(deliveries stores.DeliveryRepository, webhookUsecase useca
 	w := &DurableWorker{
 		deliveries:      deliveries,
 		webhookUsecase:  webhookUsecase,
-		client:          newDeliveryClient(defaultDeliveryTimeout),
+		client:          newDeliveryClient(defaultDeliveryTimeout, false),
 		interval:        defaultDeliveryInterval,
 		batchSize:       defaultDeliveryBatch,
 		lease:           defaultDeliveryLease,
@@ -144,11 +146,30 @@ func NewDurableWorker(deliveries stores.DeliveryRepository, webhookUsecase useca
 // delivery id -- to wherever the endpoint pointed, a host the tenant never
 // named and the operator never saw. A redirect to another host is answered
 // with the redirect itself, which the worker records as the endpoint refusing
-// the request. Private addresses are deliberately not blocked: a self-hosted
-// gateway posting to a service beside it is the ordinary case.
-func newDeliveryClient(timeout time.Duration) *http.Client {
+// the request.
+//
+// Private addresses are reachable unless restrict is set: a self-hosted
+// gateway posting to a service beside it is the ordinary case. With restrict,
+// every connection -- the first and any redirect's -- is checked against
+// egress.Disallowed on the address actually dialled, after resolution, so a
+// name that resolves somewhere else at delivery time than it did when it was
+// saved gets no further. The environment's HTTP proxy is not used then: the
+// check would see only the proxy's address, and the proxy would make the
+// connection the check exists to refuse.
+func newDeliveryClient(timeout time.Duration, restrict bool) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if restrict {
+		dialer := &net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			Control:   egress.Control,
+		}
+		transport.Proxy = nil
+		transport.DialContext = dialer.DialContext
+	}
 	return &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("stopped after 10 redirects")
@@ -159,6 +180,15 @@ func newDeliveryClient(timeout time.Duration) *http.Client {
 			return nil
 		},
 	}
+}
+
+// RestrictEgress refuses delivery to private and reserved addresses from now
+// on (see newDeliveryClient). Call before Start. A notification whose target
+// is refused fails at once rather than retrying: the address will not become
+// acceptable by waiting, and retrying it only repeats the attempt the policy
+// exists to stop.
+func (w *DurableWorker) RestrictEgress() {
+	w.client = newDeliveryClient(w.client.Timeout, true)
 }
 
 // SetRetention configures how long a finished notification is kept before it
@@ -433,6 +463,9 @@ func (w *DurableWorker) attempt(ctx context.Context, d *entities.WebhookDelivery
 	status, err := w.post(ctx, sub, d)
 
 	switch {
+	case errors.Is(err, egress.ErrDisallowed):
+		w.finish(ctx, d, entities.DeliveryStatusFailed, err.Error())
+
 	case err != nil:
 		// A transport failure is the endpoint being unreachable, which is
 		// exactly the case worth retrying.

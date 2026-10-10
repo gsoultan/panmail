@@ -163,6 +163,9 @@ Shared, and must be the same everywhere:
   click its link against another.
 - `PANMAIL_SECRET_KEY` — the key stored credentials are encrypted under. An
   instance without it cannot read any provider configuration.
+- `--webhook-block-private-targets`, if used. Whichever instance claims a
+  notification makes the connection, so one instance without it delivers to
+  private addresses the others refuse.
 
 Per-instance, and must **not** be shared:
 

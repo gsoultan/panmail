@@ -104,7 +104,7 @@ Administrator.
 | E1 | Every lifecycle step (PENDING, SENT, DELIVERED, OPENED, CLICKED, BOUNCED, …) is an event keyed by `message_id`. PENDING is recorded only once a message is queued. |
 | E2 | Signed open/click/unsubscribe links; the click endpoint is not an open redirect. |
 | E3 | Analytics counters by minute, hour and day, in UTC. Ranged queries read the coarsest buckets that cover the range. |
-| E4 | Outbound webhooks: durable, signed, leased like the outbox, delivered with bounded parallelism across subscriptions, and only redirected within the subscription's own host. A batch is claimed round-robin across subscriptions with a per-subscription cap, and an endpoint that times out or refuses connections twice in a row is backed off as a whole, so no one endpoint can occupy the workers or the batch. |
+| E4 | Outbound webhooks: durable, signed, leased like the outbox, delivered with bounded parallelism across subscriptions, and only redirected within the subscription's own host. A batch is claimed round-robin across subscriptions with a per-subscription cap, and an endpoint that times out or refuses connections twice in a row is backed off as a whole, so no one endpoint can occupy the workers or the batch. Targets on private addresses are allowed by default (self-hosted receivers); `--webhook-block-private-targets` refuses private, loopback, link-local, CGNAT, multicast and unspecified addresses (IPv4, IPv6 and IPv4-mapped) on the address actually dialled, for every connection and redirect, and refuses such a URL when a subscription is saved. |
 | E5 | Inbound ESP webhooks (SendGrid, Mailgun, Postmark, SES, generic HMAC) are verified before any event is recorded. |
 
 ### 4.4 Inbound mail
@@ -220,5 +220,7 @@ they share:
 - A post to the HTTP inbound endpoint that carries neither an event id nor a
   Message-ID is not deduplicated, and neither is a retry that arrives more than
   7 days after the first post, when its receipt has been pruned.
-- Webhook URLs may target private addresses by design (self-hosted targets);
-  there is no egress allow-list.
+- Webhook URLs may target private addresses unless the operator starts the
+  gateway with `--webhook-block-private-targets`; that is a block-list of
+  reserved ranges, not an allow-list of destinations, and with it on the
+  environment's HTTP proxy is not used for webhooks.

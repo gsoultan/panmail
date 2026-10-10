@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
+	"github.com/gsoultan/panmail/internal/webhook/egress"
 	"github.com/gsoultan/panmail/internal/webhook/repositories/entities"
 	"github.com/gsoultan/panmail/internal/webhook/repositories/stores"
 	"github.com/gsoultan/panmail/pkg/secrets"
@@ -28,13 +29,49 @@ type WebhookUsecase interface {
 
 type webhookUsecase struct {
 	repo stores.WebhookRepository
+
+	// Set when the operator has restricted webhooks to public addresses; nil
+	// leaves every URL acceptable. See RestrictTargets.
+	restrict bool
+	resolver egress.Resolver
 }
 
-func NewWebhookUsecase(repo stores.WebhookRepository) WebhookUsecase {
-	return &webhookUsecase{repo: repo}
+// Option configures a WebhookUsecase.
+type Option func(*webhookUsecase)
+
+// RestrictTargets refuses to save a subscription whose URL is, or resolves
+// to, a private or reserved address (see egress.Disallowed). A nil resolver
+// uses the system's. The refusal wraps egress.ErrDisallowed.
+//
+// A courtesy, not the control: the delivery worker checks the address it
+// actually connects to, which is what stops a name that resolves elsewhere
+// later. This is what lets the tenant see why at the moment they save it.
+func RestrictTargets(resolver egress.Resolver) Option {
+	return func(u *webhookUsecase) {
+		u.restrict = true
+		u.resolver = resolver
+	}
+}
+
+func NewWebhookUsecase(repo stores.WebhookRepository, opts ...Option) WebhookUsecase {
+	u := &webhookUsecase{repo: repo}
+	for _, opt := range opts {
+		opt(u)
+	}
+	return u
+}
+
+func (u *webhookUsecase) checkTarget(ctx context.Context, raw string) error {
+	if !u.restrict {
+		return nil
+	}
+	return egress.CheckURL(ctx, u.resolver, raw)
 }
 
 func (u *webhookUsecase) Create(ctx context.Context, tenantID string, req *panmailv1.CreateWebhookRequest) (*panmailv1.Webhook, error) {
+	if err := u.checkTarget(ctx, req.Url); err != nil {
+		return nil, err
+	}
 	events := make([]int32, len(req.Events))
 	for i, e := range req.Events {
 		events[i] = int32(e)
@@ -88,6 +125,9 @@ func (u *webhookUsecase) Delete(ctx context.Context, tenantID, id string) error 
 }
 
 func (u *webhookUsecase) Update(ctx context.Context, tenantID string, req *panmailv1.UpdateWebhookRequest) (*panmailv1.Webhook, error) {
+	if err := u.checkTarget(ctx, req.Url); err != nil {
+		return nil, err
+	}
 	events := make([]int32, len(req.Events))
 	for i, e := range req.Events {
 		events[i] = int32(e)

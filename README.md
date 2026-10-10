@@ -233,6 +233,8 @@ Panmail can notify your external applications when email events occur or when ne
 
 Deliveries are retried on a growing schedule (10s, 30s, 2m, 10m, 30m, 2h, 6h). An endpoint that times out or refuses the connection twice in a row is backed off as a whole: its waiting notifications are held until the next retry is due instead of each one waiting out the timeout, and other subscriptions keep being delivered meanwhile.
 
+Webhook URLs may point at private addresses, which is what a self-hosted receiver on the same network needs. A gateway serving tenants who should not reach the operator's network can be started with `--webhook-block-private-targets`: subscriptions whose URL is or resolves to a private, loopback, link-local (including `169.254.169.254`), CGNAT, multicast or unspecified address are refused when saved, and every delivery connection (redirects included) is checked against the address actually dialled, so a DNS record changed later does not get round it. Refused deliveries fail without retrying. With the flag on, webhooks ignore `HTTP_PROXY`/`HTTPS_PROXY`. Set it on every instance.
+
 ### Sending from another application
 
 Panmail exposes the same ConnectRPC API the dashboard uses. It is **asynchronous**: a successful call means the gateway has written the message to its outbox and taken responsibility for delivering it, returning `PENDING` and a `message_id`. Delivery itself is reported afterwards through events and webhooks, all keyed by that id — so store it next to whatever prompted the send.

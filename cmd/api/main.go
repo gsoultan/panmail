@@ -280,6 +280,14 @@ func main() {
 		"How long to report not-ready before closing the listener on shutdown; 0 to close at once")
 	smtpReconcileIntervalFlag := flag.Duration("smtp-reconcile-interval", smtpusecases.DefaultReconcileInterval,
 		"How often to re-read the stored SMTP submission configuration; ignored when --smtp-addr is set")
+	// Off by default: a self-hosted gateway posting to a service on its own
+	// network is the ordinary case, and refusing that would break it. On a
+	// gateway that hosts tenants who do not run the network, a webhook URL is
+	// otherwise a way to make the gateway POST to anything the operator can
+	// reach. A flag rather than a setting because it is the operator's call,
+	// not a tenant administrator's, and has to hold on every instance.
+	webhookBlockPrivateFlag := flag.Bool("webhook-block-private-targets", false,
+		"Refuse outbound webhooks to private, loopback, link-local, CGNAT, multicast and unspecified addresses (checked when the connection is made, and when a subscription is saved)")
 	flag.Parse()
 
 	if *versionFlag {
@@ -484,7 +492,11 @@ func main() {
 
 	filterRuleStore := emailfilterpostgres.NewRuleStore(conn)
 	filterQuarantineStore := emailfilterpostgres.NewQuarantineStore(conn)
-	webhookUsecase := webhookusecases.NewWebhookUsecase(webhookRepo)
+	var webhookOptions []webhookusecases.Option
+	if *webhookBlockPrivateFlag {
+		webhookOptions = append(webhookOptions, webhookusecases.RestrictTargets(nil))
+	}
+	webhookUsecase := webhookusecases.NewWebhookUsecase(webhookRepo, webhookOptions...)
 	webhookService := webhookservices.NewWebhookService(webhookUsecase)
 
 	// Background work runs under a context this process controls, so shutdown
@@ -498,6 +510,10 @@ func main() {
 	// bounced is silent, unrecoverable loss.
 	webhookDeliveryRepo := webhookstores.NewDeliveryStore(conn)
 	outboundWebhookWorker := webhookworker.NewDurableWorker(webhookDeliveryRepo, webhookUsecase)
+	if *webhookBlockPrivateFlag {
+		outboundWebhookWorker.RestrictEgress()
+		slog.Info("outbound webhooks are restricted to public addresses")
+	}
 
 	// After the webhook worker, because a held message notifies the tenant and
 	// a hold nobody is told about is a message that quietly expires unreviewed.
