@@ -42,7 +42,6 @@ const SignatureHeader = "X-Panmail-Signature"
 
 var (
 	errUnauthenticated = errors.New("inbound post is not authenticated")
-	errEmptyMessage    = errors.New("inbound post carried no message")
 )
 
 // WebhookHandler receives mail a provider has parsed and posts on to
@@ -97,9 +96,9 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, status, err := parsePayload(r.Header.Get("Content-Type"), body)
-	if err != nil {
-		http.Error(w, err.Error(), status)
+	payload, status, refusal := parsePayload(r.Header.Get("Content-Type"), body)
+	if payload == nil {
+		http.Error(w, refusal, status)
 		return
 	}
 
@@ -213,34 +212,36 @@ func (p *inboundPayload) empty() bool {
 	return p.From == "" && len(p.To) == 0 && p.Subject == "" && p.HTML == "" && p.Text == ""
 }
 
-// parsePayload reads the message from the body according to its content type,
-// and returns the status to answer with when it cannot.
+// parsePayload reads the message from the body according to its content type.
+// When it cannot, it returns a nil payload with the status to answer with and a
+// fixed description of the refusal -- never a parser's error text, which is
+// not written for the caller.
 //
 // The form branch used to call r.ParseMultipartForm after the body had already
 // been read into memory, so it always failed, silently, and an empty message
 // was stored and acknowledged. Every format now parses from the buffer, and a
 // post that yields nothing is refused rather than accepted as a blank email.
-func parsePayload(contentType string, body []byte) (*inboundPayload, int, error) {
+func parsePayload(contentType string, body []byte) (*inboundPayload, int, string) {
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return nil, http.StatusUnsupportedMediaType, errors.New("missing or malformed Content-Type")
+		return nil, http.StatusUnsupportedMediaType, "missing or malformed Content-Type"
 	}
 
 	var p inboundPayload
 	switch mediaType {
 	case "application/json":
 		if err := json.Unmarshal(body, &p); err != nil {
-			return nil, http.StatusBadRequest, errors.New("invalid JSON payload")
+			return nil, http.StatusBadRequest, "invalid JSON payload"
 		}
 
 	case "multipart/form-data":
 		boundary := params["boundary"]
 		if boundary == "" {
-			return nil, http.StatusBadRequest, errors.New("multipart payload has no boundary")
+			return nil, http.StatusBadRequest, "multipart payload has no boundary"
 		}
 		form, err := multipart.NewReader(bytes.NewReader(body), boundary).ReadForm(maxFormMemory)
 		if err != nil {
-			return nil, http.StatusBadRequest, errors.New("invalid multipart payload")
+			return nil, http.StatusBadRequest, "invalid multipart payload"
 		}
 		defer form.RemoveAll()
 		p.fromForm(url.Values(form.Value))
@@ -248,18 +249,18 @@ func parsePayload(contentType string, body []byte) (*inboundPayload, int, error)
 	case "application/x-www-form-urlencoded":
 		values, err := url.ParseQuery(string(body))
 		if err != nil {
-			return nil, http.StatusBadRequest, errors.New("invalid form payload")
+			return nil, http.StatusBadRequest, "invalid form payload"
 		}
 		p.fromForm(values)
 
 	default:
-		return nil, http.StatusUnsupportedMediaType, errors.New("unsupported Content-Type " + mediaType)
+		return nil, http.StatusUnsupportedMediaType, "unsupported Content-Type"
 	}
 
 	if p.empty() {
-		return nil, http.StatusBadRequest, errEmptyMessage
+		return nil, http.StatusBadRequest, "the post carried no message"
 	}
-	return &p, 0, nil
+	return &p, 0, ""
 }
 
 // fromForm reads the field names inbound-parse services post: from, to,
