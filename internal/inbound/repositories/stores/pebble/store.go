@@ -88,7 +88,23 @@ func (s *store) Write(ctx context.Context, e *entities.InboundEmail) error {
 	return batch.Commit(pebble.Sync)
 }
 
+// defaultPageSize and maxPageSize bound a listing. The page size arrives
+// straight from the API: zero used to return nothing along with the same page
+// token, so a client paging until the token ran out never stopped, and a huge
+// one read every stored body of the tenant's mail into one response.
+const (
+	defaultPageSize = 50
+	maxPageSize     = 500
+)
+
 func (s *store) List(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.InboundEmail, string, error) {
+	if pageSize <= 0 {
+		pageSize = defaultPageSize
+	}
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
+	}
+
 	prefix := []byte(fmt.Sprintf("inbound:%s:", tenantID))
 	upper := make([]byte, len(prefix))
 	copy(upper, prefix)

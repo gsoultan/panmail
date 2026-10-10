@@ -101,3 +101,41 @@ func TestAWriteAfterCloseReportsAnError(t *testing.T) {
 		t.Errorf("second close: %v", err)
 	}
 }
+
+// The page size comes straight from the API. Zero used to return nothing and
+// the same page token, so a client paging until the token ran out looped
+// forever; an enormous one read every body the tenant had into one response.
+func TestListingClampsThePageSize(t *testing.T) {
+	s := newTestStore(t)
+	base := time.Now()
+	for i := range maxPageSize + 1 {
+		if err := s.Write(t.Context(), message(fmt.Sprintf("m%d", i), base.Add(time.Duration(i)))); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+
+	cases := []struct {
+		name      string
+		pageSize  int
+		wantItems int
+	}{
+		{name: "zero takes the default", pageSize: 0, wantItems: defaultPageSize},
+		{name: "negative takes the default", pageSize: -1, wantItems: defaultPageSize},
+		{name: "huge is capped", pageSize: 1 << 30, wantItems: maxPageSize},
+		{name: "in range is honoured", pageSize: 7, wantItems: 7},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			items, token, err := s.List(t.Context(), testTenant, tc.pageSize, "")
+			if err != nil {
+				t.Fatalf("list: %v", err)
+			}
+			if len(items) != tc.wantItems {
+				t.Errorf("returned %d items, want %d", len(items), tc.wantItems)
+			}
+			if token == "" {
+				t.Error("no next page token with more mail stored")
+			}
+		})
+	}
+}
