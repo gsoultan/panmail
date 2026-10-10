@@ -44,26 +44,40 @@ func (m *memDeliveries) Create(_ context.Context, d *entities.WebhookDelivery) e
 	return nil
 }
 
-func (m *memDeliveries) ClaimDue(_ context.Context, limit int, lease time.Duration) ([]*entities.WebhookDelivery, error) {
+func (m *memDeliveries) ClaimDue(_ context.Context, limit, perSubscription int, lease time.Duration) ([]*entities.WebhookDelivery, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	var due []*entities.WebhookDelivery
 	now := time.Now()
+	taken := map[string]int{}
 	for _, id := range m.order {
 		r := m.rows[id]
-		if r == nil || len(due) >= limit {
+		if r == nil || len(due) >= limit || taken[r.WebhookID] >= perSubscription {
 			continue
 		}
 		terminal := r.Status == entities.DeliveryStatusDelivered || r.Status == entities.DeliveryStatusFailed
 		if terminal || r.NextAttemptAt.After(now) {
 			continue
 		}
+		taken[r.WebhookID]++
 		r.Status = entities.DeliveryStatusSending
 		copied := *r
 		due = append(due, &copied)
 	}
 	return due, nil
+}
+
+func (m *memDeliveries) DeferSubscription(_ context.Context, webhookID string, until time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.rows {
+		waiting := r.Status == entities.DeliveryStatusPending || r.Status == entities.DeliveryStatusDeferred
+		if r.WebhookID == webhookID && waiting && r.NextAttemptAt.Before(until) {
+			r.NextAttemptAt = until
+		}
+	}
+	return nil
 }
 
 func (m *memDeliveries) Update(_ context.Context, d *entities.WebhookDelivery) error {

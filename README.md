@@ -231,6 +231,8 @@ Panmail can notify your external applications when email events occur or when ne
    }
    ```
 
+Deliveries are retried on a growing schedule (10s, 30s, 2m, 10m, 30m, 2h, 6h). An endpoint that times out or refuses the connection twice in a row is backed off as a whole: its waiting notifications are held until the next retry is due instead of each one waiting out the timeout, and other subscriptions keep being delivered meanwhile.
+
 ### Sending from another application
 
 Panmail exposes the same ConnectRPC API the dashboard uses. It is **asynchronous**: a successful call means the gateway has written the message to its outbox and taken responsibility for delivering it, returning `PENDING` and a `message_id`. Delivery itself is reported afterwards through events and webhooks, all keyed by that id — so store it next to whatever prompted the send.

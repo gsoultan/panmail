@@ -44,6 +44,11 @@ type DurableWorker struct {
 	// claim new attempts may still be started. See processDue.
 	concurrency int
 	batchBudget time.Duration
+	// The most rows one subscription may take of a batch, and how many
+	// unreachable attempts in a row make the worker stop sending to an
+	// endpoint for a while. See processDue.
+	perSubscription int
+	failureStreak   int
 	// Time held back at the end of a lease for recording an outcome, so an
 	// attempt started at the last moment still writes it under the claim.
 	saveReserve time.Duration
@@ -85,6 +90,20 @@ const (
 	// endpoint from holding every other tenant's notifications behind it.
 	defaultDeliveryConcurrency = 8
 
+	// A subscription's rows in one batch. One subscription is delivered to
+	// sequentially, so rows beyond what a single endpoint can be sent inside
+	// the batch budget only kept other subscriptions out of the claim. Ten
+	// leaves a batch of fifty room for at least five subscriptions, and is
+	// still more than an endpoint at the full client timeout gets through.
+	defaultPerSubscription = 10
+
+	// Consecutive timeouts or connection failures after which an endpoint is
+	// treated as down for this batch: the rest of its rows are handed back and
+	// every waiting notification for it is moved out of the queue's way.
+	// Two, because one is a blip and each further attempt holds a worker for
+	// the whole client timeout.
+	defaultFailureStreak = 2
+
 	defaultDeliveryRetention = 7 * 24 * time.Hour
 	deliveryPrunePeriod      = time.Hour
 
@@ -101,16 +120,18 @@ const (
 
 func NewDurableWorker(deliveries stores.DeliveryRepository, webhookUsecase usecases.WebhookUsecase) *DurableWorker {
 	w := &DurableWorker{
-		deliveries:     deliveries,
-		webhookUsecase: webhookUsecase,
-		client:         newDeliveryClient(defaultDeliveryTimeout),
-		interval:       defaultDeliveryInterval,
-		batchSize:      defaultDeliveryBatch,
-		lease:          defaultDeliveryLease,
-		concurrency:    defaultDeliveryConcurrency,
-		batchBudget:    defaultBatchBudget,
-		saveReserve:    defaultSaveReserve,
-		trigger:        make(chan struct{}, 1),
+		deliveries:      deliveries,
+		webhookUsecase:  webhookUsecase,
+		client:          newDeliveryClient(defaultDeliveryTimeout),
+		interval:        defaultDeliveryInterval,
+		batchSize:       defaultDeliveryBatch,
+		lease:           defaultDeliveryLease,
+		concurrency:     defaultDeliveryConcurrency,
+		batchBudget:     defaultBatchBudget,
+		perSubscription: defaultPerSubscription,
+		failureStreak:   defaultFailureStreak,
+		saveReserve:     defaultSaveReserve,
+		trigger:         make(chan struct{}, 1),
 	}
 	w.SetRetention(defaultDeliveryRetention)
 	return w
@@ -217,10 +238,9 @@ func (w *DurableWorker) Start(ctx context.Context) {
 			return
 		}
 
-		delivered := w.processDue(ctx)
-
-		// A full batch means more is waiting; go again without pausing.
-		if delivered >= w.batchSize {
+		// A full batch, or a subscription that reached its share of one,
+		// means more is waiting; go again without pausing.
+		if w.processDue(ctx) {
 			continue
 		}
 
@@ -235,13 +255,16 @@ func (w *DurableWorker) Start(ctx context.Context) {
 	}
 }
 
-func (w *DurableWorker) processDue(ctx context.Context) int {
+// processDue claims and delivers one batch, and reports whether more may be
+// waiting.
+func (w *DurableWorker) processDue(ctx context.Context) bool {
 	claimedAt := time.Now()
-	due, err := w.deliveries.ClaimDue(ctx, w.batchSize, w.lease)
+	due, err := w.deliveries.ClaimDue(ctx, w.batchSize, w.perSubscription, w.lease)
 	if err != nil {
 		slog.Error("webhook: failed to claim due notifications", "error", err)
-		return 0
+		return false
 	}
+	more := len(due) >= w.batchSize
 
 	// The same reasoning as the outbox worker, and the same shape. A POST
 	// cancelled in flight may already have been received and acted on, and
@@ -261,12 +284,23 @@ func (w *DurableWorker) processDue(ctx context.Context) int {
 	// different subscriptions go out side by side, up to w.concurrency. The
 	// batch was sequential, so an endpoint taking fifteen seconds to answer
 	// held up every notification queued behind it, for every tenant.
+	//
+	// The claim caps each subscription's share of the batch, so one endpoint
+	// with a deep backlog cannot fill it. That alone still let a dead endpoint
+	// hold a worker for the client timeout on every row of its share, batch
+	// after batch; so after failureStreak unreachable attempts in a row the
+	// rest of its rows go back, and everything it has waiting is pushed out to
+	// when the last of those attempts is next due.
 	sem := make(chan struct{}, max(w.concurrency, 1))
 	var wg sync.WaitGroup
 	for _, group := range bySubscription(due) {
+		if len(group) >= w.perSubscription {
+			more = true
+		}
 		sem <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-sem }()
+			streak, worst := 0, 0
 			for i, d := range group {
 				// Still the parent context: this decides whether to *start*
 				// another delivery, and one not yet attempted cannot be
@@ -276,12 +310,50 @@ func (w *DurableWorker) processDue(ctx context.Context) int {
 					w.release(ctx, group[i:])
 					return
 				}
-				w.attempt(attemptCtx, d)
+				if w.failureStreak > 0 && streak >= w.failureStreak {
+					w.backOff(ctx, d.WebhookID, group[i:], worst, streak)
+					return
+				}
+				if w.attempt(attemptCtx, d) {
+					streak++
+					worst = max(worst, d.AttemptCount)
+				} else {
+					streak = 0
+				}
 			}
 		})
 	}
 	wg.Wait()
-	return len(due)
+	return more
+}
+
+// backOff stops sending to an endpoint that has stopped answering: the rows
+// of this batch not yet attempted are handed back, and every notification
+// waiting for the subscription -- these and any outside the batch -- is moved
+// to when the most-retried of the failed attempts is next due. The retry
+// schedule already grows; this applies it to the endpoint rather than to one
+// row, so a backlog of fresh rows does not keep starting it from ten seconds.
+func (w *DurableWorker) backOff(ctx context.Context, webhookID string, rest []*entities.WebhookDelivery, attempts, streak int) {
+	delay, ok := nextAttempt(attempts)
+	if !ok {
+		delay = retrySchedule[len(retrySchedule)-1]
+	}
+	until := time.Now().Add(delay)
+	slog.Warn("webhook: endpoint is not answering; backing off",
+		"webhook_id", webhookID, "consecutive_failures", streak, "until", until)
+
+	for _, d := range rest {
+		d.NextAttemptAt = until
+	}
+	w.release(ctx, rest)
+
+	deferCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := w.deliveries.DeferSubscription(deferCtx, webhookID, until); err != nil {
+		// Not fatal: the rows are claimed again sooner than intended, fail
+		// fast against the same streak, and are deferred then.
+		slog.Error("webhook: failed to back off a subscription", "webhook_id", webhookID, "error", err)
+	}
 }
 
 // startWindow is how long into a claim an attempt may still start: the batch
@@ -328,8 +400,10 @@ func (w *DurableWorker) release(ctx context.Context, rest []*entities.WebhookDel
 	}
 }
 
-// attempt makes one delivery and records what happened.
-func (w *DurableWorker) attempt(ctx context.Context, d *entities.WebhookDelivery) {
+// attempt makes one delivery and records what happened. It reports whether
+// the endpoint could not be reached at all -- a timeout or a failed
+// connection, as opposed to an answer of any kind.
+func (w *DurableWorker) attempt(ctx context.Context, d *entities.WebhookDelivery) (unreachable bool) {
 	d.AttemptCount++
 
 	sub, err := w.webhookUsecase.GetSubscription(ctx, d.TenantID, d.WebhookID)
@@ -339,7 +413,7 @@ func (w *DurableWorker) attempt(ctx context.Context, d *entities.WebhookDelivery
 		// Genuinely gone. A notification owed to nobody is finished, not
 		// retried forever.
 		w.finish(ctx, d, entities.DeliveryStatusFailed, "the webhook subscription no longer exists")
-		return
+		return false
 
 	case err != nil:
 		// Anything else is an operational fault, not a deleted subscription,
@@ -349,11 +423,11 @@ func (w *DurableWorker) attempt(ctx context.Context, d *entities.WebhookDelivery
 		// every queued notification and reports a reason that is untrue. It
 		// defers instead, so restoring the key recovers the queue.
 		w.reschedule(ctx, d, fmt.Sprintf("the webhook subscription could not be read: %v", err))
-		return
+		return false
 	}
 	if !sub.Active {
 		w.finish(ctx, d, entities.DeliveryStatusFailed, "the webhook subscription is disabled")
-		return
+		return false
 	}
 
 	status, err := w.post(ctx, sub, d)
@@ -363,6 +437,7 @@ func (w *DurableWorker) attempt(ctx context.Context, d *entities.WebhookDelivery
 		// A transport failure is the endpoint being unreachable, which is
 		// exactly the case worth retrying.
 		w.reschedule(ctx, d, err.Error())
+		return true
 
 	case status >= 200 && status < 300:
 		w.finish(ctx, d, entities.DeliveryStatusDelivered, "")
@@ -376,6 +451,7 @@ func (w *DurableWorker) attempt(ctx context.Context, d *entities.WebhookDelivery
 		// endpoint that has already said no.
 		w.finish(ctx, d, entities.DeliveryStatusFailed, fmt.Sprintf("endpoint returned %d", status))
 	}
+	return false
 }
 
 func (w *DurableWorker) post(ctx context.Context, sub *entities.Webhook, d *entities.WebhookDelivery) (int, error) {

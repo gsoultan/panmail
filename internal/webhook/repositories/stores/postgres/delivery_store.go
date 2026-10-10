@@ -18,6 +18,10 @@ var (
 	createDeliveryQuery string
 	//go:embed sql/claim_due_deliveries.sql
 	claimDueDeliveriesQuery string
+	//go:embed sql/claim_due_deliveries_pg.sql
+	claimDueDeliveriesPgQuery string
+	//go:embed sql/defer_subscription_deliveries.sql
+	deferSubscriptionDeliveriesQuery string
 	//go:embed sql/list_claimed_deliveries.sql
 	listClaimedDeliveriesQuery string
 	//go:embed sql/update_delivery.sql
@@ -78,7 +82,7 @@ func (s *deliveryStore) Create(ctx context.Context, d *entities.WebhookDelivery)
 	return err
 }
 
-func (s *deliveryStore) ClaimDue(ctx context.Context, limit int, leaseFor time.Duration) ([]*entities.WebhookDelivery, error) {
+func (s *deliveryStore) ClaimDue(ctx context.Context, limit, perSubscription int, leaseFor time.Duration) ([]*entities.WebhookDelivery, error) {
 	database, err := s.getDB()
 	if err != nil {
 		return nil, err
@@ -89,8 +93,13 @@ func (s *deliveryStore) ClaimDue(ctx context.Context, limit int, leaseFor time.D
 
 	// Claim, then read back by token. Doing it in two statements rather than
 	// one RETURNING keeps the query the same across engines.
-	if _, err := database.ExecContext(ctx, claimDueDeliveriesQuery,
-		token, now.Add(leaseFor), now, now, limit); err != nil {
+	if perSubscription < 1 {
+		// No cap is the old, unfair claim; one row each is the fairest
+		// reading of a value that cannot mean anything else.
+		perSubscription = 1
+	}
+	if _, err := database.ExecContext(ctx, claimQuery(database),
+		token, now.Add(leaseFor), now, now, limit, perSubscription); err != nil {
 		return nil, err
 	}
 
@@ -146,6 +155,17 @@ func (s *deliveryStore) Update(ctx context.Context, d *entities.WebhookDelivery)
 	}
 	d.ClaimToken = ""
 	return nil
+}
+
+func (s *deliveryStore) DeferSubscription(ctx context.Context, webhookID string, until time.Time) error {
+	database, err := s.getDB()
+	if err != nil {
+		return err
+	}
+	// UTC for the same reason as Create: the claim compares these as strings
+	// on SQLite.
+	_, err = database.ExecContext(ctx, deferSubscriptionDeliveriesQuery, webhookID, until.UTC(), time.Now().UTC())
+	return err
 }
 
 func (s *deliveryStore) Delete(ctx context.Context, id string) error {
