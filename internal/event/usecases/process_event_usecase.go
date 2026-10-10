@@ -225,20 +225,26 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 		u.sentCounter.Add(1)
 	}
 
-	// Attempt to recover missing fields from stored message
-	if messageID != "" {
-		msg, _ := u.repo.GetMessage(ctx, tenantID, messageID)
+	// Attempt to recover missing fields from stored message.
+	//
+	// Only when something is actually missing. The stored message is the whole
+	// body, attachments included, and decoding it is the cost of this call:
+	// the send path records SENT and DELIVERED for every recipient with the
+	// provider, recipient and subject already in hand, so reading it anyway
+	// decoded a 5 MiB attachment 150 times for one 50-recipient send. An id
+	// that is not one of ours still takes the lookup, because resolving it to
+	// our id is the other thing this does.
+	var msg *evententities.EmailMessage
+	looked := false
+	if messageID != "" && (providerID == "" || recipient == "" || subject == "" || !isInternalID(messageID)) {
+		looked = true
+		msg, _ = u.repo.GetMessage(ctx, tenantID, messageID)
 
 		// Fallback lookup: if message not found by ID, and it's not a UUID, it might be a provider ID
 		if msg == nil && recipient != "" {
 			// We only try to recover the message ID from recipient if the provided messageID
 			// doesn't look like our internal UUID.
-			isUUID := true
-			if _, err := uuid.Parse(messageID); err != nil {
-				isUUID = false
-			}
-
-			if !isUUID {
+			if !isInternalID(messageID) {
 				msg, _ = u.repo.GetLatestMessageForRecipient(ctx, tenantID, recipient)
 				if msg != nil {
 					messageID = msg.ID
@@ -288,11 +294,7 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 
 	// If it's a DELIVERED event, update the message with the provider used if not already set
 	if err == nil && eventType == panmailv1.EmailEventType_EMAIL_EVENT_TYPE_DELIVERED && providerID != "" && messageID != "" {
-		msg, _ := u.repo.GetMessage(ctx, tenantID, messageID)
-		if msg != nil && msg.ProviderID == "" {
-			msg.ProviderID = providerID
-			_ = u.repo.WriteMessage(ctx, msg)
-		}
+		u.backfillProvider(ctx, tenantID, messageID, providerID, msg, looked)
 	}
 
 	if err == nil && u.webhookTrigger != nil {
@@ -309,6 +311,49 @@ func (u *processEventUsecase) RecordEvent(ctx context.Context, tenantID, provide
 	}
 
 	return err
+}
+
+// isInternalID reports whether a message id is one panmail issued. Anything
+// else is a provider's id for the message, to be resolved to ours.
+func isInternalID(messageID string) bool {
+	_, err := uuid.Parse(messageID)
+	return err == nil
+}
+
+// backfillProvider records which provider delivered a message whose stored
+// copy does not name one yet.
+//
+// It used to read the whole stored message again for every DELIVERED and, when
+// the provider was missing, write the whole body back — attachments included —
+// to change one field. A store that can set the field on its own is asked to;
+// otherwise the message already read above is reused rather than read twice.
+func (u *processEventUsecase) backfillProvider(ctx context.Context, tenantID, messageID, providerID string, msg *evententities.EmailMessage, looked bool) {
+	// Read above and already naming a provider: nothing to do, and the
+	// common case once the first recipient's DELIVERED has set it.
+	if msg != nil && msg.ProviderID != "" {
+		return
+	}
+	// Looked up above and not there: there is nothing to backfill.
+	if looked && msg == nil {
+		return
+	}
+
+	if b, ok := u.repo.(eventstores.MessageProviderBackfiller); ok {
+		if err := b.BackfillMessageProvider(ctx, tenantID, messageID, providerID); err != nil {
+			slog.Warn("could not record the provider on a stored message",
+				"error", err, "id", messageID)
+		}
+		return
+	}
+
+	if msg == nil {
+		msg, _ = u.repo.GetMessage(ctx, tenantID, messageID)
+		if msg == nil || msg.ProviderID != "" {
+			return
+		}
+	}
+	msg.ProviderID = providerID
+	_ = u.repo.WriteMessage(ctx, msg)
 }
 
 func (u *processEventUsecase) mapToWebhookTrigger(t panmailv1.EmailEventType) panmailv1.WebhookTriggerEvent {

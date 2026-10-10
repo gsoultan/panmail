@@ -139,6 +139,33 @@ func (s *shadowed) Close() error {
 	return s.EventRepository.Close()
 }
 
+// BackfillMessageProvider records a message's provider in the primary and then
+// the shadow, on the same terms as the writes: the shadow's failure is logged,
+// not returned.
+func (s *shadowed) BackfillMessageProvider(ctx context.Context, tenantID, messageID, providerID string) error {
+	if b, ok := s.EventRepository.(MessageProviderBackfiller); ok {
+		if err := b.BackfillMessageProvider(ctx, tenantID, messageID, providerID); err != nil {
+			return err
+		}
+	} else {
+		// A primary that cannot set the field alone gets the read and
+		// rewrite, which also reaches the shadow through WriteMessage.
+		m, err := s.EventRepository.GetMessage(ctx, tenantID, messageID)
+		if err != nil || m == nil || m.ProviderID != "" {
+			return err
+		}
+		m.ProviderID = providerID
+		return s.WriteMessage(ctx, m)
+	}
+
+	if b, ok := s.shadow.(MessageProviderBackfiller); ok {
+		if err := b.BackfillMessageProvider(ctx, tenantID, messageID, providerID); err != nil {
+			slog.Warn("could not shadow a message's provider", "error", err, "id", messageID)
+		}
+	}
+	return nil
+}
+
 // WriteMessage shadows the stored body on the same terms.
 func (s *shadowed) WriteMessage(ctx context.Context, message *entities.EmailMessage) error {
 	if err := s.EventRepository.WriteMessage(ctx, message); err != nil {
