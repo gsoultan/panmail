@@ -55,6 +55,28 @@ type resourceOp struct {
 	point entities.ResourcePoint
 }
 
+// latestExpiryOp asks the writer to drop latest-event pointers for events
+// retention has expired, each only if it still points at that event.
+//
+// Retention used to do this itself, and raced the writer: it read latest_ts,
+// the writer then moved the pointer to a newer event, and retention's commit
+// deleted latest_ts regardless — leaving the newer latest_events entry with
+// nothing pointing at it, so the next write for that message and recipient
+// added a second one and the timeline listed the message twice, forever.
+// latest_ts is now read and written by one goroutine only, which removes the
+// race rather than narrowing it.
+type latestExpiryOp struct {
+	expired []latestPointer
+	// done is closed once the deletions are committed, so the retention pass
+	// can compact over them.
+	done chan struct{}
+}
+
+// latestPointer names one latest_events entry by what its key is built from.
+type latestPointer struct {
+	tenantID, messageID, recipient, tsDesc string
+}
+
 func NewStore(dir string) (stores.EventRepository, error) {
 	opts := &pebble.Options{
 		Merger: &pebble.Merger{
@@ -145,6 +167,14 @@ func (s *store) worker() {
 			_ = s.performWriteMessage(batch, v.message)
 		case resourceOp:
 			_ = s.performWriteResource(batch, v.point)
+		case latestExpiryOp:
+			s.performLatestExpiry(batch, v.expired, batchLatestTs)
+			// Committed at once rather than with the next batch: the pass
+			// that sent this compacts over these keys as soon as it returns.
+			count++
+			commit()
+			close(v.done)
+			return
 		}
 		count++
 		if count >= 500 {
@@ -346,6 +376,38 @@ func (s *store) performWrite(batch *pebble.Batch, e *entities.EmailEvent, batchL
 	}
 
 	return nil
+}
+
+// performLatestExpiry drops each latest-event pointer that still names the
+// expired event. It consults the batch cache before the database for the same
+// reason performWrite does: a newer event may be in this uncommitted batch.
+func (s *store) performLatestExpiry(batch *pebble.Batch, expired []latestPointer, batchLatestTs map[string]string) {
+	for _, p := range expired {
+		cacheKey := p.tenantID + ":" + p.messageID + ":" + p.recipient
+		latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s:%s", p.tenantID, p.messageID, p.recipient))
+
+		current, ok := batchLatestTs[cacheKey]
+		if !ok {
+			val, closer, err := s.db.Get(latestTsKey)
+			if err != nil {
+				continue
+			}
+			current = string(val)
+			_ = closer.Close()
+		}
+		// Only when this is the event it points at: dropping it for an older
+		// event would hide a message that still has live events.
+		if current != p.tsDesc {
+			continue
+		}
+
+		_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s",
+			p.tenantID, p.tsDesc, p.messageID, p.recipient)), nil)
+		_ = batch.Delete(latestTsKey, nil)
+		// Recorded as "no pointer", which performWrite reads as such, so a
+		// write later in this batch does not try to delete it again.
+		batchLatestTs[cacheKey] = ""
+	}
 }
 
 func (s *store) performWriteMessage(batch *pebble.Batch, m *entities.EmailMessage) error {

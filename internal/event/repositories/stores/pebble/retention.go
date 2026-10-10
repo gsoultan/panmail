@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,7 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) (int64, er
 	batch := s.db.NewBatch()
 	var removed int64
 	pending := 0
+	var latest []latestPointer
 
 	for iter.SeekGE([]byte(eventKeyPrefix)); iter.Valid(); iter.Next() {
 		if err := ctx.Err(); err != nil {
@@ -83,9 +85,13 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) (int64, er
 		}
 
 		rec := expiredEvent{key: iter.Key(), id: parts[3], value: iter.Value()}
-		if err := s.expireEvent(batch, archives, rec); err != nil {
+		pointer, err := s.expireEvent(batch, archives, rec)
+		if err != nil {
 			batch.Close()
 			return removed, err
+		}
+		if pointer != nil {
+			latest = append(latest, *pointer)
 		}
 		removed++
 		pending++
@@ -97,11 +103,18 @@ func (s *store) TruncateBefore(ctx context.Context, before time.Time) (int64, er
 			batch.Close()
 			return removed, err
 		}
+		if err := s.expireLatest(ctx, latest); err != nil {
+			return removed, err
+		}
+		latest = latest[:0]
 		batch = s.db.NewBatch()
 		pending = 0
 	}
 
 	if err := commitOrClose(batch, pending); err != nil {
+		return removed, err
+	}
+	if err := s.expireLatest(ctx, latest); err != nil {
 		return removed, err
 	}
 	if removed > 0 {
@@ -119,9 +132,10 @@ type expiredEvent struct {
 	value []byte
 }
 
-// expireEvent archives one event and stages the deletion of it and of every
-// index that points at it.
-func (s *store) expireEvent(batch *pebble.Batch, archives *tenantArchiveSet, rec expiredEvent) error {
+// expireEvent archives one event and stages the deletion of it and of its
+// timeline entry. It returns the latest-event pointer the event may own, which
+// only the writer is allowed to remove: see latestExpiryOp.
+func (s *store) expireEvent(batch *pebble.Batch, archives *tenantArchiveSet, rec expiredEvent) (*latestPointer, error) {
 	var e entities.EmailEvent
 	if err := json.Unmarshal(rec.value, &e); err != nil {
 		// Unreadable, but still expired: nothing can present it to a user, and
@@ -130,20 +144,20 @@ func (s *store) expireEvent(batch *pebble.Batch, archives *tenantArchiveSet, rec
 		// cleaned — which is the cost of a row that was already corrupt.
 		slog.Warn("retention expired an unreadable event", "key", string(rec.key))
 		s.deleteEventRow(batch, rec)
-		return nil
+		return nil, nil
 	}
 
 	archived, err := json.Marshal(e)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := archives.write(e.TenantID, archived); err != nil {
-		return err
+		return nil, err
 	}
 
-	s.deleteEventIndexes(batch, &e)
+	pointer := s.deleteEventIndexes(batch, &e)
 	s.deleteEventRow(batch, rec)
-	return nil
+	return pointer, nil
 }
 
 func (s *store) deleteEventRow(batch *pebble.Batch, rec expiredEvent) {
@@ -151,34 +165,45 @@ func (s *store) deleteEventRow(batch *pebble.Batch, rec expiredEvent) {
 	_ = batch.Delete([]byte("event_id:"+rec.id), nil)
 }
 
-// deleteEventIndexes removes the message-timeline entry for an event, and the
-// latest-event pointer when the event being removed is the one it points at.
-func (s *store) deleteEventIndexes(batch *pebble.Batch, e *entities.EmailEvent) {
+// deleteEventIndexes removes the message-timeline entry for an event, and
+// returns the latest-event pointer it may own for the writer to check.
+func (s *store) deleteEventIndexes(batch *pebble.Batch, e *entities.EmailEvent) *latestPointer {
 	if e.MessageID == "" {
-		return
+		return nil
 	}
 
 	tsDesc := descendingTimestamp(e.Timestamp)
 	_ = batch.Delete([]byte(fmt.Sprintf("msg_events:%s:%s:%s:%s:%s",
 		e.TenantID, e.MessageID, e.Recipient, tsDesc, e.ID)), nil)
 
-	// latest_events holds one entry per message and recipient. Delete it only
-	// when this is the event it points at: dropping it for an older event
-	// would hide a message that still has live events from the timeline.
-	latestTsKey := []byte(fmt.Sprintf("latest_ts:%s:%s:%s", e.TenantID, e.MessageID, e.Recipient))
-	current, closer, err := s.db.Get(latestTsKey)
-	if err != nil {
-		return
+	return &latestPointer{
+		tenantID:  e.TenantID,
+		messageID: e.MessageID,
+		recipient: e.Recipient,
+		tsDesc:    tsDesc,
 	}
-	isLatest := string(current) == tsDesc
-	_ = closer.Close()
-	if !isLatest {
-		return
-	}
+}
 
-	_ = batch.Delete([]byte(fmt.Sprintf("latest_events:%s:%s:%s:%s",
-		e.TenantID, tsDesc, e.MessageID, e.Recipient)), nil)
-	_ = batch.Delete(latestTsKey, nil)
+// expireLatest hands expired events' latest-event pointers to the writer and
+// waits until it has committed their removal.
+//
+// latest_events holds one entry per message and recipient, and only the event
+// it points at may remove it. Deciding that here, outside the writer, is the
+// race latestExpiryOp describes.
+func (s *store) expireLatest(ctx context.Context, expired []latestPointer) error {
+	if len(expired) == 0 {
+		return nil
+	}
+	op := latestExpiryOp{expired: slices.Clone(expired), done: make(chan struct{})}
+	if err := s.enqueue(ctx, op); err != nil {
+		return err
+	}
+	select {
+	case <-op.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // TruncateMessagesBefore removes stored message bodies older than before,
