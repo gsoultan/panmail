@@ -150,38 +150,46 @@ func (m *AuthMiddleware) identifyBearer(r *http.Request, authHeader string) (*Pr
 		Role:     payload.Role,
 	}
 
-	// A request may name a tenant other than the one the token was minted for.
-	// The header is only consulted when it disagrees with the token, so the
-	// ordinary single-tenant request costs nothing to serve.
 	target := r.Header.Get(tenantIDHeader)
-	if target == "" || target == payload.TenantID {
+	if target == "" {
+		target = payload.TenantID
+	}
+
+	if m.memberships == nil {
+		// Without membership there is nothing to ask, so the token is taken at
+		// its word and only a super admin may name another tenant — the
+		// behaviour before memberships existed.
+		if target == payload.TenantID {
+			return principal, nil
+		}
+		if principal.Role != RoleSuperAdmin {
+			return nil, ErrTenantNotPermitted
+		}
+		principal.TenantID = target
+		logSuperAdminSwitch(principal, r.URL.Path)
 		return principal, nil
 	}
-	if err := m.switchTenant(r.Context(), principal, target, r.URL.Path); err != nil {
+
+	if err := m.actIn(r.Context(), principal, target, r.URL.Path); err != nil {
 		return nil, err
 	}
 	return principal, nil
 }
 
-// switchTenant moves the principal into another tenant, or refuses.
+// actIn sets the tenant the principal acts in and the role they hold there,
+// both read from the account as it is now rather than from the token.
 //
-// The role moves with it. A user who administers their own tenant and is a
-// viewer in one they have been lent must be a viewer while acting there —
-// carrying the home role across would make every assignment a promotion.
-func (m *AuthMiddleware) switchTenant(ctx context.Context, principal *Principal, target, path string) error {
-	// Super admin is global: it reaches procedures that are not scoped to any
-	// tenant, so it needs no membership and is answered without a query.
-	if principal.Role == RoleSuperAdmin {
-		principal.TenantID = target
-		slog.Info("super admin switched tenant context",
-			"user_id", principal.UserID, "tenant_id", target, "path", path)
-		return nil
-	}
-
-	if m.memberships == nil {
-		return ErrTenantNotPermitted
-	}
-
+// The token's role and tenant were what a session ran on for its whole 24
+// hours, so a user who was deleted, demoted or stripped of super admin kept
+// what they had at sign-in until it expired. Every request now asks the same
+// cached question the tenant switch always asked, the home tenant included,
+// so a change takes effect within the cache's few seconds.
+//
+// The role is the one held in the tenant being entered. A user who
+// administers their own tenant and is a viewer in one they have been lent
+// must be a viewer while acting there — carrying the home role across would
+// make every assignment a promotion.
+func (m *AuthMiddleware) actIn(ctx context.Context, principal *Principal, target, path string) error {
 	role, err := m.resolveRole(ctx, principal.UserID, target)
 	if err != nil {
 		return err
@@ -192,9 +200,21 @@ func (m *AuthMiddleware) switchTenant(ctx context.Context, principal *Principal,
 		return ErrTenantNotPermitted
 	}
 
+	switched := target != principal.TenantID
 	principal.TenantID = target
 	principal.Role = role
+	if switched && role == RoleSuperAdmin {
+		logSuperAdminSwitch(principal, path)
+	}
 	return nil
+}
+
+// logSuperAdminSwitch records a super admin entering a tenant they hold no
+// membership in, which is the access support and monitoring rely on and the
+// one an audit will ask about.
+func logSuperAdminSwitch(principal *Principal, path string) {
+	slog.Info("super admin switched tenant context",
+		"user_id", principal.UserID, "tenant_id", principal.TenantID, "path", path)
 }
 
 // resolveRole returns the role the user holds in the tenant, "" for none.
