@@ -7,6 +7,7 @@ require (
 	connectrpc.com/grpchealth v1.5.0
 	github.com/aymerick/raymond v2.0.2+incompatible
 	github.com/cockroachdb/pebble v1.1.5
+	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/emersion/go-smtp v0.25.0
@@ -62,7 +63,6 @@ require (
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/emersion/go-imap v1.2.1 // indirect
 	github.com/emersion/go-imap-idle v0.0.0-20210907174914-db2568431445 // indirect
 	github.com/emersion/go-message v0.18.2 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect

@@ -101,17 +101,24 @@ var procedurePolicy = map[string]access{
 	panmailv1connect.EventServiceGetPerformanceMetricsProcedure: {minRole: RoleSuperAdmin},
 
 	// --- Administrator ------------------------------------------------------
-	panmailv1connect.ApiKeyServiceCreateApiKeyProcedure:      {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceListApiKeysProcedure:       {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceUpdateApiKeyProcedure:      {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceDeleteApiKeyProcedure:      {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceEnableApiKeyProcedure:      {minRole: RoleAdmin},
-	panmailv1connect.ApiKeyServiceDisableApiKeyProcedure:     {minRole: RoleAdmin},
-	panmailv1connect.UserServiceCreateUserProcedure:          {minRole: RoleAdmin},
-	panmailv1connect.UserServiceListUsersProcedure:           {minRole: RoleAdmin},
-	panmailv1connect.UserServiceDeleteUserProcedure:          {minRole: RoleAdmin},
-	panmailv1connect.UserServiceUpdateUserRoleProcedure:      {minRole: RoleAdmin},
-	panmailv1connect.UserServiceUpdateUserTwoFactorProcedure: {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceCreateApiKeyProcedure:  {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceListApiKeysProcedure:   {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceUpdateApiKeyProcedure:  {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceDeleteApiKeyProcedure:  {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceEnableApiKeyProcedure:  {minRole: RoleAdmin},
+	panmailv1connect.ApiKeyServiceDisableApiKeyProcedure: {minRole: RoleAdmin},
+	panmailv1connect.UserServiceCreateUserProcedure:      {minRole: RoleAdmin},
+	// Sent copies hold mailbox passwords, so the setting is an administrator's
+	// and no API key scope reaches it.
+	panmailv1connect.SentCopyServiceGetSentCopySettingsProcedure:    {minRole: RoleAdmin},
+	panmailv1connect.SentCopyServiceUpdateSentCopySettingsProcedure: {minRole: RoleAdmin},
+	panmailv1connect.SentCopyServiceListSentCopyMailboxesProcedure:  {minRole: RoleAdmin},
+	panmailv1connect.SentCopyServiceSaveSentCopyMailboxProcedure:    {minRole: RoleAdmin},
+	panmailv1connect.SentCopyServiceDeleteSentCopyMailboxProcedure:  {minRole: RoleAdmin},
+	panmailv1connect.UserServiceListUsersProcedure:                  {minRole: RoleAdmin},
+	panmailv1connect.UserServiceDeleteUserProcedure:                 {minRole: RoleAdmin},
+	panmailv1connect.UserServiceUpdateUserRoleProcedure:             {minRole: RoleAdmin},
+	panmailv1connect.UserServiceUpdateUserTwoFactorProcedure:        {minRole: RoleAdmin},
 
 	// --- Editor: configuration changes --------------------------------------
 	panmailv1connect.EmailProviderServiceCreateEmailProviderProcedure:     {minRole: RoleEditor, scope: entities.ScopeProvidersWrite},

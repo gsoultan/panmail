@@ -12,6 +12,7 @@ import { TemplateService } from "../api/panmail/v1/template_service_pb";
 import { SuppressionService } from "../api/panmail/v1/suppression_service_pb";
 import { SystemSettingsService } from "../api/panmail/v1/system_settings_pb";
 import { EmailFilterService } from "../api/panmail/v1/email_filter_service_pb";
+import { SentCopyService } from "../api/panmail/v1/sent_copy_pb";
 import { useAuthStore } from "../store/authStore";
 
 const errorInterceptor: Interceptor = (next) => async (req) => {
@@ -60,3 +61,4 @@ export const templateClient = createClient(TemplateService, transport);
 export const suppressionClient = createClient(SuppressionService, transport);
 export const emailFilterClient = createClient(EmailFilterService, transport);
 export const settingsClient = createClient(SystemSettingsService, transport);
+export const sentCopyClient = createClient(SentCopyService, transport);
