@@ -44,6 +44,9 @@ func validateAttachments(req *panmailv1.SendEmailRequest) error {
 		if a == nil {
 			continue
 		}
+		if reason := contentIDProblem(a.ContentId); reason != "" {
+			return fmt.Errorf("attachment %q: %s", a.Filename, reason)
+		}
 		total += len(a.Content)
 		// Checked inside the loop as well as after it: summing first means
 		// adding up gigabytes of already-received attachments before saying
@@ -55,4 +58,22 @@ func validateAttachments(req *panmailv1.SendEmailRequest) error {
 		}
 	}
 	return nil
+}
+
+// contentIDProblem says what is wrong with an attachment's Content-ID, or ""
+// when nothing is. It is sent as <content_id> and matched against cid:
+// references in the HTML, so it has to be one token of printable ASCII.
+func contentIDProblem(id string) string {
+	if id == "" {
+		return ""
+	}
+	if len(id) > MaxMessageIDLength {
+		return fmt.Sprintf("content_id is %d characters long, the limit is %d", len(id), MaxMessageIDLength)
+	}
+	for i := 0; i < len(id); i++ {
+		if c := id[i]; c <= ' ' || c > '~' || c == '<' || c == '>' {
+			return "content_id may contain only printable ASCII without spaces or angle brackets"
+		}
+	}
+	return ""
 }

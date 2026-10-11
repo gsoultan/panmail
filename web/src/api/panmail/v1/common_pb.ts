@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/common.proto.
  */
 export const file_panmail_v1_common: GenFile = /*@__PURE__*/
-  fileDesc("ChdwYW5tYWlsL3YxL2NvbW1vbi5wcm90bxIKcGFubWFpbC52MSJFCgpBdHRhY2htZW50EhAKCGZpbGVuYW1lGAEgASgJEhQKDGNvbnRlbnRfdHlwZRgCIAEoCRIPCgdjb250ZW50GAMgASgMQpwBCg5jb20ucGFubWFpbC52MUILQ29tbW9uUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM");
+  fileDesc("ChdwYW5tYWlsL3YxL2NvbW1vbi5wcm90bxIKcGFubWFpbC52MSJZCgpBdHRhY2htZW50EhAKCGZpbGVuYW1lGAEgASgJEhQKDGNvbnRlbnRfdHlwZRgCIAEoCRIPCgdjb250ZW50GAMgASgMEhIKCmNvbnRlbnRfaWQYBCABKAlCnAEKDmNvbS5wYW5tYWlsLnYxQgtDb21tb25Qcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw");
 
 /**
  * @generated from message panmail.v1.Attachment
@@ -30,6 +30,16 @@ export type Attachment = Message<"panmail.v1.Attachment"> & {
    * @generated from field: bytes content = 3;
    */
   content: Uint8Array;
+
+  /**
+   * Makes the attachment an inline part that the HTML body can reference as
+   * cid:<content_id>, which is how a mail client embeds a pasted image or a
+   * signature logo. Without the angle brackets. Empty means an ordinary
+   * attachment.
+   *
+   * @generated from field: string content_id = 4;
+   */
+  contentId: string;
 };
 
 /**

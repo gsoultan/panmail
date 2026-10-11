@@ -44,6 +44,16 @@ func singleAddress(value string, decoder *mime.WordDecoder) (string, error) {
 	return address.Address, nil
 }
 
+// firstAddress returns the first address in a header that will parse, or ""
+// when none does. For headers that name one address and are worth less than
+// the message they are on.
+func firstAddress(value string, decoder *mime.WordDecoder) string {
+	if addresses := addressList(value, decoder); len(addresses) > 0 {
+		return addresses[0]
+	}
+	return ""
+}
+
 // addressList parses a header holding any number of addresses. Addresses that
 // will not parse are skipped rather than failing the whole submission: one
 // malformed entry in a long Cc should not lose the message.

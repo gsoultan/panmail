@@ -32,6 +32,18 @@ message SendEmailRequest {
   // request is refused with ALREADY_EXISTS. At most 255 printable ASCII
   // characters. May be sent as the Idempotency-Key HTTP header instead.
   string idempotency_key = 14;
+  // The address replies should go to, when it is not the From address.
+  string reply_to = 15;
+  // The Message-ID of the message this one answers, angle brackets included,
+  // so the recipient's client threads the reply with the original.
+  string in_reply_to = 16;
+  // The Message-IDs of the conversation so far, oldest first, angle brackets
+  // included. Sent as the References header.
+  repeated string references = 17;
+  // Where a read receipt should be sent, when the sender asks for one. Sent
+  // as the Disposition-Notification-To header; the recipient's client decides
+  // whether to honour it.
+  string disposition_notification_to = 18;
 }
 
 message SendEmailResponse {

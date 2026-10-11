@@ -8,4 +8,9 @@ message Attachment {
   string filename = 1;
   string content_type = 2;
   bytes content = 3;
+  // Makes the attachment an inline part that the HTML body can reference as
+  // cid:<content_id>, which is how a mail client embeds a pasted image or a
+  // signature logo. Without the angle brackets. Empty means an ordinary
+  // attachment.
+  string content_id = 4;
 }
