@@ -219,6 +219,9 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 	if err := validateAttachments(req); err != nil {
 		return nil, err
 	}
+	if err := validateReplyHeaders(req); err != nil {
+		return nil, err
+	}
 
 	// Fail fast on a provider that does not exist, rather than queueing a
 	// message that can never be delivered.
@@ -751,11 +754,13 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			}
 
 			u.setBounceRef(&msg, tenantID, messageID, recipient)
+			applyReplyHeaders(&msg, req)
 
 			for _, a := range req.Attachments {
 				msg.Attachments = append(msg.Attachments, gsmail.Attachment{
 					Filename:    a.Filename,
 					ContentType: a.ContentType,
+					ContentID:   a.ContentId,
 					Data:        a.Content,
 				})
 			}

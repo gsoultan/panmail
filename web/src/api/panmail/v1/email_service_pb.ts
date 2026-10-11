@@ -15,7 +15,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/email_service.proto.
  */
 export const file_panmail_v1_email_service: GenFile = /*@__PURE__*/
-  fileDesc("Ch5wYW5tYWlsL3YxL2VtYWlsX3NlcnZpY2UucHJvdG8SCnBhbm1haWwudjEiwwIKEFNlbmRFbWFpbFJlcXVlc3QSEwoLcHJvdmlkZXJfaWQYASABKAkSDAoEZnJvbRgCIAEoCRIKCgJ0bxgDIAMoCRIKCgJjYxgMIAMoCRILCgNiY2MYDSADKAkSDwoHc3ViamVjdBgEIAEoCRIQCgRib2R5GAUgASgJQgIYARITCgdpc19odG1sGAYgASgIQgIYARIRCglib2R5X2h0bWwYCSABKAkSEQoJYm9keV90ZXh0GAogASgJEhMKC3RlbXBsYXRlX2lkGAcgASgJEi4KDXRlbXBsYXRlX2RhdGEYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKC2F0dGFjaG1lbnRzGAsgAygLMhYucGFubWFpbC52MS5BdHRhY2htZW50EhcKD2lkZW1wb3RlbmN5X2tleRgOIAEoCSJiChFTZW5kRW1haWxSZXNwb25zZRISCgptZXNzYWdlX2lkGAEgASgJEioKBnN0YXR1cxgCIAEoDjIaLnBhbm1haWwudjEuRW1haWxFdmVudFR5cGUSDQoFZXJyb3IYAyABKAkyWAoMRW1haWxTZXJ2aWNlEkgKCVNlbmRFbWFpbBIcLnBhbm1haWwudjEuU2VuZEVtYWlsUmVxdWVzdBodLnBhbm1haWwudjEuU2VuZEVtYWlsUmVzcG9uc2VCogEKDmNvbS5wYW5tYWlsLnYxQhFFbWFpbFNlcnZpY2VQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw", [file_panmail_v1_event, file_panmail_v1_common, file_google_protobuf_struct]);
+  fileDesc("Ch5wYW5tYWlsL3YxL2VtYWlsX3NlcnZpY2UucHJvdG8SCnBhbm1haWwudjEiowMKEFNlbmRFbWFpbFJlcXVlc3QSEwoLcHJvdmlkZXJfaWQYASABKAkSDAoEZnJvbRgCIAEoCRIKCgJ0bxgDIAMoCRIKCgJjYxgMIAMoCRILCgNiY2MYDSADKAkSDwoHc3ViamVjdBgEIAEoCRIQCgRib2R5GAUgASgJQgIYARITCgdpc19odG1sGAYgASgIQgIYARIRCglib2R5X2h0bWwYCSABKAkSEQoJYm9keV90ZXh0GAogASgJEhMKC3RlbXBsYXRlX2lkGAcgASgJEi4KDXRlbXBsYXRlX2RhdGEYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKC2F0dGFjaG1lbnRzGAsgAygLMhYucGFubWFpbC52MS5BdHRhY2htZW50EhcKD2lkZW1wb3RlbmN5X2tleRgOIAEoCRIQCghyZXBseV90bxgPIAEoCRITCgtpbl9yZXBseV90bxgQIAEoCRISCgpyZWZlcmVuY2VzGBEgAygJEiMKG2Rpc3Bvc2l0aW9uX25vdGlmaWNhdGlvbl90bxgSIAEoCSJiChFTZW5kRW1haWxSZXNwb25zZRISCgptZXNzYWdlX2lkGAEgASgJEioKBnN0YXR1cxgCIAEoDjIaLnBhbm1haWwudjEuRW1haWxFdmVudFR5cGUSDQoFZXJyb3IYAyABKAkyWAoMRW1haWxTZXJ2aWNlEkgKCVNlbmRFbWFpbBIcLnBhbm1haWwudjEuU2VuZEVtYWlsUmVxdWVzdBodLnBhbm1haWwudjEuU2VuZEVtYWlsUmVzcG9uc2VCogEKDmNvbS5wYW5tYWlsLnYxQhFFbWFpbFNlcnZpY2VQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw", [file_panmail_v1_event, file_panmail_v1_common, file_google_protobuf_struct]);
 
 /**
  * @generated from message panmail.v1.SendEmailRequest
@@ -98,6 +98,38 @@ export type SendEmailRequest = Message<"panmail.v1.SendEmailRequest"> & {
    * @generated from field: string idempotency_key = 14;
    */
   idempotencyKey: string;
+
+  /**
+   * The address replies should go to, when it is not the From address.
+   *
+   * @generated from field: string reply_to = 15;
+   */
+  replyTo: string;
+
+  /**
+   * The Message-ID of the message this one answers, angle brackets included,
+   * so the recipient's client threads the reply with the original.
+   *
+   * @generated from field: string in_reply_to = 16;
+   */
+  inReplyTo: string;
+
+  /**
+   * The Message-IDs of the conversation so far, oldest first, angle brackets
+   * included. Sent as the References header.
+   *
+   * @generated from field: repeated string references = 17;
+   */
+  references: string[];
+
+  /**
+   * Where a read receipt should be sent, when the sender asks for one. Sent
+   * as the Disposition-Notification-To header; the recipient's client decides
+   * whether to honour it.
+   *
+   * @generated from field: string disposition_notification_to = 18;
+   */
+  dispositionNotificationTo: string;
 };
 
 /**

@@ -104,6 +104,14 @@ func (p *Parser) Parse(r io.Reader, envelopeFrom string) (*Message, error) {
 		To:      addressList(parsed.Header.Get(headerTo), decoder),
 		Cc:      addressList(parsed.Header.Get(headerCc), decoder),
 		Subject: subject,
+
+		// Carried so a reply sent from a mail client still threads, still
+		// answers to the right address and still asks for its receipt. Each is
+		// dropped rather than refused when it will not parse.
+		ReplyTo:                   firstAddress(parsed.Header.Get(headerReplyTo), decoder),
+		InReplyTo:                 firstMessageID(parsed.Header.Get(headerInReplyTo)),
+		References:                references(parsed.Header.Get(headerReferences)),
+		DispositionNotificationTo: firstAddress(parsed.Header.Get(headerDispositionNotificationTo), decoder),
 	}
 
 	body := &bodyParts{}
@@ -231,6 +239,9 @@ func (p *Parser) attach(
 		Filename:    attachmentName(header, params),
 		ContentType: mediaType,
 		Content:     content,
+		// Kept so an image pasted into the body, which the HTML names as
+		// cid:<id>, is still embedded rather than arriving as a loose file.
+		ContentId: contentID(header),
 	})
 	return nil
 }

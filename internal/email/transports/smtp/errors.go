@@ -96,6 +96,13 @@ func submissionError(err error) *gosmtp.SMTPError {
 		)
 	}
 
+	// Permanent: the parser drops reply headers it cannot use, so this is a
+	// header the usecase still refused, and it will refuse it again.
+	var badHeader *usecases.InvalidReplyHeaderError
+	if errors.As(err, &badHeader) {
+		return permanentError(codeBadArguments, enhancedBadArguments, "%s", badHeader.Error())
+	}
+
 	var full *usecases.BacklogFullError
 	if errors.As(err, &full) {
 		return temporaryError(

@@ -100,6 +100,11 @@ func (s *emailService) SendEmail(ctx context.Context, req *connect.Request[panma
 			return nil, connect.NewError(connect.CodeInvalidArgument, noProvider)
 		}
 
+		var badHeader *usecases.InvalidReplyHeaderError
+		if errors.As(err, &badHeader) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, badHeader)
+		}
+
 		var badKey *usecases.InvalidIdempotencyKeyError
 		if errors.As(err, &badKey) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, badKey)

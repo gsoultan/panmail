@@ -22,10 +22,15 @@ const (
 )
 
 type Attachment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
-	ContentType   string                 `protobuf:"bytes,2,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
-	Content       []byte                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Filename    string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	ContentType string                 `protobuf:"bytes,2,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	Content     []byte                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	// Makes the attachment an inline part that the HTML body can reference as
+	// cid:<content_id>, which is how a mail client embeds a pasted image or a
+	// signature logo. Without the angle brackets. Empty means an ordinary
+	// attachment.
+	ContentId     string `protobuf:"bytes,4,opt,name=content_id,json=contentId,proto3" json:"content_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -81,17 +86,26 @@ func (x *Attachment) GetContent() []byte {
 	return nil
 }
 
+func (x *Attachment) GetContentId() string {
+	if x != nil {
+		return x.ContentId
+	}
+	return ""
+}
+
 var File_panmail_v1_common_proto protoreflect.FileDescriptor
 
 const file_panmail_v1_common_proto_rawDesc = "" +
 	"\n" +
 	"\x17panmail/v1/common.proto\x12\n" +
-	"panmail.v1\"e\n" +
+	"panmail.v1\"\x84\x01\n" +
 	"\n" +
 	"Attachment\x12\x1a\n" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\x12!\n" +
 	"\fcontent_type\x18\x02 \x01(\tR\vcontentType\x12\x18\n" +
-	"\acontent\x18\x03 \x01(\fR\acontentB\x9c\x01\n" +
+	"\acontent\x18\x03 \x01(\fR\acontent\x12\x1d\n" +
+	"\n" +
+	"content_id\x18\x04 \x01(\tR\tcontentIdB\x9c\x01\n" +
 	"\x0ecom.panmail.v1B\vCommonProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"
