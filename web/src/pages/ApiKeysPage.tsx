@@ -26,6 +26,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiKeyService } from '../features/auth/services/apiKey';
 import { notifications } from '@mantine/notifications';
 import { SmtpIntegrationPanel } from '../features/settings/components/smtp/SmtpIntegrationPanel';
+import { SentCopiesSettings } from '../features/settings/components/sentCopies/SentCopiesSettings';
+import { useAuthStore } from '../store/authStore';
+import { accessFor } from '../lib/access';
 import { ScopePicker } from '../features/auth/components/ScopePicker';
 import { DEFAULT_SCOPE_IDS, resolveScopes, sanitize, summarize, type ScopeId } from '../features/auth/scopes';
 
@@ -78,6 +81,10 @@ const ScopeSummary: React.FC<{ scopes: string[] }> = ({ scopes }) => {
 
 export const ApiKeysPage: React.FC = () => {
   const queryClient = useQueryClient();
+  // Sent-copy settings are per tenant and administrator-only; the server
+  // refuses anyone else, so the section is not offered to them.
+  const { user } = useAuthStore();
+  const administerTenant = accessFor(user?.role).administerTenant;
   const [createModalOpened, setCreateModalOpened] = useState(false);
   // The key being edited. Null closes the modal, so there is one source of
   // truth for "is the editor open" rather than a flag that can disagree with
@@ -256,6 +263,8 @@ export const ApiKeysPage: React.FC = () => {
         </Group>
 
         <SmtpIntegrationPanel />
+
+        {administerTenant && <SentCopiesSettings />}
 
         <Box style={{
           backgroundColor: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))',

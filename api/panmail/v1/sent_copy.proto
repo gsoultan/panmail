@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package panmail.v1;
+
+option go_package = "github.com/gsoultan/panmail/api/panmail/v1;panmailv1";
+
+// SentCopyService configures how a tenant's sent mail is copied back to the
+// sender, so a message sent through panmail from a mail client still appears
+// in that person's Sent folder. Tenant administrators only.
+service SentCopyService {
+  rpc GetSentCopySettings(GetSentCopySettingsRequest) returns (GetSentCopySettingsResponse);
+  rpc UpdateSentCopySettings(UpdateSentCopySettingsRequest) returns (UpdateSentCopySettingsResponse);
+  rpc ListSentCopyMailboxes(ListSentCopyMailboxesRequest) returns (ListSentCopyMailboxesResponse);
+  rpc SaveSentCopyMailbox(SaveSentCopyMailboxRequest) returns (SaveSentCopyMailboxResponse);
+  rpc DeleteSentCopyMailbox(DeleteSentCopyMailboxRequest) returns (DeleteSentCopyMailboxResponse);
+}
+
+// How a copy of a sent message reaches the sender.
+enum SentCopyMode {
+  // Treated as NONE.
+  SENT_COPY_MODE_UNSPECIFIED = 0;
+  // No copy is made. The default.
+  SENT_COPY_MODE_NONE = 1;
+  // panmail logs in to each sender's mailbox with one administrator account
+  // (an IMAP master user, as Dovecot calls it) and files the copy in the
+  // Sent folder. No personal password is stored.
+  SENT_COPY_MODE_SHARED_LOGIN = 2;
+  // panmail logs in to each sender's mailbox with that mailbox's own login,
+  // stored per address, and files the copy in the Sent folder.
+  SENT_COPY_MODE_PER_USER_LOGIN = 3;
+  // panmail emails a copy to the sender through the message's provider. It
+  // arrives in the Inbox unless the mail server files it.
+  SENT_COPY_MODE_BCC_SENDER = 4;
+}
+
+message SentCopySettings {
+  SentCopyMode mode = 1;
+
+  // The IMAP server the copies are filed on. Used by both login modes.
+  string imap_host = 2;
+  // 993 for implicit TLS, 143 for STARTTLS. Zero means the default for
+  // imap_use_ssl.
+  int32 imap_port = 3;
+  // Implicit TLS. When false the connection must be upgraded with STARTTLS;
+  // panmail never logs in over an unencrypted connection.
+  bool imap_use_ssl = 4;
+  // The folder copies are filed in. Empty means "Sent".
+  string sent_folder = 5;
+
+  // SHARED_LOGIN only. The administrator account panmail logs in as.
+  string master_username = 6;
+  // SHARED_LOGIN only. Write-only: never returned. Leaving it empty on an
+  // update keeps the stored one.
+  string master_password = 7;
+  // Read-only: whether a master password is stored.
+  bool master_password_set = 8;
+  // SHARED_LOGIN only. What joins the sender's login and the master username,
+  // as in "alice@example.com*admin". Empty means "*", Dovecot's default.
+  string master_separator = 9;
+
+  string updated_at = 10;
+}
+
+// A mailbox login for PER_USER_LOGIN mode.
+message SentCopyMailbox {
+  // The sender address copies for this mailbox are sent from.
+  string address = 1;
+  // The IMAP login. Empty means the address itself.
+  string username = 2;
+  // Write-only: never returned. Leaving it empty on a save keeps the stored one.
+  string password = 3;
+  // Read-only: whether a password is stored.
+  bool password_set = 4;
+  string updated_at = 5;
+}
+
+message GetSentCopySettingsRequest {}
+
+message GetSentCopySettingsResponse {
+  SentCopySettings settings = 1;
+  // Whether the gateway has a data key to encrypt passwords with. Without one
+  // the login modes cannot be saved.
+  bool encryption_available = 2;
+}
+
+message UpdateSentCopySettingsRequest {
+  SentCopySettings settings = 1;
+}
+
+message UpdateSentCopySettingsResponse {
+  SentCopySettings settings = 1;
+}
+
+message ListSentCopyMailboxesRequest {}
+
+message ListSentCopyMailboxesResponse {
+  repeated SentCopyMailbox mailboxes = 1;
+}
+
+message SaveSentCopyMailboxRequest {
+  SentCopyMailbox mailbox = 1;
+}
+
+message SaveSentCopyMailboxResponse {
+  SentCopyMailbox mailbox = 1;
+}
+
+message DeleteSentCopyMailboxRequest {
+  string address = 1;
+}
+
+message DeleteSentCopyMailboxResponse {}

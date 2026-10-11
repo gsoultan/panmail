@@ -65,6 +65,9 @@ import (
 	"github.com/gsoultan/panmail/internal/observability"
 	"github.com/gsoultan/panmail/internal/ratelimit"
 	"github.com/gsoultan/panmail/internal/retention"
+	sentcopystores "github.com/gsoultan/panmail/internal/sent_copy/repositories/stores/postgres"
+	sentcopyservices "github.com/gsoultan/panmail/internal/sent_copy/services"
+	sentcopyusecases "github.com/gsoultan/panmail/internal/sent_copy/usecases"
 	setupservices "github.com/gsoultan/panmail/internal/setup/services"
 	setupusecases "github.com/gsoultan/panmail/internal/setup/usecases"
 	smtpsubmissionstores "github.com/gsoultan/panmail/internal/smtp_submission/repositories/stores/postgres"
@@ -572,6 +575,15 @@ func main() {
 	tenantUsecase := tenantusecases.NewTenantUsecase(tenantRepo, sendLimiter)
 	templateRenderer := emailusecases.NewTemplateRenderer()
 
+	// Sent copies: filing a copy of a message in its sender's Sent folder, as
+	// each tenant's setting says. The worker is supervised like the rest; the
+	// queue wakes it for each copy so one is filed seconds after the send.
+	sentCopyRepo := sentcopystores.NewStore(conn, keyring)
+	sentCopyWorker := sentcopyusecases.NewWorker(sentCopyRepo, &sentcopyusecases.IMAPAppender{}, providerRepo, providerFactory)
+	sentCopyQueue := sentcopyusecases.NewQueue(sentCopyRepo, sentCopyWorker)
+	sentCopyService := sentcopyservices.NewSentCopyService(sentcopyusecases.NewSettings(sentCopyRepo, keyring != nil))
+	runWorker(&workers, workerCtx, "sent-copies", func() { sentCopyWorker.Start(workerCtx) })
+
 	sendEmailUsecase := emailusecases.NewSendEmailUsecase(emailusecases.SendEmailDeps{
 		ProviderRepo:    providerRepo,
 		TemplateRepo:    templateRepo,
@@ -585,6 +597,7 @@ func main() {
 		Limiter:         sendLimiter,
 		SendLimits:      emailusecases.NewTenantSendLimits(tenantUsecase),
 		Screener:        filterScreener,
+		SentCopies:      sentCopyQueue,
 	})
 	emailService := emailservices.NewEmailService(sendEmailUsecase)
 
@@ -1080,6 +1093,9 @@ func main() {
 	})
 	rpc.register(func(o connect.Option) (string, http.Handler) {
 		return panmailv1connect.NewLogServiceHandler(logService, o)
+	})
+	rpc.register(func(o connect.Option) (string, http.Handler) {
+		return panmailv1connect.NewSentCopyServiceHandler(sentCopyService, o)
 	})
 	mux.Handle(grpchealth.NewHandler(healthChecker))
 

@@ -170,6 +170,9 @@ func (s *session) Data(r io.Reader) error {
 	// pipeline builds from To and Cc.
 	req.Bcc = blindRecipients(s.rcpts, req.To, req.Cc)
 	req.IdempotencyKey = submissionKey(parsed.MessageID, s.rcpts)
+	// A mail client expects what it sent to be in its Sent folder. Whether
+	// panmail puts it there is the tenant's Sent copies setting.
+	req.SaveSentCopy = true
 
 	ctx, cancel := context.WithTimeout(s.server.baseCtx, s.server.sendTimeout)
 	defer cancel()

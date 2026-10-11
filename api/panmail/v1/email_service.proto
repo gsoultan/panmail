@@ -44,6 +44,11 @@ message SendEmailRequest {
   // as the Disposition-Notification-To header; the recipient's client decides
   // whether to honour it.
   string disposition_notification_to = 18;
+  // Copy this message back to the sender as the tenant's Sent copies setting
+  // says (see SentCopyService). Ignored when that setting is NONE. Messages
+  // submitted over SMTP set it, because the mail client that sent them
+  // expects to find them in its Sent folder.
+  bool save_sent_copy = 19;
 }
 
 message SendEmailResponse {

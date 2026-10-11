@@ -78,6 +78,17 @@ type SendEmailDeps struct {
 	// Screener is optional too. A nil one sends every message, which is what
 	// a deployment with no filter rules configured must do.
 	Screener emailfilter.Screener
+
+	// SentCopies is optional. Without it save_sent_copy is ignored.
+	SentCopies SentCopyQueue
+}
+
+// SentCopyQueue takes an accepted message whose sender asked for a copy in
+// their Sent folder. req carries the message as it will be sent, rendered
+// from any template; Enqueue decides from the tenant's setting whether a copy
+// is made at all.
+type SentCopyQueue interface {
+	Enqueue(ctx context.Context, tenantID, messageID string, req *panmailv1.SendEmailRequest) error
 }
 
 type sendEmailUsecase struct {
@@ -96,6 +107,7 @@ type sendEmailUsecase struct {
 	trackingSigner  *tracking.Signer
 	queueWorker     QueueWorker
 	screener        emailfilter.Screener
+	sentCopies      SentCopyQueue
 
 	providerCache *cache.TTLCache[[]*providerEntities.EmailProvider]
 	templateCache *cache.TTLCache[*templateEntities.Template]
@@ -141,6 +153,7 @@ func NewSendEmailUsecase(deps SendEmailDeps) SendEmailUsecase {
 		baseURLSource:   deps.BaseURLSource,
 		trackingSigner:  deps.TrackingSigner,
 		screener:        deps.Screener,
+		sentCopies:      deps.SentCopies,
 		providerCache:   cache.New[[]*providerEntities.EmailProvider](providerCacheTTL),
 		templateCache:   cache.New[*templateEntities.Template](templateCacheTTL),
 		attemptTimeout:  deliveryAttemptTimeout,
@@ -453,6 +466,8 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		slog.Error("failed to create outbox email", "error", err, "id", messageID)
 		return nil, fmt.Errorf("failed to enqueue email: %w", err)
 	}
+
+	u.queueSentCopy(ctx, tenantID, messageID, req, subject, bodyHTML, bodyText)
 
 	// Save message content for analytics (before tracking injection for clean
 	// preview). After the outbox write rather than before it, so a send that

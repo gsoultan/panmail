@@ -57,8 +57,13 @@ type SendEmailRequest struct {
 	// as the Disposition-Notification-To header; the recipient's client decides
 	// whether to honour it.
 	DispositionNotificationTo string `protobuf:"bytes,18,opt,name=disposition_notification_to,json=dispositionNotificationTo,proto3" json:"disposition_notification_to,omitempty"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	// Copy this message back to the sender as the tenant's Sent copies setting
+	// says (see SentCopyService). Ignored when that setting is NONE. Messages
+	// submitted over SMTP set it, because the mail client that sent them
+	// expects to find them in its Sent folder.
+	SaveSentCopy  bool `protobuf:"varint,19,opt,name=save_sent_copy,json=saveSentCopy,proto3" json:"save_sent_copy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SendEmailRequest) Reset() {
@@ -219,6 +224,13 @@ func (x *SendEmailRequest) GetDispositionNotificationTo() string {
 	return ""
 }
 
+func (x *SendEmailRequest) GetSaveSentCopy() bool {
+	if x != nil {
+		return x.SaveSentCopy
+	}
+	return false
+}
+
 type SendEmailResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MessageId     string                 `protobuf:"bytes,1,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
@@ -284,7 +296,7 @@ var File_panmail_v1_email_service_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_service_proto_rawDesc = "" +
 	"\n" +
 	"\x1epanmail/v1/email_service.proto\x12\n" +
-	"panmail.v1\x1a\x16panmail/v1/event.proto\x1a\x17panmail/v1/common.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xdf\x04\n" +
+	"panmail.v1\x1a\x16panmail/v1/event.proto\x1a\x17panmail/v1/common.proto\x1a\x1cgoogle/protobuf/struct.proto\"\x85\x05\n" +
 	"\x10SendEmailRequest\x12\x1f\n" +
 	"\vprovider_id\x18\x01 \x01(\tR\n" +
 	"providerId\x12\x12\n" +
@@ -308,7 +320,8 @@ const file_panmail_v1_email_service_proto_rawDesc = "" +
 	"\n" +
 	"references\x18\x11 \x03(\tR\n" +
 	"references\x12>\n" +
-	"\x1bdisposition_notification_to\x18\x12 \x01(\tR\x19dispositionNotificationTo\"|\n" +
+	"\x1bdisposition_notification_to\x18\x12 \x01(\tR\x19dispositionNotificationTo\x12$\n" +
+	"\x0esave_sent_copy\x18\x13 \x01(\bR\fsaveSentCopy\"|\n" +
 	"\x11SendEmailResponse\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x122\n" +
