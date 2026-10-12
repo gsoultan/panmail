@@ -1,48 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, Table, ActionIcon, Badge, TextInput, Switch, MultiSelect, Select } from '@mantine/core';
+import { Container, Title, Button, Group, Stack, Modal, Box, Text, rem, ThemeIcon, Table, ActionIcon, Badge, TextInput, Switch, MultiSelect, Select, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconWebhook, IconPlus, IconEdit, IconTrash, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { IconWebhook, IconPlus, IconEdit, IconTrash, IconChevronLeft, IconChevronRight, IconSend, IconCode } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAdaptedForm } from '../lib/form/useAdaptedForm';
-import { webhookService, WebhookTriggerEvent } from '../features/webhooks/services/webhook';
+import { webhookService } from '../features/webhooks/services/webhook';
+import { triggerEventLabels, triggerEventOptions } from '../features/webhooks/events';
+import { TestWebhookModal } from '../features/webhooks/components/TestWebhookModal';
+import { EventSamplesModal } from '../features/webhooks/components/EventSamplesModal';
 import { Webhook } from '../api/panmail/v1/webhook_pb';
-
-const triggerEventOptions = [
-  { value: WebhookTriggerEvent.MAIL_SENT.toString(), label: 'Mail Sent' },
-  { value: WebhookTriggerEvent.MAIL_DELIVERED.toString(), label: 'Mail Delivered' },
-  { value: WebhookTriggerEvent.MAIL_OPENED.toString(), label: 'Mail Opened' },
-  { value: WebhookTriggerEvent.MAIL_CLICKED.toString(), label: 'Mail Clicked' },
-  { value: WebhookTriggerEvent.MAIL_BOUNCED.toString(), label: 'Mail Bounced' },
-  { value: WebhookTriggerEvent.MAIL_REJECTED.toString(), label: 'Mail Rejected' },
-  { value: WebhookTriggerEvent.MAIL_INBOUND.toString(), label: 'Mail Inbound' },
-
-  // The quarantine lifecycle. MAIL_HELD existed on the wire from the release
-  // that added filtering but never appeared here, so the event fired and
-  // nobody could subscribe to it.
-  //
-  // "Quarantine Rejected" is spelled out because "Mail Rejected" above is a
-  // different thing — a provider refusing a send. Two options both reading
-  // "Rejected" in one list is how someone subscribes to the wrong one.
-  { value: WebhookTriggerEvent.MAIL_HELD.toString(), label: 'Mail Held for Review' },
-  { value: WebhookTriggerEvent.MAIL_RELEASED.toString(), label: 'Mail Released by Reviewer' },
-  { value: WebhookTriggerEvent.MAIL_QUARANTINE_REJECTED.toString(), label: 'Mail Rejected by Reviewer' },
-  { value: WebhookTriggerEvent.MAIL_EXPIRED.toString(), label: 'Mail Expired Unreviewed' },
-];
-
-const triggerEventLabels: Record<number, string> = {
-  [WebhookTriggerEvent.UNSPECIFIED]: 'Unspecified',
-  [WebhookTriggerEvent.MAIL_SENT]: 'Sent',
-  [WebhookTriggerEvent.MAIL_DELIVERED]: 'Delivered',
-  [WebhookTriggerEvent.MAIL_OPENED]: 'Opened',
-  [WebhookTriggerEvent.MAIL_CLICKED]: 'Clicked',
-  [WebhookTriggerEvent.MAIL_BOUNCED]: 'Bounced',
-  [WebhookTriggerEvent.MAIL_REJECTED]: 'Rejected',
-  [WebhookTriggerEvent.MAIL_INBOUND]: 'Inbound',
-  [WebhookTriggerEvent.MAIL_HELD]: 'Held',
-  [WebhookTriggerEvent.MAIL_RELEASED]: 'Released',
-  [WebhookTriggerEvent.MAIL_QUARANTINE_REJECTED]: 'Rejected by Reviewer',
-  [WebhookTriggerEvent.MAIL_EXPIRED]: 'Expired',
-};
 
 export const WebhooksPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -51,6 +17,8 @@ export const WebhooksPage: React.FC = () => {
   const [pageToken, setPageToken] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<string | null>('10');
+  const [testing, setTesting] = useState<Webhook | null>(null);
+  const [samplesOpen, setSamplesOpen] = useState(false);
 
   useEffect(() => {
     setPageToken(undefined);
@@ -186,6 +154,16 @@ export const WebhooksPage: React.FC = () => {
               style={{ width: rem(80) }}
             />
             <Button
+              onClick={() => setSamplesOpen(true)}
+              leftSection={<IconCode size={18} />}
+              variant="light"
+              color="brand"
+              radius="md"
+              size="sm"
+            >
+              Sample Payloads
+            </Button>
+            <Button
               onClick={() => setIsModalOpen(true)}
               leftSection={<IconPlus size={18} />}
               color="brand"
@@ -245,6 +223,11 @@ export const WebhooksPage: React.FC = () => {
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs" justify="flex-end">
+                        <Tooltip label="Send test">
+                          <ActionIcon variant="light" color="teal" aria-label="Send test" onClick={() => setTesting(w)}>
+                            <IconSend size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                         <ActionIcon variant="light" color="brand" onClick={() => handleEdit(w)}>
                           <IconEdit size={16} />
                         </ActionIcon>
@@ -336,6 +319,9 @@ export const WebhooksPage: React.FC = () => {
           </Stack>
         </form>
       </Modal>
+
+      <TestWebhookModal webhook={testing} onClose={() => setTesting(null)} />
+      <EventSamplesModal opened={samplesOpen} onClose={() => setSamplesOpen(false)} />
     </Container>
   );
 };

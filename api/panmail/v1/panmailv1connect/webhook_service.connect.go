@@ -45,6 +45,12 @@ const (
 	// WebhookServiceUpdateWebhookProcedure is the fully-qualified name of the WebhookService's
 	// UpdateWebhook RPC.
 	WebhookServiceUpdateWebhookProcedure = "/panmail.v1.WebhookService/UpdateWebhook"
+	// WebhookServiceTestWebhookProcedure is the fully-qualified name of the WebhookService's
+	// TestWebhook RPC.
+	WebhookServiceTestWebhookProcedure = "/panmail.v1.WebhookService/TestWebhook"
+	// WebhookServiceListWebhookEventSamplesProcedure is the fully-qualified name of the
+	// WebhookService's ListWebhookEventSamples RPC.
+	WebhookServiceListWebhookEventSamplesProcedure = "/panmail.v1.WebhookService/ListWebhookEventSamples"
 )
 
 // WebhookServiceClient is a client for the panmail.v1.WebhookService service.
@@ -53,6 +59,12 @@ type WebhookServiceClient interface {
 	ListWebhooks(context.Context, *connect.Request[v1.ListWebhooksRequest]) (*connect.Response[v1.ListWebhooksResponse], error)
 	DeleteWebhook(context.Context, *connect.Request[v1.DeleteWebhookRequest]) (*connect.Response[v1.DeleteWebhookResponse], error)
 	UpdateWebhook(context.Context, *connect.Request[v1.UpdateWebhookRequest]) (*connect.Response[v1.UpdateWebhookResponse], error)
+	// Sends one signed sample notification to a subscription's URL right away
+	// and reports how the endpoint answered. Nothing is queued or retried: the
+	// point is to see the answer while setting the endpoint up.
+	TestWebhook(context.Context, *connect.Request[v1.TestWebhookRequest]) (*connect.Response[v1.TestWebhookResponse], error)
+	// The body a subscriber receives for each event, filled with sample data.
+	ListWebhookEventSamples(context.Context, *connect.Request[v1.ListWebhookEventSamplesRequest]) (*connect.Response[v1.ListWebhookEventSamplesResponse], error)
 }
 
 // NewWebhookServiceClient constructs a client for the panmail.v1.WebhookService service. By
@@ -90,15 +102,29 @@ func NewWebhookServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(webhookServiceMethods.ByName("UpdateWebhook")),
 			connect.WithClientOptions(opts...),
 		),
+		testWebhook: connect.NewClient[v1.TestWebhookRequest, v1.TestWebhookResponse](
+			httpClient,
+			baseURL+WebhookServiceTestWebhookProcedure,
+			connect.WithSchema(webhookServiceMethods.ByName("TestWebhook")),
+			connect.WithClientOptions(opts...),
+		),
+		listWebhookEventSamples: connect.NewClient[v1.ListWebhookEventSamplesRequest, v1.ListWebhookEventSamplesResponse](
+			httpClient,
+			baseURL+WebhookServiceListWebhookEventSamplesProcedure,
+			connect.WithSchema(webhookServiceMethods.ByName("ListWebhookEventSamples")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // webhookServiceClient implements WebhookServiceClient.
 type webhookServiceClient struct {
-	createWebhook *connect.Client[v1.CreateWebhookRequest, v1.CreateWebhookResponse]
-	listWebhooks  *connect.Client[v1.ListWebhooksRequest, v1.ListWebhooksResponse]
-	deleteWebhook *connect.Client[v1.DeleteWebhookRequest, v1.DeleteWebhookResponse]
-	updateWebhook *connect.Client[v1.UpdateWebhookRequest, v1.UpdateWebhookResponse]
+	createWebhook           *connect.Client[v1.CreateWebhookRequest, v1.CreateWebhookResponse]
+	listWebhooks            *connect.Client[v1.ListWebhooksRequest, v1.ListWebhooksResponse]
+	deleteWebhook           *connect.Client[v1.DeleteWebhookRequest, v1.DeleteWebhookResponse]
+	updateWebhook           *connect.Client[v1.UpdateWebhookRequest, v1.UpdateWebhookResponse]
+	testWebhook             *connect.Client[v1.TestWebhookRequest, v1.TestWebhookResponse]
+	listWebhookEventSamples *connect.Client[v1.ListWebhookEventSamplesRequest, v1.ListWebhookEventSamplesResponse]
 }
 
 // CreateWebhook calls panmail.v1.WebhookService.CreateWebhook.
@@ -121,12 +147,28 @@ func (c *webhookServiceClient) UpdateWebhook(ctx context.Context, req *connect.R
 	return c.updateWebhook.CallUnary(ctx, req)
 }
 
+// TestWebhook calls panmail.v1.WebhookService.TestWebhook.
+func (c *webhookServiceClient) TestWebhook(ctx context.Context, req *connect.Request[v1.TestWebhookRequest]) (*connect.Response[v1.TestWebhookResponse], error) {
+	return c.testWebhook.CallUnary(ctx, req)
+}
+
+// ListWebhookEventSamples calls panmail.v1.WebhookService.ListWebhookEventSamples.
+func (c *webhookServiceClient) ListWebhookEventSamples(ctx context.Context, req *connect.Request[v1.ListWebhookEventSamplesRequest]) (*connect.Response[v1.ListWebhookEventSamplesResponse], error) {
+	return c.listWebhookEventSamples.CallUnary(ctx, req)
+}
+
 // WebhookServiceHandler is an implementation of the panmail.v1.WebhookService service.
 type WebhookServiceHandler interface {
 	CreateWebhook(context.Context, *connect.Request[v1.CreateWebhookRequest]) (*connect.Response[v1.CreateWebhookResponse], error)
 	ListWebhooks(context.Context, *connect.Request[v1.ListWebhooksRequest]) (*connect.Response[v1.ListWebhooksResponse], error)
 	DeleteWebhook(context.Context, *connect.Request[v1.DeleteWebhookRequest]) (*connect.Response[v1.DeleteWebhookResponse], error)
 	UpdateWebhook(context.Context, *connect.Request[v1.UpdateWebhookRequest]) (*connect.Response[v1.UpdateWebhookResponse], error)
+	// Sends one signed sample notification to a subscription's URL right away
+	// and reports how the endpoint answered. Nothing is queued or retried: the
+	// point is to see the answer while setting the endpoint up.
+	TestWebhook(context.Context, *connect.Request[v1.TestWebhookRequest]) (*connect.Response[v1.TestWebhookResponse], error)
+	// The body a subscriber receives for each event, filled with sample data.
+	ListWebhookEventSamples(context.Context, *connect.Request[v1.ListWebhookEventSamplesRequest]) (*connect.Response[v1.ListWebhookEventSamplesResponse], error)
 }
 
 // NewWebhookServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -160,6 +202,18 @@ func NewWebhookServiceHandler(svc WebhookServiceHandler, opts ...connect.Handler
 		connect.WithSchema(webhookServiceMethods.ByName("UpdateWebhook")),
 		connect.WithHandlerOptions(opts...),
 	)
+	webhookServiceTestWebhookHandler := connect.NewUnaryHandler(
+		WebhookServiceTestWebhookProcedure,
+		svc.TestWebhook,
+		connect.WithSchema(webhookServiceMethods.ByName("TestWebhook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	webhookServiceListWebhookEventSamplesHandler := connect.NewUnaryHandler(
+		WebhookServiceListWebhookEventSamplesProcedure,
+		svc.ListWebhookEventSamples,
+		connect.WithSchema(webhookServiceMethods.ByName("ListWebhookEventSamples")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/panmail.v1.WebhookService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WebhookServiceCreateWebhookProcedure:
@@ -170,6 +224,10 @@ func NewWebhookServiceHandler(svc WebhookServiceHandler, opts ...connect.Handler
 			webhookServiceDeleteWebhookHandler.ServeHTTP(w, r)
 		case WebhookServiceUpdateWebhookProcedure:
 			webhookServiceUpdateWebhookHandler.ServeHTTP(w, r)
+		case WebhookServiceTestWebhookProcedure:
+			webhookServiceTestWebhookHandler.ServeHTTP(w, r)
+		case WebhookServiceListWebhookEventSamplesProcedure:
+			webhookServiceListWebhookEventSamplesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -193,4 +251,12 @@ func (UnimplementedWebhookServiceHandler) DeleteWebhook(context.Context, *connec
 
 func (UnimplementedWebhookServiceHandler) UpdateWebhook(context.Context, *connect.Request[v1.UpdateWebhookRequest]) (*connect.Response[v1.UpdateWebhookResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.WebhookService.UpdateWebhook is not implemented"))
+}
+
+func (UnimplementedWebhookServiceHandler) TestWebhook(context.Context, *connect.Request[v1.TestWebhookRequest]) (*connect.Response[v1.TestWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.WebhookService.TestWebhook is not implemented"))
+}
+
+func (UnimplementedWebhookServiceHandler) ListWebhookEventSamples(context.Context, *connect.Request[v1.ListWebhookEventSamplesRequest]) (*connect.Response[v1.ListWebhookEventSamplesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.WebhookService.ListWebhookEventSamples is not implemented"))
 }

@@ -217,12 +217,7 @@ func (w *DurableWorker) Enqueue(tenantID string, event panmailv1.WebhookTriggerE
 		return
 	}
 
-	body, err := json.Marshal(map[string]any{
-		"event":     event.String(),
-		"tenant_id": tenantID,
-		"timestamp": time.Now().Unix(),
-		"data":      payload,
-	})
+	body, err := Envelope(tenantID, event, payload, time.Now())
 	if err != nil {
 		slog.Error("webhook: failed to marshal payload", "tenant_id", tenantID, "event", event, "error", err)
 		return
@@ -245,6 +240,18 @@ func (w *DurableWorker) Enqueue(tenantID string, event panmailv1.WebhookTriggerE
 	}
 
 	w.Trigger()
+}
+
+// Envelope builds the body a subscriber receives: the event, who it is for,
+// when it was sent, and the event's own data. Shared with the test sender so a
+// test notification has exactly the shape of a real one.
+func Envelope(tenantID string, event panmailv1.WebhookTriggerEvent, payload any, now time.Time) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"event":     event.String(),
+		"tenant_id": tenantID,
+		"timestamp": now.Unix(),
+		"data":      payload,
+	})
 }
 
 // Trigger asks the loop to run now rather than at the next tick.

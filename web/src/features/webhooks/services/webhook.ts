@@ -17,6 +17,11 @@ export const webhookService = {
   updateWebhook: (req: MessageInitShape<typeof UpdateWebhookRequestSchema>) =>
     client.updateWebhook(req),
   deleteWebhook: (id: string) => client.deleteWebhook({ id }),
+  // Posts one signed sample notification to the subscription's URL now and
+  // returns how the endpoint answered. Nothing is queued or retried.
+  testWebhook: (id: string, event?: WebhookTriggerEvent) =>
+    client.testWebhook({ id, event }),
+  listEventSamples: () => client.listWebhookEventSamples({}),
 };
 
 export { WebhookTriggerEvent };
