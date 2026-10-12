@@ -76,8 +76,11 @@ func (s *deliveryStore) Create(ctx context.Context, d *entities.WebhookDelivery)
 		d.NextAttemptAt = now
 	}
 
+	// The payload goes as a string: under the simple protocol production
+	// uses, a []byte is stored as its bytea literal ("\\x7b22...") and every
+	// delivery would post that instead of the JSON.
 	_, err = database.ExecContext(ctx, createDeliveryQuery,
-		d.ID, d.TenantID, d.WebhookID, d.Event, d.Payload, string(d.Status),
+		d.ID, d.TenantID, d.WebhookID, d.Event, string(d.Payload), string(d.Status),
 		d.AttemptCount, d.NextAttemptAt, d.LastError, d.CreatedAt, d.UpdatedAt)
 	return err
 }
