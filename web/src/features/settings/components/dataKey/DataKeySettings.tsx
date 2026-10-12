@@ -7,7 +7,6 @@ import {
   Button,
   Checkbox,
   Code,
-  CopyButton,
   Group,
   Loader,
   Modal,
@@ -17,6 +16,7 @@ import {
   TextInput,
   Tooltip,
 } from '@mantine/core';
+import { CopyButton } from '../../../../lib/CopyButton';
 import {
   IconAlertTriangle,
   IconCheck,

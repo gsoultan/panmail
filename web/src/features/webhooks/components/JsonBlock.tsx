@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActionIcon, Box, Code, CopyButton, Tooltip, rem } from '@mantine/core';
+import { ActionIcon, Box, Code, Tooltip, rem } from '@mantine/core';
+import { CopyButton } from '../../../lib/CopyButton';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 
 // A read-only JSON body with a copy button, for sample and sent payloads.

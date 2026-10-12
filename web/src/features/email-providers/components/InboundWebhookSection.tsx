@@ -3,7 +3,6 @@ import {
   ActionIcon,
   Alert,
   Code,
-  CopyButton,
   Divider,
   Group,
   PasswordInput,
@@ -12,6 +11,7 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
+import { CopyButton } from '../../../lib/CopyButton';
 import { IconCheck, IconCopy, IconInfoCircle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';

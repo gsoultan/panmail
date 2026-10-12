@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { TextInput, Textarea, TagsInput, Button, Stack, Group, Select, Text, JsonInput, Tabs, Paper, rem, ThemeIcon, Code, ActionIcon, CopyButton, Tooltip, SimpleGrid, Badge, FileButton, Box, ScrollArea, Alert } from '@mantine/core';
+import { TextInput, Textarea, TagsInput, Button, Stack, Group, Select, Text, JsonInput, Tabs, Paper, rem, ThemeIcon, Code, ActionIcon, Tooltip, SimpleGrid, Badge, FileButton, Box, ScrollArea, Alert } from '@mantine/core';
+import { CopyButton } from '../../../lib/CopyButton';
 import { settingsService } from '../../../services/settings';
 import { EXAMPLE_FROM, EXAMPLE_TO } from '../../settings/components/smtp/snippets/types';
 import { describeConnection } from '../../settings/components/smtp/smtpConnection';
