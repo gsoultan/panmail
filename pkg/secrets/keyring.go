@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 )
 
 // EnvKeyName is the environment variable holding the data encryption key, as
@@ -50,12 +51,27 @@ type keyEntry struct {
 }
 
 // Keyring encrypts with one key and decrypts with several. It is safe for
-// concurrent use: the underlying AEADs are stateless and the set is fixed at
-// construction.
+// concurrent use: the underlying AEADs are stateless, and the set of keys is
+// swapped whole by Replace rather than edited in place, so every call sees one
+// consistent set.
 type Keyring struct {
+	set atomic.Pointer[keySet]
+}
+
+type keySet struct {
 	primary keyEntry
 	// Retired keys, decrypt-only, in the order supplied.
 	retired []keyEntry
+}
+
+func (k *Keyring) keys() *keySet { return k.set.Load() }
+
+// Replace moves this keyring onto the keys of next.
+//
+// Every store holds the same *Keyring from boot, so changing the key from the
+// dashboard has to change what they hold rather than hand them a new one.
+func (k *Keyring) Replace(next *Keyring) {
+	k.set.Store(next.keys())
 }
 
 // keyID is a short, non-secret fingerprint used to tag ciphertext.
@@ -94,7 +110,7 @@ func NewKeyring(primaryHex string, retiredHex ...string) (*Keyring, error) {
 		return nil, err
 	}
 
-	k := &Keyring{primary: primary}
+	set := &keySet{primary: primary}
 	for _, h := range retiredHex {
 		if strings.TrimSpace(h) == "" {
 			continue
@@ -108,8 +124,10 @@ func NewKeyring(primaryHex string, retiredHex ...string) (*Keyring, error) {
 		if entry.id == primary.id {
 			continue
 		}
-		k.retired = append(k.retired, entry)
+		set.retired = append(set.retired, entry)
 	}
+	k := &Keyring{}
+	k.set.Store(set)
 	return k, nil
 }
 
@@ -129,7 +147,7 @@ func (k *Keyring) PrimaryKeyID() string {
 	if k == nil {
 		return ""
 	}
-	return k.primary.id
+	return k.keys().primary.id
 }
 
 // GenerateKey returns a new hex-encoded key.
@@ -151,13 +169,14 @@ func (k *Keyring) Encrypt(plaintext string) (string, error) {
 		return "", ErrNoKey
 	}
 
-	nonce := make([]byte, k.primary.aead.NonceSize())
+	primary := k.keys().primary
+	nonce := make([]byte, primary.aead.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
 	}
 
-	sealed := k.primary.aead.Seal(nonce, nonce, []byte(plaintext), nil)
-	return cipherPrefixV2 + k.primary.id + ":" + base64.RawStdEncoding.EncodeToString(sealed), nil
+	sealed := primary.aead.Seal(nonce, nonce, []byte(plaintext), nil)
+	return cipherPrefixV2 + primary.id + ":" + base64.RawStdEncoding.EncodeToString(sealed), nil
 }
 
 // Decrypt reverses Encrypt, using whichever key wrote the value.
@@ -179,11 +198,12 @@ func (k *Keyring) Decrypt(value string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	set := k.keys()
 
 	// A v2 value names its key, so exactly one can work and a failure is a
 	// real failure rather than a key worth trying.
 	if id != "" {
-		entry, ok := k.entryFor(id)
+		entry, ok := set.entryFor(id)
 		if !ok {
 			return "", fmt.Errorf(
 				"stored secret was written with key %s, which is not configured; "+
@@ -194,7 +214,7 @@ func (k *Keyring) Decrypt(value string) (string, error) {
 
 	// v1 carries no identity, so every key is a candidate. Primary first: after
 	// a rotation most values are already on it.
-	for _, entry := range append([]keyEntry{k.primary}, k.retired...) {
+	for _, entry := range append([]keyEntry{set.primary}, set.retired...) {
 		if plaintext, err := open(entry, payload); err == nil {
 			return plaintext, nil
 		}
@@ -239,11 +259,11 @@ func open(entry keyEntry, raw []byte) (string, error) {
 	return string(plaintext), nil
 }
 
-func (k *Keyring) entryFor(id string) (keyEntry, bool) {
-	if k.primary.id == id {
-		return k.primary, true
+func (s *keySet) entryFor(id string) (keyEntry, bool) {
+	if s.primary.id == id {
+		return s.primary, true
 	}
-	for _, entry := range k.retired {
+	for _, entry := range s.retired {
 		if entry.id == id {
 			return entry, true
 		}
@@ -270,5 +290,5 @@ func (k *Keyring) NeedsRotation(value string) bool {
 	if err != nil {
 		return false
 	}
-	return id != k.primary.id
+	return id != k.keys().primary.id
 }

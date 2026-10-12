@@ -10,6 +10,53 @@ service SystemSettingsService {
 
   // Opens or closes the SMTP submission listener at runtime. Admin only.
   rpc UpdateSmtpSubmission(UpdateSmtpSubmissionRequest) returns (UpdateSmtpSubmissionResponse);
+
+  // Describes the key stored credentials are encrypted with. Admin only.
+  rpc GetDataKey(GetDataKeyRequest) returns (GetDataKeyResponse);
+
+  // Replaces that key and re-encrypts every stored credential under it.
+  // Admin only.
+  rpc ChangeDataKey(ChangeDataKeyRequest) returns (ChangeDataKeyResponse);
+}
+
+// DataKey describes the data encryption key without disclosing it.
+//
+// Kept out of SystemSettings for the same reason SmtpSubmission is: that
+// message is readable by any signed-in user.
+message DataKey {
+  // The non-secret fingerprint stored ciphertext is tagged with, and the value
+  // a backup manifest records as secret_key_id.
+  string key_id = 1;
+
+  // True when the key comes from PANMAIL_SECRET_KEY. It can then only be
+  // changed there, and ChangeDataKey is refused.
+  bool managed_by_environment = 2;
+
+  // Decrypt-only keys still configured. Non-zero after a change from the
+  // dashboard means it was interrupted; changing the key again finishes it.
+  int32 retired_keys = 3;
+}
+
+message GetDataKeyRequest {}
+
+message GetDataKeyResponse {
+  DataKey data_key = 1;
+}
+
+message ChangeDataKeyRequest {
+  // 64 hex characters. Empty generates a new key.
+  string key = 1;
+}
+
+message ChangeDataKeyResponse {
+  DataKey data_key = 1;
+
+  // The generated key, returned once so it can be backed up. Empty when the
+  // caller supplied the key: it is never echoed back.
+  string generated_key = 2;
+
+  // Stored credentials re-encrypted under the new key.
+  int32 rotated = 3;
 }
 
 message GetSettingsRequest {}

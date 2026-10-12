@@ -42,6 +42,12 @@ const (
 	// SystemSettingsServiceUpdateSmtpSubmissionProcedure is the fully-qualified name of the
 	// SystemSettingsService's UpdateSmtpSubmission RPC.
 	SystemSettingsServiceUpdateSmtpSubmissionProcedure = "/panmail.v1.SystemSettingsService/UpdateSmtpSubmission"
+	// SystemSettingsServiceGetDataKeyProcedure is the fully-qualified name of the
+	// SystemSettingsService's GetDataKey RPC.
+	SystemSettingsServiceGetDataKeyProcedure = "/panmail.v1.SystemSettingsService/GetDataKey"
+	// SystemSettingsServiceChangeDataKeyProcedure is the fully-qualified name of the
+	// SystemSettingsService's ChangeDataKey RPC.
+	SystemSettingsServiceChangeDataKeyProcedure = "/panmail.v1.SystemSettingsService/ChangeDataKey"
 )
 
 // SystemSettingsServiceClient is a client for the panmail.v1.SystemSettingsService service.
@@ -50,6 +56,11 @@ type SystemSettingsServiceClient interface {
 	UpdateSettings(context.Context, *connect.Request[v1.UpdateSettingsRequest]) (*connect.Response[v1.UpdateSettingsResponse], error)
 	// Opens or closes the SMTP submission listener at runtime. Admin only.
 	UpdateSmtpSubmission(context.Context, *connect.Request[v1.UpdateSmtpSubmissionRequest]) (*connect.Response[v1.UpdateSmtpSubmissionResponse], error)
+	// Describes the key stored credentials are encrypted with. Admin only.
+	GetDataKey(context.Context, *connect.Request[v1.GetDataKeyRequest]) (*connect.Response[v1.GetDataKeyResponse], error)
+	// Replaces that key and re-encrypts every stored credential under it.
+	// Admin only.
+	ChangeDataKey(context.Context, *connect.Request[v1.ChangeDataKeyRequest]) (*connect.Response[v1.ChangeDataKeyResponse], error)
 }
 
 // NewSystemSettingsServiceClient constructs a client for the panmail.v1.SystemSettingsService
@@ -81,6 +92,18 @@ func NewSystemSettingsServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(systemSettingsServiceMethods.ByName("UpdateSmtpSubmission")),
 			connect.WithClientOptions(opts...),
 		),
+		getDataKey: connect.NewClient[v1.GetDataKeyRequest, v1.GetDataKeyResponse](
+			httpClient,
+			baseURL+SystemSettingsServiceGetDataKeyProcedure,
+			connect.WithSchema(systemSettingsServiceMethods.ByName("GetDataKey")),
+			connect.WithClientOptions(opts...),
+		),
+		changeDataKey: connect.NewClient[v1.ChangeDataKeyRequest, v1.ChangeDataKeyResponse](
+			httpClient,
+			baseURL+SystemSettingsServiceChangeDataKeyProcedure,
+			connect.WithSchema(systemSettingsServiceMethods.ByName("ChangeDataKey")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -89,6 +112,8 @@ type systemSettingsServiceClient struct {
 	getSettings          *connect.Client[v1.GetSettingsRequest, v1.GetSettingsResponse]
 	updateSettings       *connect.Client[v1.UpdateSettingsRequest, v1.UpdateSettingsResponse]
 	updateSmtpSubmission *connect.Client[v1.UpdateSmtpSubmissionRequest, v1.UpdateSmtpSubmissionResponse]
+	getDataKey           *connect.Client[v1.GetDataKeyRequest, v1.GetDataKeyResponse]
+	changeDataKey        *connect.Client[v1.ChangeDataKeyRequest, v1.ChangeDataKeyResponse]
 }
 
 // GetSettings calls panmail.v1.SystemSettingsService.GetSettings.
@@ -106,6 +131,16 @@ func (c *systemSettingsServiceClient) UpdateSmtpSubmission(ctx context.Context, 
 	return c.updateSmtpSubmission.CallUnary(ctx, req)
 }
 
+// GetDataKey calls panmail.v1.SystemSettingsService.GetDataKey.
+func (c *systemSettingsServiceClient) GetDataKey(ctx context.Context, req *connect.Request[v1.GetDataKeyRequest]) (*connect.Response[v1.GetDataKeyResponse], error) {
+	return c.getDataKey.CallUnary(ctx, req)
+}
+
+// ChangeDataKey calls panmail.v1.SystemSettingsService.ChangeDataKey.
+func (c *systemSettingsServiceClient) ChangeDataKey(ctx context.Context, req *connect.Request[v1.ChangeDataKeyRequest]) (*connect.Response[v1.ChangeDataKeyResponse], error) {
+	return c.changeDataKey.CallUnary(ctx, req)
+}
+
 // SystemSettingsServiceHandler is an implementation of the panmail.v1.SystemSettingsService
 // service.
 type SystemSettingsServiceHandler interface {
@@ -113,6 +148,11 @@ type SystemSettingsServiceHandler interface {
 	UpdateSettings(context.Context, *connect.Request[v1.UpdateSettingsRequest]) (*connect.Response[v1.UpdateSettingsResponse], error)
 	// Opens or closes the SMTP submission listener at runtime. Admin only.
 	UpdateSmtpSubmission(context.Context, *connect.Request[v1.UpdateSmtpSubmissionRequest]) (*connect.Response[v1.UpdateSmtpSubmissionResponse], error)
+	// Describes the key stored credentials are encrypted with. Admin only.
+	GetDataKey(context.Context, *connect.Request[v1.GetDataKeyRequest]) (*connect.Response[v1.GetDataKeyResponse], error)
+	// Replaces that key and re-encrypts every stored credential under it.
+	// Admin only.
+	ChangeDataKey(context.Context, *connect.Request[v1.ChangeDataKeyRequest]) (*connect.Response[v1.ChangeDataKeyResponse], error)
 }
 
 // NewSystemSettingsServiceHandler builds an HTTP handler from the service implementation. It
@@ -140,6 +180,18 @@ func NewSystemSettingsServiceHandler(svc SystemSettingsServiceHandler, opts ...c
 		connect.WithSchema(systemSettingsServiceMethods.ByName("UpdateSmtpSubmission")),
 		connect.WithHandlerOptions(opts...),
 	)
+	systemSettingsServiceGetDataKeyHandler := connect.NewUnaryHandler(
+		SystemSettingsServiceGetDataKeyProcedure,
+		svc.GetDataKey,
+		connect.WithSchema(systemSettingsServiceMethods.ByName("GetDataKey")),
+		connect.WithHandlerOptions(opts...),
+	)
+	systemSettingsServiceChangeDataKeyHandler := connect.NewUnaryHandler(
+		SystemSettingsServiceChangeDataKeyProcedure,
+		svc.ChangeDataKey,
+		connect.WithSchema(systemSettingsServiceMethods.ByName("ChangeDataKey")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/panmail.v1.SystemSettingsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SystemSettingsServiceGetSettingsProcedure:
@@ -148,6 +200,10 @@ func NewSystemSettingsServiceHandler(svc SystemSettingsServiceHandler, opts ...c
 			systemSettingsServiceUpdateSettingsHandler.ServeHTTP(w, r)
 		case SystemSettingsServiceUpdateSmtpSubmissionProcedure:
 			systemSettingsServiceUpdateSmtpSubmissionHandler.ServeHTTP(w, r)
+		case SystemSettingsServiceGetDataKeyProcedure:
+			systemSettingsServiceGetDataKeyHandler.ServeHTTP(w, r)
+		case SystemSettingsServiceChangeDataKeyProcedure:
+			systemSettingsServiceChangeDataKeyHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -167,4 +223,12 @@ func (UnimplementedSystemSettingsServiceHandler) UpdateSettings(context.Context,
 
 func (UnimplementedSystemSettingsServiceHandler) UpdateSmtpSubmission(context.Context, *connect.Request[v1.UpdateSmtpSubmissionRequest]) (*connect.Response[v1.UpdateSmtpSubmissionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.SystemSettingsService.UpdateSmtpSubmission is not implemented"))
+}
+
+func (UnimplementedSystemSettingsServiceHandler) GetDataKey(context.Context, *connect.Request[v1.GetDataKeyRequest]) (*connect.Response[v1.GetDataKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.SystemSettingsService.GetDataKey is not implemented"))
+}
+
+func (UnimplementedSystemSettingsServiceHandler) ChangeDataKey(context.Context, *connect.Request[v1.ChangeDataKeyRequest]) (*connect.Response[v1.ChangeDataKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("panmail.v1.SystemSettingsService.ChangeDataKey is not implemented"))
 }

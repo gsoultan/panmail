@@ -1,6 +1,7 @@
 import { settingsClient as client } from './client';
 import type { MessageInitShape } from '@bufbuild/protobuf';
 import {
+  DataKey,
   SystemSettings,
   SmtpSubmission,
   SmtpSubmissionConfigSchema,
@@ -39,4 +40,15 @@ export const settingsService = {
     const res = await client.updateSmtpSubmission({ config });
     return res.smtpSubmission ?? null;
   },
+
+  // Describes the data encryption key; never returns the key itself.
+  getDataKey: async (): Promise<DataKey | null> => {
+    const res = await client.getDataKey({});
+    return res.dataKey ?? null;
+  },
+
+  // An empty key asks the server to generate one, which is then returned once
+  // as generatedKey so it can be backed up. A key the caller typed is never
+  // echoed back.
+  changeDataKey: async (key: string) => client.changeDataKey({ key }),
 };

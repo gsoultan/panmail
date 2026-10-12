@@ -28,6 +28,17 @@ func ResolveDataKey(cfg *Config) (string, error) {
 	return "", secrets.ErrNoKey
 }
 
+// RetiredDataKeys returns the decrypt-only keys: those named in
+// PANMAIL_SECRET_KEYS_RETIRED, then any an interrupted key change left in the
+// config file.
+func RetiredDataKeys(cfg *Config) []string {
+	retired := secrets.ParseRetiredKeys(os.Getenv(secrets.EnvRetiredKeysName))
+	if cfg != nil {
+		retired = append(retired, cfg.Secrets.RetiredDataKeys...)
+	}
+	return retired
+}
+
 // EnsureDataKey returns the configured key, generating and persisting one if
 // this instance has never had one. Called during setup and at start-up so an
 // existing installation gains encryption without operator action.

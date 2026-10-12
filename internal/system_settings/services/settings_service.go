@@ -16,6 +16,7 @@ import (
 type settingsService struct {
 	usecase        usecases.SettingsUsecase
 	smtpSubmission smtpusecases.Usecase
+	dataKey        usecases.DataKeyUsecase
 }
 
 // NewSettingsService builds the settings handler.
@@ -28,8 +29,9 @@ type settingsService struct {
 func NewSettingsService(
 	usecase usecases.SettingsUsecase,
 	smtpSubmission smtpusecases.Usecase,
+	dataKey usecases.DataKeyUsecase,
 ) panmailv1connect.SystemSettingsServiceHandler {
-	return &settingsService{usecase: usecase, smtpSubmission: smtpSubmission}
+	return &settingsService{usecase: usecase, smtpSubmission: smtpSubmission, dataKey: dataKey}
 }
 
 func (s *settingsService) GetSettings(ctx context.Context, req *connect.Request[panmailv1.GetSettingsRequest]) (*connect.Response[panmailv1.GetSettingsResponse], error) {

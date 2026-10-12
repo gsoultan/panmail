@@ -281,3 +281,37 @@ func TestSaveOverwritesRatherThanAccumulating(t *testing.T) {
 		t.Errorf("Port = %d, want the second save to have replaced the first", got.Port)
 	}
 }
+
+// A key change re-seals the stored TLS key under the new data key, and the
+// listener can still read it once the old key is gone.
+func TestRotateSecretsMovesThePrivateKeyOntoTheNewKey(t *testing.T) {
+	oldKey, _ := secrets.GenerateKey()
+	newKey, _ := secrets.GenerateKey()
+	ring, err := secrets.NewKeyring(oldKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newStore(t, ring)
+	if err := store.Save(t.Context(), &entities.Config{
+		Enabled: true, BindScope: entities.BindScopeLoopback, Port: 2525,
+		TLSCertPEM: "cert", TLSKeyPEM: testPrivateKey, UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	moving, _ := secrets.NewKeyring(newKey, oldKey)
+	ring.Replace(moving)
+	if n, err := store.RotateSecrets(t.Context()); err != nil || n != 1 {
+		t.Fatalf("RotateSecrets = %d, %v; want 1, nil", n, err)
+	}
+	if n, err := store.RotateSecrets(t.Context()); err != nil || n != 0 {
+		t.Fatalf("second RotateSecrets = %d, %v; want 0, nil", n, err)
+	}
+
+	onlyNew, _ := secrets.NewKeyring(newKey)
+	ring.Replace(onlyNew)
+	got, err := store.Get(t.Context())
+	if err != nil || got == nil || got.TLSKeyPEM != testPrivateKey {
+		t.Fatalf("private key unreadable under the new key alone: %v", err)
+	}
+}

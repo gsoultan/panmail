@@ -160,6 +160,264 @@ func (ContentRedaction) EnumDescriptor() ([]byte, []int) {
 	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{1}
 }
 
+// DataKey describes the data encryption key without disclosing it.
+//
+// Kept out of SystemSettings for the same reason SmtpSubmission is: that
+// message is readable by any signed-in user.
+type DataKey struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The non-secret fingerprint stored ciphertext is tagged with, and the value
+	// a backup manifest records as secret_key_id.
+	KeyId string `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	// True when the key comes from PANMAIL_SECRET_KEY. It can then only be
+	// changed there, and ChangeDataKey is refused.
+	ManagedByEnvironment bool `protobuf:"varint,2,opt,name=managed_by_environment,json=managedByEnvironment,proto3" json:"managed_by_environment,omitempty"`
+	// Decrypt-only keys still configured. Non-zero after a change from the
+	// dashboard means it was interrupted; changing the key again finishes it.
+	RetiredKeys   int32 `protobuf:"varint,3,opt,name=retired_keys,json=retiredKeys,proto3" json:"retired_keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DataKey) Reset() {
+	*x = DataKey{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataKey) ProtoMessage() {}
+
+func (x *DataKey) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataKey.ProtoReflect.Descriptor instead.
+func (*DataKey) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *DataKey) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
+func (x *DataKey) GetManagedByEnvironment() bool {
+	if x != nil {
+		return x.ManagedByEnvironment
+	}
+	return false
+}
+
+func (x *DataKey) GetRetiredKeys() int32 {
+	if x != nil {
+		return x.RetiredKeys
+	}
+	return 0
+}
+
+type GetDataKeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDataKeyRequest) Reset() {
+	*x = GetDataKeyRequest{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDataKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDataKeyRequest) ProtoMessage() {}
+
+func (x *GetDataKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDataKeyRequest.ProtoReflect.Descriptor instead.
+func (*GetDataKeyRequest) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{1}
+}
+
+type GetDataKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DataKey       *DataKey               `protobuf:"bytes,1,opt,name=data_key,json=dataKey,proto3" json:"data_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDataKeyResponse) Reset() {
+	*x = GetDataKeyResponse{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDataKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDataKeyResponse) ProtoMessage() {}
+
+func (x *GetDataKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDataKeyResponse.ProtoReflect.Descriptor instead.
+func (*GetDataKeyResponse) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetDataKeyResponse) GetDataKey() *DataKey {
+	if x != nil {
+		return x.DataKey
+	}
+	return nil
+}
+
+type ChangeDataKeyRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 64 hex characters. Empty generates a new key.
+	Key           string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeDataKeyRequest) Reset() {
+	*x = ChangeDataKeyRequest{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeDataKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeDataKeyRequest) ProtoMessage() {}
+
+func (x *ChangeDataKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeDataKeyRequest.ProtoReflect.Descriptor instead.
+func (*ChangeDataKeyRequest) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ChangeDataKeyRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type ChangeDataKeyResponse struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	DataKey *DataKey               `protobuf:"bytes,1,opt,name=data_key,json=dataKey,proto3" json:"data_key,omitempty"`
+	// The generated key, returned once so it can be backed up. Empty when the
+	// caller supplied the key: it is never echoed back.
+	GeneratedKey string `protobuf:"bytes,2,opt,name=generated_key,json=generatedKey,proto3" json:"generated_key,omitempty"`
+	// Stored credentials re-encrypted under the new key.
+	Rotated       int32 `protobuf:"varint,3,opt,name=rotated,proto3" json:"rotated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeDataKeyResponse) Reset() {
+	*x = ChangeDataKeyResponse{}
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeDataKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeDataKeyResponse) ProtoMessage() {}
+
+func (x *ChangeDataKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeDataKeyResponse.ProtoReflect.Descriptor instead.
+func (*ChangeDataKeyResponse) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ChangeDataKeyResponse) GetDataKey() *DataKey {
+	if x != nil {
+		return x.DataKey
+	}
+	return nil
+}
+
+func (x *ChangeDataKeyResponse) GetGeneratedKey() string {
+	if x != nil {
+		return x.GeneratedKey
+	}
+	return ""
+}
+
+func (x *ChangeDataKeyResponse) GetRotated() int32 {
+	if x != nil {
+		return x.Rotated
+	}
+	return 0
+}
+
 type GetSettingsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -168,7 +426,7 @@ type GetSettingsRequest struct {
 
 func (x *GetSettingsRequest) Reset() {
 	*x = GetSettingsRequest{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[0]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -180,7 +438,7 @@ func (x *GetSettingsRequest) String() string {
 func (*GetSettingsRequest) ProtoMessage() {}
 
 func (x *GetSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[0]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -193,7 +451,7 @@ func (x *GetSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSettingsRequest.ProtoReflect.Descriptor instead.
 func (*GetSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{0}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{5}
 }
 
 type GetSettingsResponse struct {
@@ -208,7 +466,7 @@ type GetSettingsResponse struct {
 
 func (x *GetSettingsResponse) Reset() {
 	*x = GetSettingsResponse{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[1]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -220,7 +478,7 @@ func (x *GetSettingsResponse) String() string {
 func (*GetSettingsResponse) ProtoMessage() {}
 
 func (x *GetSettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[1]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -233,7 +491,7 @@ func (x *GetSettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSettingsResponse.ProtoReflect.Descriptor instead.
 func (*GetSettingsResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{1}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetSettingsResponse) GetSettings() *SystemSettings {
@@ -259,7 +517,7 @@ type UpdateSettingsRequest struct {
 
 func (x *UpdateSettingsRequest) Reset() {
 	*x = UpdateSettingsRequest{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[2]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -271,7 +529,7 @@ func (x *UpdateSettingsRequest) String() string {
 func (*UpdateSettingsRequest) ProtoMessage() {}
 
 func (x *UpdateSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[2]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -284,7 +542,7 @@ func (x *UpdateSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSettingsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{2}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpdateSettingsRequest) GetSettings() *SystemSettings {
@@ -303,7 +561,7 @@ type UpdateSettingsResponse struct {
 
 func (x *UpdateSettingsResponse) Reset() {
 	*x = UpdateSettingsResponse{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[3]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -315,7 +573,7 @@ func (x *UpdateSettingsResponse) String() string {
 func (*UpdateSettingsResponse) ProtoMessage() {}
 
 func (x *UpdateSettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[3]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -328,7 +586,7 @@ func (x *UpdateSettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSettingsResponse.ProtoReflect.Descriptor instead.
 func (*UpdateSettingsResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{3}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateSettingsResponse) GetSettings() *SystemSettings {
@@ -366,7 +624,7 @@ type TlsCertificateInfo struct {
 
 func (x *TlsCertificateInfo) Reset() {
 	*x = TlsCertificateInfo{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -378,7 +636,7 @@ func (x *TlsCertificateInfo) String() string {
 func (*TlsCertificateInfo) ProtoMessage() {}
 
 func (x *TlsCertificateInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[4]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -391,7 +649,7 @@ func (x *TlsCertificateInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TlsCertificateInfo.ProtoReflect.Descriptor instead.
 func (*TlsCertificateInfo) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{4}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TlsCertificateInfo) GetSubject() string {
@@ -497,7 +755,7 @@ type SmtpSubmission struct {
 
 func (x *SmtpSubmission) Reset() {
 	*x = SmtpSubmission{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -509,7 +767,7 @@ func (x *SmtpSubmission) String() string {
 func (*SmtpSubmission) ProtoMessage() {}
 
 func (x *SmtpSubmission) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[5]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -522,7 +780,7 @@ func (x *SmtpSubmission) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SmtpSubmission.ProtoReflect.Descriptor instead.
 func (*SmtpSubmission) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{5}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SmtpSubmission) GetEnabled() bool {
@@ -636,7 +894,7 @@ type SmtpSubmissionConfig struct {
 
 func (x *SmtpSubmissionConfig) Reset() {
 	*x = SmtpSubmissionConfig{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[6]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -648,7 +906,7 @@ func (x *SmtpSubmissionConfig) String() string {
 func (*SmtpSubmissionConfig) ProtoMessage() {}
 
 func (x *SmtpSubmissionConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[6]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -661,7 +919,7 @@ func (x *SmtpSubmissionConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SmtpSubmissionConfig.ProtoReflect.Descriptor instead.
 func (*SmtpSubmissionConfig) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{6}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SmtpSubmissionConfig) GetEnabled() bool {
@@ -722,7 +980,7 @@ type UpdateSmtpSubmissionRequest struct {
 
 func (x *UpdateSmtpSubmissionRequest) Reset() {
 	*x = UpdateSmtpSubmissionRequest{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[7]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -734,7 +992,7 @@ func (x *UpdateSmtpSubmissionRequest) String() string {
 func (*UpdateSmtpSubmissionRequest) ProtoMessage() {}
 
 func (x *UpdateSmtpSubmissionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[7]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -747,7 +1005,7 @@ func (x *UpdateSmtpSubmissionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSmtpSubmissionRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSmtpSubmissionRequest) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{7}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateSmtpSubmissionRequest) GetConfig() *SmtpSubmissionConfig {
@@ -769,7 +1027,7 @@ type UpdateSmtpSubmissionResponse struct {
 
 func (x *UpdateSmtpSubmissionResponse) Reset() {
 	*x = UpdateSmtpSubmissionResponse{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[8]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -781,7 +1039,7 @@ func (x *UpdateSmtpSubmissionResponse) String() string {
 func (*UpdateSmtpSubmissionResponse) ProtoMessage() {}
 
 func (x *UpdateSmtpSubmissionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[8]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -794,7 +1052,7 @@ func (x *UpdateSmtpSubmissionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSmtpSubmissionResponse.ProtoReflect.Descriptor instead.
 func (*UpdateSmtpSubmissionResponse) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{8}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *UpdateSmtpSubmissionResponse) GetSmtpSubmission() *SmtpSubmission {
@@ -874,7 +1132,7 @@ type SystemSettings struct {
 
 func (x *SystemSettings) Reset() {
 	*x = SystemSettings{}
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[9]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -886,7 +1144,7 @@ func (x *SystemSettings) String() string {
 func (*SystemSettings) ProtoMessage() {}
 
 func (x *SystemSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_system_settings_proto_msgTypes[9]
+	mi := &file_panmail_v1_system_settings_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -899,7 +1157,7 @@ func (x *SystemSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemSettings.ProtoReflect.Descriptor instead.
 func (*SystemSettings) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{9}
+	return file_panmail_v1_system_settings_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SystemSettings) GetBaseUrl() string {
@@ -991,7 +1249,20 @@ var File_panmail_v1_system_settings_proto protoreflect.FileDescriptor
 const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\n" +
 	" panmail/v1/system_settings.proto\x12\n" +
-	"panmail.v1\"\x14\n" +
+	"panmail.v1\"y\n" +
+	"\aDataKey\x12\x15\n" +
+	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x124\n" +
+	"\x16managed_by_environment\x18\x02 \x01(\bR\x14managedByEnvironment\x12!\n" +
+	"\fretired_keys\x18\x03 \x01(\x05R\vretiredKeys\"\x13\n" +
+	"\x11GetDataKeyRequest\"D\n" +
+	"\x12GetDataKeyResponse\x12.\n" +
+	"\bdata_key\x18\x01 \x01(\v2\x13.panmail.v1.DataKeyR\adataKey\"(\n" +
+	"\x14ChangeDataKeyRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"\x86\x01\n" +
+	"\x15ChangeDataKeyResponse\x12.\n" +
+	"\bdata_key\x18\x01 \x01(\v2\x13.panmail.v1.DataKeyR\adataKey\x12#\n" +
+	"\rgenerated_key\x18\x02 \x01(\tR\fgeneratedKey\x12\x18\n" +
+	"\arotated\x18\x03 \x01(\x05R\arotated\"\x14\n" +
 	"\x12GetSettingsRequest\"\x92\x01\n" +
 	"\x13GetSettingsResponse\x126\n" +
 	"\bsettings\x18\x01 \x01(\v2\x1a.panmail.v1.SystemSettingsR\bsettings\x12C\n" +
@@ -1070,11 +1341,14 @@ const file_panmail_v1_system_settings_proto_rawDesc = "" +
 	"\x15CONTENT_REDACTION_OFF\x10\x01\x12\x1f\n" +
 	"\x1bCONTENT_REDACTION_PASSWORDS\x10\x02\x12\x1b\n" +
 	"\x17CONTENT_REDACTION_CODES\x10\x03\x12\x1d\n" +
-	"\x19CONTENT_REDACTION_SECRETS\x10\x042\xab\x02\n" +
+	"\x19CONTENT_REDACTION_SECRETS\x10\x042\xce\x03\n" +
 	"\x15SystemSettingsService\x12N\n" +
 	"\vGetSettings\x12\x1e.panmail.v1.GetSettingsRequest\x1a\x1f.panmail.v1.GetSettingsResponse\x12W\n" +
 	"\x0eUpdateSettings\x12!.panmail.v1.UpdateSettingsRequest\x1a\".panmail.v1.UpdateSettingsResponse\x12i\n" +
-	"\x14UpdateSmtpSubmission\x12'.panmail.v1.UpdateSmtpSubmissionRequest\x1a(.panmail.v1.UpdateSmtpSubmissionResponseB\xa4\x01\n" +
+	"\x14UpdateSmtpSubmission\x12'.panmail.v1.UpdateSmtpSubmissionRequest\x1a(.panmail.v1.UpdateSmtpSubmissionResponse\x12K\n" +
+	"\n" +
+	"GetDataKey\x12\x1d.panmail.v1.GetDataKeyRequest\x1a\x1e.panmail.v1.GetDataKeyResponse\x12T\n" +
+	"\rChangeDataKey\x12 .panmail.v1.ChangeDataKeyRequest\x1a!.panmail.v1.ChangeDataKeyResponseB\xa4\x01\n" +
 	"\x0ecom.panmail.v1B\x13SystemSettingsProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"
@@ -1092,43 +1366,54 @@ func file_panmail_v1_system_settings_proto_rawDescGZIP() []byte {
 }
 
 var file_panmail_v1_system_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_panmail_v1_system_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_panmail_v1_system_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_panmail_v1_system_settings_proto_goTypes = []any{
 	(SmtpBindScope)(0),                   // 0: panmail.v1.SmtpBindScope
 	(ContentRedaction)(0),                // 1: panmail.v1.ContentRedaction
-	(*GetSettingsRequest)(nil),           // 2: panmail.v1.GetSettingsRequest
-	(*GetSettingsResponse)(nil),          // 3: panmail.v1.GetSettingsResponse
-	(*UpdateSettingsRequest)(nil),        // 4: panmail.v1.UpdateSettingsRequest
-	(*UpdateSettingsResponse)(nil),       // 5: panmail.v1.UpdateSettingsResponse
-	(*TlsCertificateInfo)(nil),           // 6: panmail.v1.TlsCertificateInfo
-	(*SmtpSubmission)(nil),               // 7: panmail.v1.SmtpSubmission
-	(*SmtpSubmissionConfig)(nil),         // 8: panmail.v1.SmtpSubmissionConfig
-	(*UpdateSmtpSubmissionRequest)(nil),  // 9: panmail.v1.UpdateSmtpSubmissionRequest
-	(*UpdateSmtpSubmissionResponse)(nil), // 10: panmail.v1.UpdateSmtpSubmissionResponse
-	(*SystemSettings)(nil),               // 11: panmail.v1.SystemSettings
+	(*DataKey)(nil),                      // 2: panmail.v1.DataKey
+	(*GetDataKeyRequest)(nil),            // 3: panmail.v1.GetDataKeyRequest
+	(*GetDataKeyResponse)(nil),           // 4: panmail.v1.GetDataKeyResponse
+	(*ChangeDataKeyRequest)(nil),         // 5: panmail.v1.ChangeDataKeyRequest
+	(*ChangeDataKeyResponse)(nil),        // 6: panmail.v1.ChangeDataKeyResponse
+	(*GetSettingsRequest)(nil),           // 7: panmail.v1.GetSettingsRequest
+	(*GetSettingsResponse)(nil),          // 8: panmail.v1.GetSettingsResponse
+	(*UpdateSettingsRequest)(nil),        // 9: panmail.v1.UpdateSettingsRequest
+	(*UpdateSettingsResponse)(nil),       // 10: panmail.v1.UpdateSettingsResponse
+	(*TlsCertificateInfo)(nil),           // 11: panmail.v1.TlsCertificateInfo
+	(*SmtpSubmission)(nil),               // 12: panmail.v1.SmtpSubmission
+	(*SmtpSubmissionConfig)(nil),         // 13: panmail.v1.SmtpSubmissionConfig
+	(*UpdateSmtpSubmissionRequest)(nil),  // 14: panmail.v1.UpdateSmtpSubmissionRequest
+	(*UpdateSmtpSubmissionResponse)(nil), // 15: panmail.v1.UpdateSmtpSubmissionResponse
+	(*SystemSettings)(nil),               // 16: panmail.v1.SystemSettings
 }
 var file_panmail_v1_system_settings_proto_depIdxs = []int32{
-	11, // 0: panmail.v1.GetSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
-	7,  // 1: panmail.v1.GetSettingsResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
-	11, // 2: panmail.v1.UpdateSettingsRequest.settings:type_name -> panmail.v1.SystemSettings
-	11, // 3: panmail.v1.UpdateSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
-	0,  // 4: panmail.v1.SmtpSubmission.bind_scope:type_name -> panmail.v1.SmtpBindScope
-	6,  // 5: panmail.v1.SmtpSubmission.certificate:type_name -> panmail.v1.TlsCertificateInfo
-	0,  // 6: panmail.v1.SmtpSubmissionConfig.bind_scope:type_name -> panmail.v1.SmtpBindScope
-	8,  // 7: panmail.v1.UpdateSmtpSubmissionRequest.config:type_name -> panmail.v1.SmtpSubmissionConfig
-	7,  // 8: panmail.v1.UpdateSmtpSubmissionResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
-	1,  // 9: panmail.v1.SystemSettings.content_redaction:type_name -> panmail.v1.ContentRedaction
-	2,  // 10: panmail.v1.SystemSettingsService.GetSettings:input_type -> panmail.v1.GetSettingsRequest
-	4,  // 11: panmail.v1.SystemSettingsService.UpdateSettings:input_type -> panmail.v1.UpdateSettingsRequest
-	9,  // 12: panmail.v1.SystemSettingsService.UpdateSmtpSubmission:input_type -> panmail.v1.UpdateSmtpSubmissionRequest
-	3,  // 13: panmail.v1.SystemSettingsService.GetSettings:output_type -> panmail.v1.GetSettingsResponse
-	5,  // 14: panmail.v1.SystemSettingsService.UpdateSettings:output_type -> panmail.v1.UpdateSettingsResponse
-	10, // 15: panmail.v1.SystemSettingsService.UpdateSmtpSubmission:output_type -> panmail.v1.UpdateSmtpSubmissionResponse
-	13, // [13:16] is the sub-list for method output_type
-	10, // [10:13] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	2,  // 0: panmail.v1.GetDataKeyResponse.data_key:type_name -> panmail.v1.DataKey
+	2,  // 1: panmail.v1.ChangeDataKeyResponse.data_key:type_name -> panmail.v1.DataKey
+	16, // 2: panmail.v1.GetSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
+	12, // 3: panmail.v1.GetSettingsResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
+	16, // 4: panmail.v1.UpdateSettingsRequest.settings:type_name -> panmail.v1.SystemSettings
+	16, // 5: panmail.v1.UpdateSettingsResponse.settings:type_name -> panmail.v1.SystemSettings
+	0,  // 6: panmail.v1.SmtpSubmission.bind_scope:type_name -> panmail.v1.SmtpBindScope
+	11, // 7: panmail.v1.SmtpSubmission.certificate:type_name -> panmail.v1.TlsCertificateInfo
+	0,  // 8: panmail.v1.SmtpSubmissionConfig.bind_scope:type_name -> panmail.v1.SmtpBindScope
+	13, // 9: panmail.v1.UpdateSmtpSubmissionRequest.config:type_name -> panmail.v1.SmtpSubmissionConfig
+	12, // 10: panmail.v1.UpdateSmtpSubmissionResponse.smtp_submission:type_name -> panmail.v1.SmtpSubmission
+	1,  // 11: panmail.v1.SystemSettings.content_redaction:type_name -> panmail.v1.ContentRedaction
+	7,  // 12: panmail.v1.SystemSettingsService.GetSettings:input_type -> panmail.v1.GetSettingsRequest
+	9,  // 13: panmail.v1.SystemSettingsService.UpdateSettings:input_type -> panmail.v1.UpdateSettingsRequest
+	14, // 14: panmail.v1.SystemSettingsService.UpdateSmtpSubmission:input_type -> panmail.v1.UpdateSmtpSubmissionRequest
+	3,  // 15: panmail.v1.SystemSettingsService.GetDataKey:input_type -> panmail.v1.GetDataKeyRequest
+	5,  // 16: panmail.v1.SystemSettingsService.ChangeDataKey:input_type -> panmail.v1.ChangeDataKeyRequest
+	8,  // 17: panmail.v1.SystemSettingsService.GetSettings:output_type -> panmail.v1.GetSettingsResponse
+	10, // 18: panmail.v1.SystemSettingsService.UpdateSettings:output_type -> panmail.v1.UpdateSettingsResponse
+	15, // 19: panmail.v1.SystemSettingsService.UpdateSmtpSubmission:output_type -> panmail.v1.UpdateSmtpSubmissionResponse
+	4,  // 20: panmail.v1.SystemSettingsService.GetDataKey:output_type -> panmail.v1.GetDataKeyResponse
+	6,  // 21: panmail.v1.SystemSettingsService.ChangeDataKey:output_type -> panmail.v1.ChangeDataKeyResponse
+	17, // [17:22] is the sub-list for method output_type
+	12, // [12:17] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_system_settings_proto_init() }
@@ -1136,14 +1421,14 @@ func file_panmail_v1_system_settings_proto_init() {
 	if File_panmail_v1_system_settings_proto != nil {
 		return
 	}
-	file_panmail_v1_system_settings_proto_msgTypes[9].OneofWrappers = []any{}
+	file_panmail_v1_system_settings_proto_msgTypes[14].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_system_settings_proto_rawDesc), len(file_panmail_v1_system_settings_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   10,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

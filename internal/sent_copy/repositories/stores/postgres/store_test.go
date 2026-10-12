@@ -181,3 +181,49 @@ func TestDeletingATenantTakesItsSentCopiesWithIt(t *testing.T) {
 		}
 	}
 }
+
+// A key change re-seals the master password and every mailbox login, in every
+// tenant, so neither is lost when the old key is dropped.
+func TestRotateSecretsMovesEveryPasswordOntoTheNewKey(t *testing.T) {
+	ctx := context.Background()
+	oldKey, _ := secrets.GenerateKey()
+	newKey, _ := secrets.GenerateKey()
+	ring, err := secrets.NewKeyring(oldKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(storetest.NewConnection(t), ring)
+	now := time.Now().UTC()
+
+	if err := s.SaveSettings(ctx, &entities.Settings{
+		TenantID: storetest.TenantA, Mode: entities.ModeSharedLogin, IMAPHost: "imap.example.com",
+		IMAPPort: 993, MasterUsername: "admin", MasterPassword: "master", UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("SaveSettings: %v", err)
+	}
+	if err := s.SaveMailbox(ctx, &entities.Mailbox{
+		TenantID: storetest.TenantB, Address: "b@example.com", Username: "bob", Password: "pw", UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("SaveMailbox: %v", err)
+	}
+
+	moving, _ := secrets.NewKeyring(newKey, oldKey)
+	ring.Replace(moving)
+	rotator := s.(interface {
+		RotateSecrets(context.Context) (int, error)
+	})
+	if n, err := rotator.RotateSecrets(ctx); err != nil || n != 2 {
+		t.Fatalf("RotateSecrets = %d, %v; want 2, nil", n, err)
+	}
+
+	onlyNew, _ := secrets.NewKeyring(newKey)
+	ring.Replace(onlyNew)
+	settings, err := s.GetSettings(ctx, storetest.TenantA)
+	if err != nil || settings == nil || settings.MasterPassword != "master" {
+		t.Fatalf("master password unreadable under the new key alone: %v", err)
+	}
+	mailbox, err := s.GetMailbox(ctx, storetest.TenantB, "b@example.com")
+	if err != nil || mailbox == nil || mailbox.Password != "pw" {
+		t.Fatalf("mailbox password unreadable under the new key alone: %v", err)
+	}
+}

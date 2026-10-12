@@ -377,7 +377,7 @@ func main() {
 	// Retired keys are decrypt-only, so values written before a rotation
 	// stay readable while they are moved across. Without them a key can
 	// never be replaced: reading what the old key wrote needs the old key.
-	retired := secrets.ParseRetiredKeys(os.Getenv(secrets.EnvRetiredKeysName))
+	retired := config.RetiredDataKeys(cfg)
 	keyring, err := secrets.NewKeyring(dataKey, retired...)
 	if err != nil {
 		slog.Error("failed to initialize the data encryption keyring", "error", err)
@@ -1003,8 +1003,9 @@ func main() {
 	// all: the private key is sealed with the data key and there is no
 	// plaintext fallback, so the panel says so up front rather than failing at
 	// save time.
+	smtpSubmissionStore := smtpsubmissionstores.NewStore(conn, keyring)
 	smtpSubmissionUsecase := smtpusecases.NewUsecase(
-		smtpsubmissionstores.NewStore(conn, keyring),
+		smtpSubmissionStore,
 		smtpSupervisor,
 		smtpFlags,
 		keyring != nil,
@@ -1026,7 +1027,14 @@ func main() {
 		runWorker(&workers, workerCtx, "smtp-submission", func() { smtpSubmissionUsecase.Run(workerCtx) })
 	}
 
-	settingsService := settingsservices.NewSettingsService(settingsUsecase, smtpSubmissionUsecase)
+	settingsService := settingsservices.NewSettingsService(settingsUsecase, smtpSubmissionUsecase,
+		// Every store that seals a value, or its rows are left on the old key.
+		settingsusecases.NewDataKeyUsecase(keyring,
+			providerRepo.(settingsusecases.SecretRotator),
+			webhookRepo.(settingsusecases.SecretRotator),
+			sentCopyRepo.(settingsusecases.SecretRotator),
+			smtpSubmissionStore.(settingsusecases.SecretRotator),
+		))
 
 	setupUsecase := setupusecases.NewSetupUsecase(authUsecase, conn, swappableTokenMaker, trackingSigner, setupDataKey, migrate)
 	setupService := setupservices.NewSetupService(setupUsecase)
@@ -1738,7 +1746,7 @@ func handleRotateSecretsCommand() {
 		os.Exit(1)
 	}
 
-	retired := secrets.ParseRetiredKeys(os.Getenv(secrets.EnvRetiredKeysName))
+	retired := config.RetiredDataKeys(cfg)
 	keyring, err := secrets.NewKeyring(dataKey, retired...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot build the keyring: %v\n", err)
@@ -1769,6 +1777,8 @@ func handleRotateSecretsCommand() {
 	}{
 		{"provider", postgres.NewStore(conn, keyring)},
 		{"webhook", webhookstores.NewStore(conn, keyring)},
+		{"Sent copies", sentcopystores.NewStore(conn, keyring)},
+		{"SMTP submission", smtpsubmissionstores.NewStore(conn, keyring)},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
