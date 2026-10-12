@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -34,6 +35,30 @@ var senderPoolConfig = smtp.PoolConfig{
 	MaxLifetime: 5 * time.Minute,
 	Wait:        true,
 }
+
+// smtpCipherSuites is Go's default suite list plus the TLS 1.2 RSA key
+// exchange suites, which Go 1.22 dropped from its defaults and Go 1.27 can no
+// longer re-enable with GODEBUG.
+//
+// Plenty of mail servers still in service (older Exchange, appliances, hosted
+// cPanel boxes) offer nothing else. Against one of them the default list fails
+// STARTTLS with "remote error: tls: handshake failure", and the mail is not
+// sent at all. Offering these suites costs a modern server nothing: Go picks
+// the suite by its own preference, which puts every ECDHE suite first, so RSA
+// key exchange is used only when the server has no alternative. TLS 1.3 is
+// unaffected, since its suites are not configurable.
+var smtpCipherSuites = func() []uint16 {
+	var ids []uint16
+	for _, s := range tls.CipherSuites() {
+		ids = append(ids, s.ID)
+	}
+	return append(ids,
+		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+	)
+}()
 
 type providerFactory struct {
 	mu sync.Mutex
@@ -182,6 +207,7 @@ func buildSMTPSender(p *entities.EmailProvider) (gsmail.Sender, error) {
 
 	sender := smtp.NewSender(c.Host, int(c.Port), c.Username, c.Password, c.UseSsl)
 	sender.InsecureSkipVerify = c.SkipVerify
+	sender.CipherSuites = smtpCipherSuites
 
 	// Signing is enabled only when all three parts are present. A partial
 	// configuration would make every send fail at signing time, which is a
