@@ -507,7 +507,11 @@ func main() {
 		webhookOptions = append(webhookOptions, webhookusecases.RestrictTargets(nil))
 	}
 	webhookUsecase := webhookusecases.NewWebhookUsecase(webhookRepo, webhookOptions...)
-	webhookService := webhookservices.NewWebhookService(webhookUsecase)
+	webhookTester := webhookworker.NewTester()
+	if *webhookBlockPrivateFlag {
+		webhookTester.RestrictEgress()
+	}
+	webhookService := webhookservices.NewWebhookService(webhookUsecase, webhookservices.WithTester(webhookTester))
 
 	// Background work runs under a context this process controls, so shutdown
 	// can stop the workers before the stores they write to are closed.

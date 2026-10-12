@@ -429,6 +429,300 @@ func (x *UpdateWebhookResponse) GetWebhook() *Webhook {
 	return nil
 }
 
+type TestWebhookRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Which event's sample to send. Unspecified sends the first event the
+	// subscription listens for.
+	Event         WebhookTriggerEvent `protobuf:"varint,2,opt,name=event,proto3,enum=panmail.v1.WebhookTriggerEvent" json:"event,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestWebhookRequest) Reset() {
+	*x = TestWebhookRequest{}
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestWebhookRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestWebhookRequest) ProtoMessage() {}
+
+func (x *TestWebhookRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestWebhookRequest.ProtoReflect.Descriptor instead.
+func (*TestWebhookRequest) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_webhook_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *TestWebhookRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *TestWebhookRequest) GetEvent() WebhookTriggerEvent {
+	if x != nil {
+		return x.Event
+	}
+	return WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_UNSPECIFIED
+}
+
+type TestWebhookResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// True when the endpoint answered with a 2xx status.
+	Success bool `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	// The status the endpoint answered with; zero when it could not be reached.
+	StatusCode int32 `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	// Why the request failed before an answer came back, or why the answer was
+	// not a success.
+	Error string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	// The start of the endpoint's response body, for diagnosing a refusal.
+	ResponseBody string `protobuf:"bytes,4,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+	DurationMs   int64  `protobuf:"varint,5,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	// The event that was sent and the exact body posted.
+	Event         WebhookTriggerEvent `protobuf:"varint,6,opt,name=event,proto3,enum=panmail.v1.WebhookTriggerEvent" json:"event,omitempty"`
+	Payload       string              `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestWebhookResponse) Reset() {
+	*x = TestWebhookResponse{}
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestWebhookResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestWebhookResponse) ProtoMessage() {}
+
+func (x *TestWebhookResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestWebhookResponse.ProtoReflect.Descriptor instead.
+func (*TestWebhookResponse) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_webhook_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *TestWebhookResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *TestWebhookResponse) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *TestWebhookResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *TestWebhookResponse) GetResponseBody() string {
+	if x != nil {
+		return x.ResponseBody
+	}
+	return ""
+}
+
+func (x *TestWebhookResponse) GetDurationMs() int64 {
+	if x != nil {
+		return x.DurationMs
+	}
+	return 0
+}
+
+func (x *TestWebhookResponse) GetEvent() WebhookTriggerEvent {
+	if x != nil {
+		return x.Event
+	}
+	return WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_UNSPECIFIED
+}
+
+func (x *TestWebhookResponse) GetPayload() string {
+	if x != nil {
+		return x.Payload
+	}
+	return ""
+}
+
+type ListWebhookEventSamplesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWebhookEventSamplesRequest) Reset() {
+	*x = ListWebhookEventSamplesRequest{}
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWebhookEventSamplesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWebhookEventSamplesRequest) ProtoMessage() {}
+
+func (x *ListWebhookEventSamplesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWebhookEventSamplesRequest.ProtoReflect.Descriptor instead.
+func (*ListWebhookEventSamplesRequest) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_webhook_service_proto_rawDescGZIP(), []int{10}
+}
+
+type WebhookEventSample struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Event WebhookTriggerEvent    `protobuf:"varint,1,opt,name=event,proto3,enum=panmail.v1.WebhookTriggerEvent" json:"event,omitempty"`
+	// What the event means, in a sentence.
+	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	// The JSON body a subscriber receives, pretty-printed.
+	Payload       string `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WebhookEventSample) Reset() {
+	*x = WebhookEventSample{}
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WebhookEventSample) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WebhookEventSample) ProtoMessage() {}
+
+func (x *WebhookEventSample) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WebhookEventSample.ProtoReflect.Descriptor instead.
+func (*WebhookEventSample) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_webhook_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *WebhookEventSample) GetEvent() WebhookTriggerEvent {
+	if x != nil {
+		return x.Event
+	}
+	return WebhookTriggerEvent_WEBHOOK_TRIGGER_EVENT_UNSPECIFIED
+}
+
+func (x *WebhookEventSample) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *WebhookEventSample) GetPayload() string {
+	if x != nil {
+		return x.Payload
+	}
+	return ""
+}
+
+type ListWebhookEventSamplesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Samples       []*WebhookEventSample  `protobuf:"bytes,1,rep,name=samples,proto3" json:"samples,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWebhookEventSamplesResponse) Reset() {
+	*x = ListWebhookEventSamplesResponse{}
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWebhookEventSamplesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWebhookEventSamplesResponse) ProtoMessage() {}
+
+func (x *ListWebhookEventSamplesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_webhook_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWebhookEventSamplesResponse.ProtoReflect.Descriptor instead.
+func (*ListWebhookEventSamplesResponse) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_webhook_service_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListWebhookEventSamplesResponse) GetSamples() []*WebhookEventSample {
+	if x != nil {
+		return x.Samples
+	}
+	return nil
+}
+
 var File_panmail_v1_webhook_service_proto protoreflect.FileDescriptor
 
 const file_panmail_v1_webhook_service_proto_rawDesc = "" +
@@ -458,12 +752,34 @@ const file_panmail_v1_webhook_service_proto_rawDesc = "" +
 	"\x06events\x18\x04 \x03(\x0e2\x1f.panmail.v1.WebhookTriggerEventR\x06events\x12\x16\n" +
 	"\x06active\x18\x05 \x01(\bR\x06active\"F\n" +
 	"\x15UpdateWebhookResponse\x12-\n" +
-	"\awebhook\x18\x01 \x01(\v2\x13.panmail.v1.WebhookR\awebhook2\xe5\x02\n" +
+	"\awebhook\x18\x01 \x01(\v2\x13.panmail.v1.WebhookR\awebhook\"[\n" +
+	"\x12TestWebhookRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x125\n" +
+	"\x05event\x18\x02 \x01(\x0e2\x1f.panmail.v1.WebhookTriggerEventR\x05event\"\xfd\x01\n" +
+	"\x13TestWebhookResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
+	"\vstatus_code\x18\x02 \x01(\x05R\n" +
+	"statusCode\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12#\n" +
+	"\rresponse_body\x18\x04 \x01(\tR\fresponseBody\x12\x1f\n" +
+	"\vduration_ms\x18\x05 \x01(\x03R\n" +
+	"durationMs\x125\n" +
+	"\x05event\x18\x06 \x01(\x0e2\x1f.panmail.v1.WebhookTriggerEventR\x05event\x12\x18\n" +
+	"\apayload\x18\a \x01(\tR\apayload\" \n" +
+	"\x1eListWebhookEventSamplesRequest\"\x87\x01\n" +
+	"\x12WebhookEventSample\x125\n" +
+	"\x05event\x18\x01 \x01(\x0e2\x1f.panmail.v1.WebhookTriggerEventR\x05event\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\tR\apayload\"[\n" +
+	"\x1fListWebhookEventSamplesResponse\x128\n" +
+	"\asamples\x18\x01 \x03(\v2\x1e.panmail.v1.WebhookEventSampleR\asamples2\xa9\x04\n" +
 	"\x0eWebhookService\x12T\n" +
 	"\rCreateWebhook\x12 .panmail.v1.CreateWebhookRequest\x1a!.panmail.v1.CreateWebhookResponse\x12Q\n" +
 	"\fListWebhooks\x12\x1f.panmail.v1.ListWebhooksRequest\x1a .panmail.v1.ListWebhooksResponse\x12T\n" +
 	"\rDeleteWebhook\x12 .panmail.v1.DeleteWebhookRequest\x1a!.panmail.v1.DeleteWebhookResponse\x12T\n" +
-	"\rUpdateWebhook\x12 .panmail.v1.UpdateWebhookRequest\x1a!.panmail.v1.UpdateWebhookResponseB\xa4\x01\n" +
+	"\rUpdateWebhook\x12 .panmail.v1.UpdateWebhookRequest\x1a!.panmail.v1.UpdateWebhookResponse\x12N\n" +
+	"\vTestWebhook\x12\x1e.panmail.v1.TestWebhookRequest\x1a\x1f.panmail.v1.TestWebhookResponse\x12r\n" +
+	"\x17ListWebhookEventSamples\x12*.panmail.v1.ListWebhookEventSamplesRequest\x1a+.panmail.v1.ListWebhookEventSamplesResponseB\xa4\x01\n" +
 	"\x0ecom.panmail.v1B\x13WebhookServiceProtoP\x01Z4github.com/gsoultan/panmail/api/panmail/v1;panmailv1\xa2\x02\x03PXX\xaa\x02\n" +
 	"Panmail.V1\xca\x02\n" +
 	"Panmail\\V1\xe2\x02\x16Panmail\\V1\\GPBMetadata\xea\x02\vPanmail::V1b\x06proto3"
@@ -480,38 +796,51 @@ func file_panmail_v1_webhook_service_proto_rawDescGZIP() []byte {
 	return file_panmail_v1_webhook_service_proto_rawDescData
 }
 
-var file_panmail_v1_webhook_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_panmail_v1_webhook_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_panmail_v1_webhook_service_proto_goTypes = []any{
-	(*CreateWebhookRequest)(nil),  // 0: panmail.v1.CreateWebhookRequest
-	(*CreateWebhookResponse)(nil), // 1: panmail.v1.CreateWebhookResponse
-	(*ListWebhooksRequest)(nil),   // 2: panmail.v1.ListWebhooksRequest
-	(*ListWebhooksResponse)(nil),  // 3: panmail.v1.ListWebhooksResponse
-	(*DeleteWebhookRequest)(nil),  // 4: panmail.v1.DeleteWebhookRequest
-	(*DeleteWebhookResponse)(nil), // 5: panmail.v1.DeleteWebhookResponse
-	(*UpdateWebhookRequest)(nil),  // 6: panmail.v1.UpdateWebhookRequest
-	(*UpdateWebhookResponse)(nil), // 7: panmail.v1.UpdateWebhookResponse
-	(WebhookTriggerEvent)(0),      // 8: panmail.v1.WebhookTriggerEvent
-	(*Webhook)(nil),               // 9: panmail.v1.Webhook
+	(*CreateWebhookRequest)(nil),            // 0: panmail.v1.CreateWebhookRequest
+	(*CreateWebhookResponse)(nil),           // 1: panmail.v1.CreateWebhookResponse
+	(*ListWebhooksRequest)(nil),             // 2: panmail.v1.ListWebhooksRequest
+	(*ListWebhooksResponse)(nil),            // 3: panmail.v1.ListWebhooksResponse
+	(*DeleteWebhookRequest)(nil),            // 4: panmail.v1.DeleteWebhookRequest
+	(*DeleteWebhookResponse)(nil),           // 5: panmail.v1.DeleteWebhookResponse
+	(*UpdateWebhookRequest)(nil),            // 6: panmail.v1.UpdateWebhookRequest
+	(*UpdateWebhookResponse)(nil),           // 7: panmail.v1.UpdateWebhookResponse
+	(*TestWebhookRequest)(nil),              // 8: panmail.v1.TestWebhookRequest
+	(*TestWebhookResponse)(nil),             // 9: panmail.v1.TestWebhookResponse
+	(*ListWebhookEventSamplesRequest)(nil),  // 10: panmail.v1.ListWebhookEventSamplesRequest
+	(*WebhookEventSample)(nil),              // 11: panmail.v1.WebhookEventSample
+	(*ListWebhookEventSamplesResponse)(nil), // 12: panmail.v1.ListWebhookEventSamplesResponse
+	(WebhookTriggerEvent)(0),                // 13: panmail.v1.WebhookTriggerEvent
+	(*Webhook)(nil),                         // 14: panmail.v1.Webhook
 }
 var file_panmail_v1_webhook_service_proto_depIdxs = []int32{
-	8, // 0: panmail.v1.CreateWebhookRequest.events:type_name -> panmail.v1.WebhookTriggerEvent
-	9, // 1: panmail.v1.CreateWebhookResponse.webhook:type_name -> panmail.v1.Webhook
-	9, // 2: panmail.v1.ListWebhooksResponse.webhooks:type_name -> panmail.v1.Webhook
-	8, // 3: panmail.v1.UpdateWebhookRequest.events:type_name -> panmail.v1.WebhookTriggerEvent
-	9, // 4: panmail.v1.UpdateWebhookResponse.webhook:type_name -> panmail.v1.Webhook
-	0, // 5: panmail.v1.WebhookService.CreateWebhook:input_type -> panmail.v1.CreateWebhookRequest
-	2, // 6: panmail.v1.WebhookService.ListWebhooks:input_type -> panmail.v1.ListWebhooksRequest
-	4, // 7: panmail.v1.WebhookService.DeleteWebhook:input_type -> panmail.v1.DeleteWebhookRequest
-	6, // 8: panmail.v1.WebhookService.UpdateWebhook:input_type -> panmail.v1.UpdateWebhookRequest
-	1, // 9: panmail.v1.WebhookService.CreateWebhook:output_type -> panmail.v1.CreateWebhookResponse
-	3, // 10: panmail.v1.WebhookService.ListWebhooks:output_type -> panmail.v1.ListWebhooksResponse
-	5, // 11: panmail.v1.WebhookService.DeleteWebhook:output_type -> panmail.v1.DeleteWebhookResponse
-	7, // 12: panmail.v1.WebhookService.UpdateWebhook:output_type -> panmail.v1.UpdateWebhookResponse
-	9, // [9:13] is the sub-list for method output_type
-	5, // [5:9] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	13, // 0: panmail.v1.CreateWebhookRequest.events:type_name -> panmail.v1.WebhookTriggerEvent
+	14, // 1: panmail.v1.CreateWebhookResponse.webhook:type_name -> panmail.v1.Webhook
+	14, // 2: panmail.v1.ListWebhooksResponse.webhooks:type_name -> panmail.v1.Webhook
+	13, // 3: panmail.v1.UpdateWebhookRequest.events:type_name -> panmail.v1.WebhookTriggerEvent
+	14, // 4: panmail.v1.UpdateWebhookResponse.webhook:type_name -> panmail.v1.Webhook
+	13, // 5: panmail.v1.TestWebhookRequest.event:type_name -> panmail.v1.WebhookTriggerEvent
+	13, // 6: panmail.v1.TestWebhookResponse.event:type_name -> panmail.v1.WebhookTriggerEvent
+	13, // 7: panmail.v1.WebhookEventSample.event:type_name -> panmail.v1.WebhookTriggerEvent
+	11, // 8: panmail.v1.ListWebhookEventSamplesResponse.samples:type_name -> panmail.v1.WebhookEventSample
+	0,  // 9: panmail.v1.WebhookService.CreateWebhook:input_type -> panmail.v1.CreateWebhookRequest
+	2,  // 10: panmail.v1.WebhookService.ListWebhooks:input_type -> panmail.v1.ListWebhooksRequest
+	4,  // 11: panmail.v1.WebhookService.DeleteWebhook:input_type -> panmail.v1.DeleteWebhookRequest
+	6,  // 12: panmail.v1.WebhookService.UpdateWebhook:input_type -> panmail.v1.UpdateWebhookRequest
+	8,  // 13: panmail.v1.WebhookService.TestWebhook:input_type -> panmail.v1.TestWebhookRequest
+	10, // 14: panmail.v1.WebhookService.ListWebhookEventSamples:input_type -> panmail.v1.ListWebhookEventSamplesRequest
+	1,  // 15: panmail.v1.WebhookService.CreateWebhook:output_type -> panmail.v1.CreateWebhookResponse
+	3,  // 16: panmail.v1.WebhookService.ListWebhooks:output_type -> panmail.v1.ListWebhooksResponse
+	5,  // 17: panmail.v1.WebhookService.DeleteWebhook:output_type -> panmail.v1.DeleteWebhookResponse
+	7,  // 18: panmail.v1.WebhookService.UpdateWebhook:output_type -> panmail.v1.UpdateWebhookResponse
+	9,  // 19: panmail.v1.WebhookService.TestWebhook:output_type -> panmail.v1.TestWebhookResponse
+	12, // 20: panmail.v1.WebhookService.ListWebhookEventSamples:output_type -> panmail.v1.ListWebhookEventSamplesResponse
+	15, // [15:21] is the sub-list for method output_type
+	9,  // [9:15] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_webhook_service_proto_init() }
@@ -526,7 +855,7 @@ func file_panmail_v1_webhook_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_webhook_service_proto_rawDesc), len(file_panmail_v1_webhook_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

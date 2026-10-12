@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/webhook_service.proto.
  */
 export const file_panmail_v1_webhook_service: GenFile = /*@__PURE__*/
-  fileDesc("CiBwYW5tYWlsL3YxL3dlYmhvb2tfc2VydmljZS5wcm90bxIKcGFubWFpbC52MSJiChRDcmVhdGVXZWJob29rUmVxdWVzdBIMCgRuYW1lGAEgASgJEgsKA3VybBgCIAEoCRIvCgZldmVudHMYAyADKA4yHy5wYW5tYWlsLnYxLldlYmhvb2tUcmlnZ2VyRXZlbnQiPQoVQ3JlYXRlV2ViaG9va1Jlc3BvbnNlEiQKB3dlYmhvb2sYASABKAsyEy5wYW5tYWlsLnYxLldlYmhvb2siPAoTTGlzdFdlYmhvb2tzUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJWChRMaXN0V2ViaG9va3NSZXNwb25zZRIlCgh3ZWJob29rcxgBIAMoCzITLnBhbm1haWwudjEuV2ViaG9vaxIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiIgoURGVsZXRlV2ViaG9va1JlcXVlc3QSCgoCaWQYASABKAkiFwoVRGVsZXRlV2ViaG9va1Jlc3BvbnNlIn4KFFVwZGF0ZVdlYmhvb2tSZXF1ZXN0EgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSCwoDdXJsGAMgASgJEi8KBmV2ZW50cxgEIAMoDjIfLnBhbm1haWwudjEuV2ViaG9va1RyaWdnZXJFdmVudBIOCgZhY3RpdmUYBSABKAgiPQoVVXBkYXRlV2ViaG9va1Jlc3BvbnNlEiQKB3dlYmhvb2sYASABKAsyEy5wYW5tYWlsLnYxLldlYmhvb2sy5QIKDldlYmhvb2tTZXJ2aWNlElQKDUNyZWF0ZVdlYmhvb2sSIC5wYW5tYWlsLnYxLkNyZWF0ZVdlYmhvb2tSZXF1ZXN0GiEucGFubWFpbC52MS5DcmVhdGVXZWJob29rUmVzcG9uc2USUQoMTGlzdFdlYmhvb2tzEh8ucGFubWFpbC52MS5MaXN0V2ViaG9va3NSZXF1ZXN0GiAucGFubWFpbC52MS5MaXN0V2ViaG9va3NSZXNwb25zZRJUCg1EZWxldGVXZWJob29rEiAucGFubWFpbC52MS5EZWxldGVXZWJob29rUmVxdWVzdBohLnBhbm1haWwudjEuRGVsZXRlV2ViaG9va1Jlc3BvbnNlElQKDVVwZGF0ZVdlYmhvb2sSIC5wYW5tYWlsLnYxLlVwZGF0ZVdlYmhvb2tSZXF1ZXN0GiEucGFubWFpbC52MS5VcGRhdGVXZWJob29rUmVzcG9uc2VCpAEKDmNvbS5wYW5tYWlsLnYxQhNXZWJob29rU2VydmljZVByb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z", [file_panmail_v1_webhook]);
+  fileDesc("CiBwYW5tYWlsL3YxL3dlYmhvb2tfc2VydmljZS5wcm90bxIKcGFubWFpbC52MSJiChRDcmVhdGVXZWJob29rUmVxdWVzdBIMCgRuYW1lGAEgASgJEgsKA3VybBgCIAEoCRIvCgZldmVudHMYAyADKA4yHy5wYW5tYWlsLnYxLldlYmhvb2tUcmlnZ2VyRXZlbnQiPQoVQ3JlYXRlV2ViaG9va1Jlc3BvbnNlEiQKB3dlYmhvb2sYASABKAsyEy5wYW5tYWlsLnYxLldlYmhvb2siPAoTTGlzdFdlYmhvb2tzUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJWChRMaXN0V2ViaG9va3NSZXNwb25zZRIlCgh3ZWJob29rcxgBIAMoCzITLnBhbm1haWwudjEuV2ViaG9vaxIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiIgoURGVsZXRlV2ViaG9va1JlcXVlc3QSCgoCaWQYASABKAkiFwoVRGVsZXRlV2ViaG9va1Jlc3BvbnNlIn4KFFVwZGF0ZVdlYmhvb2tSZXF1ZXN0EgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSCwoDdXJsGAMgASgJEi8KBmV2ZW50cxgEIAMoDjIfLnBhbm1haWwudjEuV2ViaG9va1RyaWdnZXJFdmVudBIOCgZhY3RpdmUYBSABKAgiPQoVVXBkYXRlV2ViaG9va1Jlc3BvbnNlEiQKB3dlYmhvb2sYASABKAsyEy5wYW5tYWlsLnYxLldlYmhvb2siUAoSVGVzdFdlYmhvb2tSZXF1ZXN0EgoKAmlkGAEgASgJEi4KBWV2ZW50GAIgASgOMh8ucGFubWFpbC52MS5XZWJob29rVHJpZ2dlckV2ZW50IrcBChNUZXN0V2ViaG9va1Jlc3BvbnNlEg8KB3N1Y2Nlc3MYASABKAgSEwoLc3RhdHVzX2NvZGUYAiABKAUSDQoFZXJyb3IYAyABKAkSFQoNcmVzcG9uc2VfYm9keRgEIAEoCRITCgtkdXJhdGlvbl9tcxgFIAEoAxIuCgVldmVudBgGIAEoDjIfLnBhbm1haWwudjEuV2ViaG9va1RyaWdnZXJFdmVudBIPCgdwYXlsb2FkGAcgASgJIiAKHkxpc3RXZWJob29rRXZlbnRTYW1wbGVzUmVxdWVzdCJqChJXZWJob29rRXZlbnRTYW1wbGUSLgoFZXZlbnQYASABKA4yHy5wYW5tYWlsLnYxLldlYmhvb2tUcmlnZ2VyRXZlbnQSEwoLZGVzY3JpcHRpb24YAiABKAkSDwoHcGF5bG9hZBgDIAEoCSJSCh9MaXN0V2ViaG9va0V2ZW50U2FtcGxlc1Jlc3BvbnNlEi8KB3NhbXBsZXMYASADKAsyHi5wYW5tYWlsLnYxLldlYmhvb2tFdmVudFNhbXBsZTKpBAoOV2ViaG9va1NlcnZpY2USVAoNQ3JlYXRlV2ViaG9vaxIgLnBhbm1haWwudjEuQ3JlYXRlV2ViaG9va1JlcXVlc3QaIS5wYW5tYWlsLnYxLkNyZWF0ZVdlYmhvb2tSZXNwb25zZRJRCgxMaXN0V2ViaG9va3MSHy5wYW5tYWlsLnYxLkxpc3RXZWJob29rc1JlcXVlc3QaIC5wYW5tYWlsLnYxLkxpc3RXZWJob29rc1Jlc3BvbnNlElQKDURlbGV0ZVdlYmhvb2sSIC5wYW5tYWlsLnYxLkRlbGV0ZVdlYmhvb2tSZXF1ZXN0GiEucGFubWFpbC52MS5EZWxldGVXZWJob29rUmVzcG9uc2USVAoNVXBkYXRlV2ViaG9vaxIgLnBhbm1haWwudjEuVXBkYXRlV2ViaG9va1JlcXVlc3QaIS5wYW5tYWlsLnYxLlVwZGF0ZVdlYmhvb2tSZXNwb25zZRJOCgtUZXN0V2ViaG9vaxIeLnBhbm1haWwudjEuVGVzdFdlYmhvb2tSZXF1ZXN0Gh8ucGFubWFpbC52MS5UZXN0V2ViaG9va1Jlc3BvbnNlEnIKF0xpc3RXZWJob29rRXZlbnRTYW1wbGVzEioucGFubWFpbC52MS5MaXN0V2ViaG9va0V2ZW50U2FtcGxlc1JlcXVlc3QaKy5wYW5tYWlsLnYxLkxpc3RXZWJob29rRXZlbnRTYW1wbGVzUmVzcG9uc2VCpAEKDmNvbS5wYW5tYWlsLnYxQhNXZWJob29rU2VydmljZVByb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z", [file_panmail_v1_webhook]);
 
 /**
  * @generated from message panmail.v1.CreateWebhookRequest
@@ -187,6 +187,150 @@ export const UpdateWebhookResponseSchema: GenMessage<UpdateWebhookResponse> = /*
   messageDesc(file_panmail_v1_webhook_service, 7);
 
 /**
+ * @generated from message panmail.v1.TestWebhookRequest
+ */
+export type TestWebhookRequest = Message<"panmail.v1.TestWebhookRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * Which event's sample to send. Unspecified sends the first event the
+   * subscription listens for.
+   *
+   * @generated from field: panmail.v1.WebhookTriggerEvent event = 2;
+   */
+  event: WebhookTriggerEvent;
+};
+
+/**
+ * Describes the message panmail.v1.TestWebhookRequest.
+ * Use `create(TestWebhookRequestSchema)` to create a new message.
+ */
+export const TestWebhookRequestSchema: GenMessage<TestWebhookRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_webhook_service, 8);
+
+/**
+ * @generated from message panmail.v1.TestWebhookResponse
+ */
+export type TestWebhookResponse = Message<"panmail.v1.TestWebhookResponse"> & {
+  /**
+   * True when the endpoint answered with a 2xx status.
+   *
+   * @generated from field: bool success = 1;
+   */
+  success: boolean;
+
+  /**
+   * The status the endpoint answered with; zero when it could not be reached.
+   *
+   * @generated from field: int32 status_code = 2;
+   */
+  statusCode: number;
+
+  /**
+   * Why the request failed before an answer came back, or why the answer was
+   * not a success.
+   *
+   * @generated from field: string error = 3;
+   */
+  error: string;
+
+  /**
+   * The start of the endpoint's response body, for diagnosing a refusal.
+   *
+   * @generated from field: string response_body = 4;
+   */
+  responseBody: string;
+
+  /**
+   * @generated from field: int64 duration_ms = 5;
+   */
+  durationMs: bigint;
+
+  /**
+   * The event that was sent and the exact body posted.
+   *
+   * @generated from field: panmail.v1.WebhookTriggerEvent event = 6;
+   */
+  event: WebhookTriggerEvent;
+
+  /**
+   * @generated from field: string payload = 7;
+   */
+  payload: string;
+};
+
+/**
+ * Describes the message panmail.v1.TestWebhookResponse.
+ * Use `create(TestWebhookResponseSchema)` to create a new message.
+ */
+export const TestWebhookResponseSchema: GenMessage<TestWebhookResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_webhook_service, 9);
+
+/**
+ * @generated from message panmail.v1.ListWebhookEventSamplesRequest
+ */
+export type ListWebhookEventSamplesRequest = Message<"panmail.v1.ListWebhookEventSamplesRequest"> & {
+};
+
+/**
+ * Describes the message panmail.v1.ListWebhookEventSamplesRequest.
+ * Use `create(ListWebhookEventSamplesRequestSchema)` to create a new message.
+ */
+export const ListWebhookEventSamplesRequestSchema: GenMessage<ListWebhookEventSamplesRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_webhook_service, 10);
+
+/**
+ * @generated from message panmail.v1.WebhookEventSample
+ */
+export type WebhookEventSample = Message<"panmail.v1.WebhookEventSample"> & {
+  /**
+   * @generated from field: panmail.v1.WebhookTriggerEvent event = 1;
+   */
+  event: WebhookTriggerEvent;
+
+  /**
+   * What the event means, in a sentence.
+   *
+   * @generated from field: string description = 2;
+   */
+  description: string;
+
+  /**
+   * The JSON body a subscriber receives, pretty-printed.
+   *
+   * @generated from field: string payload = 3;
+   */
+  payload: string;
+};
+
+/**
+ * Describes the message panmail.v1.WebhookEventSample.
+ * Use `create(WebhookEventSampleSchema)` to create a new message.
+ */
+export const WebhookEventSampleSchema: GenMessage<WebhookEventSample> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_webhook_service, 11);
+
+/**
+ * @generated from message panmail.v1.ListWebhookEventSamplesResponse
+ */
+export type ListWebhookEventSamplesResponse = Message<"panmail.v1.ListWebhookEventSamplesResponse"> & {
+  /**
+   * @generated from field: repeated panmail.v1.WebhookEventSample samples = 1;
+   */
+  samples: WebhookEventSample[];
+};
+
+/**
+ * Describes the message panmail.v1.ListWebhookEventSamplesResponse.
+ * Use `create(ListWebhookEventSamplesResponseSchema)` to create a new message.
+ */
+export const ListWebhookEventSamplesResponseSchema: GenMessage<ListWebhookEventSamplesResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_webhook_service, 12);
+
+/**
  * @generated from service panmail.v1.WebhookService
  */
 export const WebhookService: GenService<{
@@ -221,6 +365,28 @@ export const WebhookService: GenService<{
     methodKind: "unary";
     input: typeof UpdateWebhookRequestSchema;
     output: typeof UpdateWebhookResponseSchema;
+  },
+  /**
+   * Sends one signed sample notification to a subscription's URL right away
+   * and reports how the endpoint answered. Nothing is queued or retried: the
+   * point is to see the answer while setting the endpoint up.
+   *
+   * @generated from rpc panmail.v1.WebhookService.TestWebhook
+   */
+  testWebhook: {
+    methodKind: "unary";
+    input: typeof TestWebhookRequestSchema;
+    output: typeof TestWebhookResponseSchema;
+  },
+  /**
+   * The body a subscriber receives for each event, filled with sample data.
+   *
+   * @generated from rpc panmail.v1.WebhookService.ListWebhookEventSamples
+   */
+  listWebhookEventSamples: {
+    methodKind: "unary";
+    input: typeof ListWebhookEventSamplesRequestSchema;
+    output: typeof ListWebhookEventSamplesResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_panmail_v1_webhook_service, 0);
