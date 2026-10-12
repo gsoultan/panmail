@@ -127,7 +127,12 @@ func newPostgresDB(t testing.TB, dsn string) *sql.DB {
 	if strings.Contains(dsn, "?") {
 		sep = "&"
 	}
-	scoped := dsn + sep + "options=" + url.QueryEscape("-c search_path="+schema)
+	// The simple protocol, as pkg/db opens production connections. pgx encodes
+	// arguments differently under it: a []byte goes out as a bytea literal,
+	// which a JSON column rejects, so a store that passed here on the extended
+	// protocol could still fail every write in a real deployment.
+	scoped := dsn + sep + "options=" + url.QueryEscape("-c search_path="+schema) +
+		"&default_query_exec_mode=simple_protocol"
 
 	sqlDB, err := sql.Open("pgx", scoped)
 	if err != nil {

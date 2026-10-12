@@ -277,17 +277,24 @@ func scanRule(row scanner) (*emailfilter.Rule, error) {
 	return &rule, nil
 }
 
-func marshalConditions(r *emailfilter.Rule) (conditions, exceptions []byte, err error) {
-	if conditions, err = json.Marshal(r.Conditions); err != nil {
-		return nil, nil, fmt.Errorf("encoding conditions: %w", err)
+// marshalConditions encodes the JSON columns as strings, not []byte.
+//
+// Production connections use pgx's simple protocol, which sends a []byte as a
+// bytea literal; PostgreSQL then refuses it for a JSON column, and every rule
+// save failed there while passing on SQLite.
+func marshalConditions(r *emailfilter.Rule) (conditions string, exceptions sql.NullString, err error) {
+	encoded, err := json.Marshal(r.Conditions)
+	if err != nil {
+		return "", sql.NullString{}, fmt.Errorf("encoding conditions: %w", err)
 	}
 	if len(r.Exceptions) == 0 {
-		return conditions, nil, nil
+		return string(encoded), sql.NullString{}, nil
 	}
-	if exceptions, err = json.Marshal(r.Exceptions); err != nil {
-		return nil, nil, fmt.Errorf("encoding exceptions: %w", err)
+	encodedExceptions, err := json.Marshal(r.Exceptions)
+	if err != nil {
+		return "", sql.NullString{}, fmt.Errorf("encoding exceptions: %w", err)
 	}
-	return conditions, exceptions, nil
+	return string(encoded), sql.NullString{String: string(encodedExceptions), Valid: true}, nil
 }
 
 func mustAffectOne(result sql.Result) error {

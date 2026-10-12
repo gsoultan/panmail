@@ -55,11 +55,13 @@ func (s *quarantineStore) Create(ctx context.Context, m *emailfilter.FilteredMes
 		m.CreatedAt = time.Now().UTC()
 	}
 
+	// The JSON columns go as strings: under the simple protocol production
+	// uses, a []byte is sent as a bytea literal and PostgreSQL refuses it.
 	_, err = conn.ExecContext(ctx, insertFiltered,
 		m.ID, m.TenantID, string(m.Direction), nullable(m.RuleID), m.RuleName,
 		string(m.Action), string(m.Status), nullable(m.MessageID), nullable(m.ProviderID),
-		m.From, recipients, m.Subject, m.SizeBytes, m.AttachmentCount, names,
-		matched, nullable(m.PayloadRef), m.CreatedAt, m.ExpiresAt)
+		m.From, string(recipients), m.Subject, m.SizeBytes, m.AttachmentCount, string(names),
+		string(matched), nullable(m.PayloadRef), m.CreatedAt, m.ExpiresAt)
 	return err
 }
 
