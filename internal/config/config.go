@@ -36,6 +36,12 @@ type AuthConfig struct {
 // keeps it out of the config file entirely.
 type SecretsConfig struct {
 	DataKey string `yaml:"data_key,omitempty"`
+
+	// RetiredDataKeys are keys a key change from the dashboard is still moving
+	// stored credentials off. Decrypt-only, and empty again once the change
+	// finishes; one left here means a change was interrupted, and the values
+	// it had not reached yet are still readable through it.
+	RetiredDataKeys []string `yaml:"retired_data_keys,omitempty"`
 }
 
 // AppConfig holds the global settings as they appear in the config file.

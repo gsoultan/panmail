@@ -33,6 +33,7 @@ func TestSetupMovesTheTrackingSignerOntoTheGeneratedKey(t *testing.T) {
 		&mockConnection{},
 		auth.NewSwappableTokenMaker(nil),
 		signer,
+		"",
 		func(db.Connection, string) error { return nil },
 	)
 

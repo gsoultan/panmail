@@ -315,3 +315,98 @@ func newToken() (string, error) {
 	}
 	return hex.EncodeToString(b[:]), nil
 }
+
+// RotateSecrets rewrites every stored password under the keyring's primary
+// key: the IMAP master password on each tenant's settings, and each mailbox
+// login.
+//
+// Values already on the primary key are skipped, so the pass is idempotent and
+// an interrupted run resumes by running it again. Not tenant-scoped: a key
+// still holding one tenant's rows is a key that cannot be retired.
+func (s *store) RotateSecrets(ctx context.Context) (rotated int, err error) {
+	dbConn, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+
+	// Each update binds exactly the placeholders it uses: PostgreSQL refuses a
+	// statement with a parameter it cannot type, so an unused $2 is an error.
+	tables := []struct {
+		what   string
+		list   string
+		update string
+		args   func(k1, k2, sealed string) []any
+	}{
+		{
+			"Sent copies settings",
+			`SELECT tenant_id, '', COALESCE(master_password, '') FROM sent_copy_settings`,
+			`UPDATE sent_copy_settings SET master_password = $2 WHERE tenant_id = $1`,
+			func(k1, _, sealed string) []any { return []any{k1, sealed} },
+		},
+		{
+			"Sent copies mailbox",
+			`SELECT tenant_id, address, COALESCE(password, '') FROM sent_copy_mailboxes`,
+			`UPDATE sent_copy_mailboxes SET password = $3 WHERE tenant_id = $1 AND address = $2`,
+			func(k1, k2, sealed string) []any { return []any{k1, k2, sealed} },
+		},
+	}
+
+	for _, t := range tables {
+		n, err := rotateColumn(ctx, dbConn, s.keyring, t.list, t.update, t.args)
+		rotated += n
+		if err != nil {
+			return rotated, fmt.Errorf("%s: %w", t.what, err)
+		}
+	}
+	return rotated, nil
+}
+
+// rotateColumn re-seals one encrypted column. list returns (key1, key2, value)
+// rows, and args builds update's parameters from the two keys and the new value.
+func rotateColumn(ctx context.Context, dbConn *sql.DB, keyring *secrets.Keyring, list, update string,
+	args func(k1, k2, sealed string) []any) (int, error) {
+	type row struct{ k1, k2, value string }
+
+	// Read everything first: holding a cursor open while updating the same
+	// table deadlocks on some engines and re-reads rewritten rows on others.
+	rows, err := dbConn.QueryContext(ctx, list)
+	if err != nil {
+		return 0, err
+	}
+	var all []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.k1, &r.k2, &r.value); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+
+	rotated := 0
+	for _, r := range all {
+		if !keyring.NeedsRotation(r.value) {
+			continue
+		}
+		// A failure here means a key is missing, and rewriting the row anyway
+		// would replace a recoverable password with an unreadable one.
+		plain, err := keyring.Decrypt(r.value)
+		if err != nil {
+			return rotated, fmt.Errorf("tenant %s: %w", r.k1, err)
+		}
+		sealed, err := keyring.Encrypt(plain)
+		if err != nil {
+			return rotated, fmt.Errorf("tenant %s: %w", r.k1, err)
+		}
+		if _, err := dbConn.ExecContext(ctx, update, args(r.k1, r.k2, sealed)...); err != nil {
+			return rotated, fmt.Errorf("tenant %s: %w", r.k1, err)
+		}
+		rotated++
+	}
+	return rotated, nil
+}

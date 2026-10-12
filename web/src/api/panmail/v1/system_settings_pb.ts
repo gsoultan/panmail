@@ -10,7 +10,129 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/system_settings.proto.
  */
 export const file_panmail_v1_system_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSIUChJHZXRTZXR0aW5nc1JlcXVlc3QieAoTR2V0U2V0dGluZ3NSZXNwb25zZRIsCghzZXR0aW5ncxgBIAEoCzIaLnBhbm1haWwudjEuU3lzdGVtU2V0dGluZ3MSMwoPc210cF9zdWJtaXNzaW9uGAIgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiJFChVVcGRhdGVTZXR0aW5nc1JlcXVlc3QSLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIkYKFlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzIpwBChJUbHNDZXJ0aWZpY2F0ZUluZm8SDwoHc3ViamVjdBgBIAEoCRIRCglkbnNfbmFtZXMYAiADKAkSDgoGaXNzdWVyGAMgASgJEhIKCm5vdF9iZWZvcmUYBCABKAkSEQoJbm90X2FmdGVyGAUgASgJEhoKEmZpbmdlcnByaW50X3NoYTI1NhgGIAEoCRIPCgdleHBpcmVkGAcgASgIIq8CCg5TbXRwU3VibWlzc2lvbhIPCgdlbmFibGVkGAEgASgIEgwKBGhvc3QYAiABKAkSDAoEcG9ydBgDIAEoBRIQCghzdGFydHRscxgEIAEoCBIdChVpbnNlY3VyZV9hdXRoX2FsbG93ZWQYBSABKAgSGAoQbWFuYWdlZF9ieV9mbGFncxgGIAEoCBIQCghlZGl0YWJsZRgHIAEoCBIbChNub3RfZWRpdGFibGVfcmVhc29uGAggASgJEi0KCmJpbmRfc2NvcGUYCSABKA4yGS5wYW5tYWlsLnYxLlNtdHBCaW5kU2NvcGUSMwoLY2VydGlmaWNhdGUYCiABKAsyHi5wYW5tYWlsLnYxLlRsc0NlcnRpZmljYXRlSW5mbxISCgpsYXN0X2Vycm9yGAsgASgJIs4BChRTbXRwU3VibWlzc2lvbkNvbmZpZxIPCgdlbmFibGVkGAEgASgIEi0KCmJpbmRfc2NvcGUYAiABKA4yGS5wYW5tYWlsLnYxLlNtdHBCaW5kU2NvcGUSDAoEcG9ydBgDIAEoBRIbChN0bHNfY2VydGlmaWNhdGVfcGVtGAQgASgJEhsKE3Rsc19wcml2YXRlX2tleV9wZW0YBSABKAkSGwoTYWxsb3dfaW5zZWN1cmVfYXV0aBgGIAEoCBIRCgljbGVhcl90bHMYByABKAgiTwobVXBkYXRlU210cFN1Ym1pc3Npb25SZXF1ZXN0EjAKBmNvbmZpZxgBIAEoCzIgLnBhbm1haWwudjEuU210cFN1Ym1pc3Npb25Db25maWciUwocVXBkYXRlU210cFN1Ym1pc3Npb25SZXNwb25zZRIzCg9zbXRwX3N1Ym1pc3Npb24YASABKAsyGi5wYW5tYWlsLnYxLlNtdHBTdWJtaXNzaW9uIsQFCg5TeXN0ZW1TZXR0aW5ncxIVCghiYXNlX3VybBgBIAEoCUgAiAEBEh8KEmxvZ19yZXRlbnRpb25fZGF5cxgCIAEoBUgBiAEBEhUKDXJldHJ5X3BhdHRlcm4YAyADKAkSIwoWbWVzc2FnZV9yZXRlbnRpb25fZGF5cxgEIAEoBUgCiAEBEiIKFW91dGJveF9yZXRlbnRpb25fZGF5cxgFIAEoBUgDiAEBEiMKFndlYmhvb2tfcmV0ZW50aW9uX2RheXMYBiABKAVIBIgBARIjChZhcHBfbG9nX3JldGVudGlvbl9kYXlzGAcgASgFSAWIAQESIwoWaW5ib3VuZF9yZXRlbnRpb25fZGF5cxgIIAEoBUgGiAEBEiMKFmFyY2hpdmVfcmV0ZW50aW9uX2RheXMYCSABKAVIB4gBARImChlxdWFyYW50aW5lX3JldGVudGlvbl9kYXlzGAogASgFSAiIAQESNwoRY29udGVudF9yZWRhY3Rpb24YCyABKA4yHC5wYW5tYWlsLnYxLkNvbnRlbnRSZWRhY3Rpb24SJQoYYW5hbHl0aWNzX3JldGVudGlvbl9kYXlzGAwgASgFSAmIAQFCCwoJX2Jhc2VfdXJsQhUKE19sb2dfcmV0ZW50aW9uX2RheXNCGQoXX21lc3NhZ2VfcmV0ZW50aW9uX2RheXNCGAoWX291dGJveF9yZXRlbnRpb25fZGF5c0IZChdfd2ViaG9va19yZXRlbnRpb25fZGF5c0IZChdfYXBwX2xvZ19yZXRlbnRpb25fZGF5c0IZChdfaW5ib3VuZF9yZXRlbnRpb25fZGF5c0IZChdfYXJjaGl2ZV9yZXRlbnRpb25fZGF5c0IcChpfcXVhcmFudGluZV9yZXRlbnRpb25fZGF5c0IbChlfYW5hbHl0aWNzX3JldGVudGlvbl9kYXlzKnIKDVNtdHBCaW5kU2NvcGUSHwobU01UUF9CSU5EX1NDT1BFX1VOU1BFQ0lGSUVEEAASHAoYU01UUF9CSU5EX1NDT1BFX0xPT1BCQUNLEAESIgoeU01UUF9CSU5EX1NDT1BFX0FMTF9JTlRFUkZBQ0VTEAIqrQEKEENvbnRlbnRSZWRhY3Rpb24SIQodQ09OVEVOVF9SRURBQ1RJT05fVU5TUEVDSUZJRUQQABIZChVDT05URU5UX1JFREFDVElPTl9PRkYQARIfChtDT05URU5UX1JFREFDVElPTl9QQVNTV09SRFMQAhIbChdDT05URU5UX1JFREFDVElPTl9DT0RFUxADEh0KGUNPTlRFTlRfUkVEQUNUSU9OX1NFQ1JFVFMQBDKrAgoVU3lzdGVtU2V0dGluZ3NTZXJ2aWNlEk4KC0dldFNldHRpbmdzEh4ucGFubWFpbC52MS5HZXRTZXR0aW5nc1JlcXVlc3QaHy5wYW5tYWlsLnYxLkdldFNldHRpbmdzUmVzcG9uc2USVwoOVXBkYXRlU2V0dGluZ3MSIS5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVxdWVzdBoiLnBhbm1haWwudjEuVXBkYXRlU2V0dGluZ3NSZXNwb25zZRJpChRVcGRhdGVTbXRwU3VibWlzc2lvbhInLnBhbm1haWwudjEuVXBkYXRlU210cFN1Ym1pc3Npb25SZXF1ZXN0GigucGFubWFpbC52MS5VcGRhdGVTbXRwU3VibWlzc2lvblJlc3BvbnNlQqQBCg5jb20ucGFubWFpbC52MUITU3lzdGVtU2V0dGluZ3NQcm90b1ABWjRnaXRodWIuY29tL2dzb3VsdGFuL3Bhbm1haWwvYXBpL3Bhbm1haWwvdjE7cGFubWFpbHYxogIDUFhYqgIKUGFubWFpbC5WMcoCClBhbm1haWxcVjHiAhZQYW5tYWlsXFYxXEdQQk1ldGFkYXRh6gILUGFubWFpbDo6VjFiBnByb3RvMw");
+  fileDesc("CiBwYW5tYWlsL3YxL3N5c3RlbV9zZXR0aW5ncy5wcm90bxIKcGFubWFpbC52MSJPCgdEYXRhS2V5Eg4KBmtleV9pZBgBIAEoCRIeChZtYW5hZ2VkX2J5X2Vudmlyb25tZW50GAIgASgIEhQKDHJldGlyZWRfa2V5cxgDIAEoBSITChFHZXREYXRhS2V5UmVxdWVzdCI7ChJHZXREYXRhS2V5UmVzcG9uc2USJQoIZGF0YV9rZXkYASABKAsyEy5wYW5tYWlsLnYxLkRhdGFLZXkiIwoUQ2hhbmdlRGF0YUtleVJlcXVlc3QSCwoDa2V5GAEgASgJImYKFUNoYW5nZURhdGFLZXlSZXNwb25zZRIlCghkYXRhX2tleRgBIAEoCzITLnBhbm1haWwudjEuRGF0YUtleRIVCg1nZW5lcmF0ZWRfa2V5GAIgASgJEg8KB3JvdGF0ZWQYAyABKAUiFAoSR2V0U2V0dGluZ3NSZXF1ZXN0IngKE0dldFNldHRpbmdzUmVzcG9uc2USLAoIc2V0dGluZ3MYASABKAsyGi5wYW5tYWlsLnYxLlN5c3RlbVNldHRpbmdzEjMKD3NtdHBfc3VibWlzc2lvbhgCIAEoCzIaLnBhbm1haWwudjEuU210cFN1Ym1pc3Npb24iRQoVVXBkYXRlU2V0dGluZ3NSZXF1ZXN0EiwKCHNldHRpbmdzGAEgASgLMhoucGFubWFpbC52MS5TeXN0ZW1TZXR0aW5ncyJGChZVcGRhdGVTZXR0aW5nc1Jlc3BvbnNlEiwKCHNldHRpbmdzGAEgASgLMhoucGFubWFpbC52MS5TeXN0ZW1TZXR0aW5ncyKcAQoSVGxzQ2VydGlmaWNhdGVJbmZvEg8KB3N1YmplY3QYASABKAkSEQoJZG5zX25hbWVzGAIgAygJEg4KBmlzc3VlchgDIAEoCRISCgpub3RfYmVmb3JlGAQgASgJEhEKCW5vdF9hZnRlchgFIAEoCRIaChJmaW5nZXJwcmludF9zaGEyNTYYBiABKAkSDwoHZXhwaXJlZBgHIAEoCCKvAgoOU210cFN1Ym1pc3Npb24SDwoHZW5hYmxlZBgBIAEoCBIMCgRob3N0GAIgASgJEgwKBHBvcnQYAyABKAUSEAoIc3RhcnR0bHMYBCABKAgSHQoVaW5zZWN1cmVfYXV0aF9hbGxvd2VkGAUgASgIEhgKEG1hbmFnZWRfYnlfZmxhZ3MYBiABKAgSEAoIZWRpdGFibGUYByABKAgSGwoTbm90X2VkaXRhYmxlX3JlYXNvbhgIIAEoCRItCgpiaW5kX3Njb3BlGAkgASgOMhkucGFubWFpbC52MS5TbXRwQmluZFNjb3BlEjMKC2NlcnRpZmljYXRlGAogASgLMh4ucGFubWFpbC52MS5UbHNDZXJ0aWZpY2F0ZUluZm8SEgoKbGFzdF9lcnJvchgLIAEoCSLOAQoUU210cFN1Ym1pc3Npb25Db25maWcSDwoHZW5hYmxlZBgBIAEoCBItCgpiaW5kX3Njb3BlGAIgASgOMhkucGFubWFpbC52MS5TbXRwQmluZFNjb3BlEgwKBHBvcnQYAyABKAUSGwoTdGxzX2NlcnRpZmljYXRlX3BlbRgEIAEoCRIbChN0bHNfcHJpdmF0ZV9rZXlfcGVtGAUgASgJEhsKE2FsbG93X2luc2VjdXJlX2F1dGgYBiABKAgSEQoJY2xlYXJfdGxzGAcgASgIIk8KG1VwZGF0ZVNtdHBTdWJtaXNzaW9uUmVxdWVzdBIwCgZjb25maWcYASABKAsyIC5wYW5tYWlsLnYxLlNtdHBTdWJtaXNzaW9uQ29uZmlnIlMKHFVwZGF0ZVNtdHBTdWJtaXNzaW9uUmVzcG9uc2USMwoPc210cF9zdWJtaXNzaW9uGAEgASgLMhoucGFubWFpbC52MS5TbXRwU3VibWlzc2lvbiLEBQoOU3lzdGVtU2V0dGluZ3MSFQoIYmFzZV91cmwYASABKAlIAIgBARIfChJsb2dfcmV0ZW50aW9uX2RheXMYAiABKAVIAYgBARIVCg1yZXRyeV9wYXR0ZXJuGAMgAygJEiMKFm1lc3NhZ2VfcmV0ZW50aW9uX2RheXMYBCABKAVIAogBARIiChVvdXRib3hfcmV0ZW50aW9uX2RheXMYBSABKAVIA4gBARIjChZ3ZWJob29rX3JldGVudGlvbl9kYXlzGAYgASgFSASIAQESIwoWYXBwX2xvZ19yZXRlbnRpb25fZGF5cxgHIAEoBUgFiAEBEiMKFmluYm91bmRfcmV0ZW50aW9uX2RheXMYCCABKAVIBogBARIjChZhcmNoaXZlX3JldGVudGlvbl9kYXlzGAkgASgFSAeIAQESJgoZcXVhcmFudGluZV9yZXRlbnRpb25fZGF5cxgKIAEoBUgIiAEBEjcKEWNvbnRlbnRfcmVkYWN0aW9uGAsgASgOMhwucGFubWFpbC52MS5Db250ZW50UmVkYWN0aW9uEiUKGGFuYWx5dGljc19yZXRlbnRpb25fZGF5cxgMIAEoBUgJiAEBQgsKCV9iYXNlX3VybEIVChNfbG9nX3JldGVudGlvbl9kYXlzQhkKF19tZXNzYWdlX3JldGVudGlvbl9kYXlzQhgKFl9vdXRib3hfcmV0ZW50aW9uX2RheXNCGQoXX3dlYmhvb2tfcmV0ZW50aW9uX2RheXNCGQoXX2FwcF9sb2dfcmV0ZW50aW9uX2RheXNCGQoXX2luYm91bmRfcmV0ZW50aW9uX2RheXNCGQoXX2FyY2hpdmVfcmV0ZW50aW9uX2RheXNCHAoaX3F1YXJhbnRpbmVfcmV0ZW50aW9uX2RheXNCGwoZX2FuYWx5dGljc19yZXRlbnRpb25fZGF5cypyCg1TbXRwQmluZFNjb3BlEh8KG1NNVFBfQklORF9TQ09QRV9VTlNQRUNJRklFRBAAEhwKGFNNVFBfQklORF9TQ09QRV9MT09QQkFDSxABEiIKHlNNVFBfQklORF9TQ09QRV9BTExfSU5URVJGQUNFUxACKq0BChBDb250ZW50UmVkYWN0aW9uEiEKHUNPTlRFTlRfUkVEQUNUSU9OX1VOU1BFQ0lGSUVEEAASGQoVQ09OVEVOVF9SRURBQ1RJT05fT0ZGEAESHwobQ09OVEVOVF9SRURBQ1RJT05fUEFTU1dPUkRTEAISGwoXQ09OVEVOVF9SRURBQ1RJT05fQ09ERVMQAxIdChlDT05URU5UX1JFREFDVElPTl9TRUNSRVRTEAQyzgMKFVN5c3RlbVNldHRpbmdzU2VydmljZRJOCgtHZXRTZXR0aW5ncxIeLnBhbm1haWwudjEuR2V0U2V0dGluZ3NSZXF1ZXN0Gh8ucGFubWFpbC52MS5HZXRTZXR0aW5nc1Jlc3BvbnNlElcKDlVwZGF0ZVNldHRpbmdzEiEucGFubWFpbC52MS5VcGRhdGVTZXR0aW5nc1JlcXVlc3QaIi5wYW5tYWlsLnYxLlVwZGF0ZVNldHRpbmdzUmVzcG9uc2USaQoUVXBkYXRlU210cFN1Ym1pc3Npb24SJy5wYW5tYWlsLnYxLlVwZGF0ZVNtdHBTdWJtaXNzaW9uUmVxdWVzdBooLnBhbm1haWwudjEuVXBkYXRlU210cFN1Ym1pc3Npb25SZXNwb25zZRJLCgpHZXREYXRhS2V5Eh0ucGFubWFpbC52MS5HZXREYXRhS2V5UmVxdWVzdBoeLnBhbm1haWwudjEuR2V0RGF0YUtleVJlc3BvbnNlElQKDUNoYW5nZURhdGFLZXkSIC5wYW5tYWlsLnYxLkNoYW5nZURhdGFLZXlSZXF1ZXN0GiEucGFubWFpbC52MS5DaGFuZ2VEYXRhS2V5UmVzcG9uc2VCpAEKDmNvbS5wYW5tYWlsLnYxQhNTeXN0ZW1TZXR0aW5nc1Byb3RvUAFaNGdpdGh1Yi5jb20vZ3NvdWx0YW4vcGFubWFpbC9hcGkvcGFubWFpbC92MTtwYW5tYWlsdjGiAgNQWFiqAgpQYW5tYWlsLlYxygIKUGFubWFpbFxWMeICFlBhbm1haWxcVjFcR1BCTWV0YWRhdGHqAgtQYW5tYWlsOjpWMWIGcHJvdG8z");
+
+/**
+ * DataKey describes the data encryption key without disclosing it.
+ *
+ * Kept out of SystemSettings for the same reason SmtpSubmission is: that
+ * message is readable by any signed-in user.
+ *
+ * @generated from message panmail.v1.DataKey
+ */
+export type DataKey = Message<"panmail.v1.DataKey"> & {
+  /**
+   * The non-secret fingerprint stored ciphertext is tagged with, and the value
+   * a backup manifest records as secret_key_id.
+   *
+   * @generated from field: string key_id = 1;
+   */
+  keyId: string;
+
+  /**
+   * True when the key comes from PANMAIL_SECRET_KEY. It can then only be
+   * changed there, and ChangeDataKey is refused.
+   *
+   * @generated from field: bool managed_by_environment = 2;
+   */
+  managedByEnvironment: boolean;
+
+  /**
+   * Decrypt-only keys still configured. Non-zero after a change from the
+   * dashboard means it was interrupted; changing the key again finishes it.
+   *
+   * @generated from field: int32 retired_keys = 3;
+   */
+  retiredKeys: number;
+};
+
+/**
+ * Describes the message panmail.v1.DataKey.
+ * Use `create(DataKeySchema)` to create a new message.
+ */
+export const DataKeySchema: GenMessage<DataKey> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 0);
+
+/**
+ * @generated from message panmail.v1.GetDataKeyRequest
+ */
+export type GetDataKeyRequest = Message<"panmail.v1.GetDataKeyRequest"> & {
+};
+
+/**
+ * Describes the message panmail.v1.GetDataKeyRequest.
+ * Use `create(GetDataKeyRequestSchema)` to create a new message.
+ */
+export const GetDataKeyRequestSchema: GenMessage<GetDataKeyRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 1);
+
+/**
+ * @generated from message panmail.v1.GetDataKeyResponse
+ */
+export type GetDataKeyResponse = Message<"panmail.v1.GetDataKeyResponse"> & {
+  /**
+   * @generated from field: panmail.v1.DataKey data_key = 1;
+   */
+  dataKey?: DataKey | undefined;
+};
+
+/**
+ * Describes the message panmail.v1.GetDataKeyResponse.
+ * Use `create(GetDataKeyResponseSchema)` to create a new message.
+ */
+export const GetDataKeyResponseSchema: GenMessage<GetDataKeyResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 2);
+
+/**
+ * @generated from message panmail.v1.ChangeDataKeyRequest
+ */
+export type ChangeDataKeyRequest = Message<"panmail.v1.ChangeDataKeyRequest"> & {
+  /**
+   * 64 hex characters. Empty generates a new key.
+   *
+   * @generated from field: string key = 1;
+   */
+  key: string;
+};
+
+/**
+ * Describes the message panmail.v1.ChangeDataKeyRequest.
+ * Use `create(ChangeDataKeyRequestSchema)` to create a new message.
+ */
+export const ChangeDataKeyRequestSchema: GenMessage<ChangeDataKeyRequest> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 3);
+
+/**
+ * @generated from message panmail.v1.ChangeDataKeyResponse
+ */
+export type ChangeDataKeyResponse = Message<"panmail.v1.ChangeDataKeyResponse"> & {
+  /**
+   * @generated from field: panmail.v1.DataKey data_key = 1;
+   */
+  dataKey?: DataKey | undefined;
+
+  /**
+   * The generated key, returned once so it can be backed up. Empty when the
+   * caller supplied the key: it is never echoed back.
+   *
+   * @generated from field: string generated_key = 2;
+   */
+  generatedKey: string;
+
+  /**
+   * Stored credentials re-encrypted under the new key.
+   *
+   * @generated from field: int32 rotated = 3;
+   */
+  rotated: number;
+};
+
+/**
+ * Describes the message panmail.v1.ChangeDataKeyResponse.
+ * Use `create(ChangeDataKeyResponseSchema)` to create a new message.
+ */
+export const ChangeDataKeyResponseSchema: GenMessage<ChangeDataKeyResponse> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_system_settings, 4);
 
 /**
  * @generated from message panmail.v1.GetSettingsRequest
@@ -23,7 +145,7 @@ export type GetSettingsRequest = Message<"panmail.v1.GetSettingsRequest"> & {
  * Use `create(GetSettingsRequestSchema)` to create a new message.
  */
 export const GetSettingsRequestSchema: GenMessage<GetSettingsRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 0);
+  messageDesc(file_panmail_v1_system_settings, 5);
 
 /**
  * @generated from message panmail.v1.GetSettingsResponse
@@ -48,7 +170,7 @@ export type GetSettingsResponse = Message<"panmail.v1.GetSettingsResponse"> & {
  * Use `create(GetSettingsResponseSchema)` to create a new message.
  */
 export const GetSettingsResponseSchema: GenMessage<GetSettingsResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 1);
+  messageDesc(file_panmail_v1_system_settings, 6);
 
 /**
  * @generated from message panmail.v1.UpdateSettingsRequest
@@ -65,7 +187,7 @@ export type UpdateSettingsRequest = Message<"panmail.v1.UpdateSettingsRequest"> 
  * Use `create(UpdateSettingsRequestSchema)` to create a new message.
  */
 export const UpdateSettingsRequestSchema: GenMessage<UpdateSettingsRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 2);
+  messageDesc(file_panmail_v1_system_settings, 7);
 
 /**
  * @generated from message panmail.v1.UpdateSettingsResponse
@@ -82,7 +204,7 @@ export type UpdateSettingsResponse = Message<"panmail.v1.UpdateSettingsResponse"
  * Use `create(UpdateSettingsResponseSchema)` to create a new message.
  */
 export const UpdateSettingsResponseSchema: GenMessage<UpdateSettingsResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 3);
+  messageDesc(file_panmail_v1_system_settings, 8);
 
 /**
  * TlsCertificateInfo describes the stored keypair without disclosing it.
@@ -146,7 +268,7 @@ export type TlsCertificateInfo = Message<"panmail.v1.TlsCertificateInfo"> & {
  * Use `create(TlsCertificateInfoSchema)` to create a new message.
  */
 export const TlsCertificateInfoSchema: GenMessage<TlsCertificateInfo> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 4);
+  messageDesc(file_panmail_v1_system_settings, 9);
 
 /**
  * SmtpSubmission reports the SMTP submission listener, so the dashboard can
@@ -258,7 +380,7 @@ export type SmtpSubmission = Message<"panmail.v1.SmtpSubmission"> & {
  * Use `create(SmtpSubmissionSchema)` to create a new message.
  */
 export const SmtpSubmissionSchema: GenMessage<SmtpSubmission> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 5);
+  messageDesc(file_panmail_v1_system_settings, 10);
 
 /**
  * SmtpSubmissionConfig is the desired state of the listener.
@@ -330,7 +452,7 @@ export type SmtpSubmissionConfig = Message<"panmail.v1.SmtpSubmissionConfig"> & 
  * Use `create(SmtpSubmissionConfigSchema)` to create a new message.
  */
 export const SmtpSubmissionConfigSchema: GenMessage<SmtpSubmissionConfig> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 6);
+  messageDesc(file_panmail_v1_system_settings, 11);
 
 /**
  * @generated from message panmail.v1.UpdateSmtpSubmissionRequest
@@ -347,7 +469,7 @@ export type UpdateSmtpSubmissionRequest = Message<"panmail.v1.UpdateSmtpSubmissi
  * Use `create(UpdateSmtpSubmissionRequestSchema)` to create a new message.
  */
 export const UpdateSmtpSubmissionRequestSchema: GenMessage<UpdateSmtpSubmissionRequest> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 7);
+  messageDesc(file_panmail_v1_system_settings, 12);
 
 /**
  * @generated from message panmail.v1.UpdateSmtpSubmissionResponse
@@ -368,7 +490,7 @@ export type UpdateSmtpSubmissionResponse = Message<"panmail.v1.UpdateSmtpSubmiss
  * Use `create(UpdateSmtpSubmissionResponseSchema)` to create a new message.
  */
 export const UpdateSmtpSubmissionResponseSchema: GenMessage<UpdateSmtpSubmissionResponse> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 8);
+  messageDesc(file_panmail_v1_system_settings, 13);
 
 /**
  * SystemSettings holds the global, admin-editable configuration.
@@ -500,7 +622,7 @@ export type SystemSettings = Message<"panmail.v1.SystemSettings"> & {
  * Use `create(SystemSettingsSchema)` to create a new message.
  */
 export const SystemSettingsSchema: GenMessage<SystemSettings> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_system_settings, 9);
+  messageDesc(file_panmail_v1_system_settings, 14);
 
 /**
  * SmtpBindScope is where the submission listener accepts connections, as a
@@ -636,6 +758,27 @@ export const SystemSettingsService: GenService<{
     methodKind: "unary";
     input: typeof UpdateSmtpSubmissionRequestSchema;
     output: typeof UpdateSmtpSubmissionResponseSchema;
+  },
+  /**
+   * Describes the key stored credentials are encrypted with. Admin only.
+   *
+   * @generated from rpc panmail.v1.SystemSettingsService.GetDataKey
+   */
+  getDataKey: {
+    methodKind: "unary";
+    input: typeof GetDataKeyRequestSchema;
+    output: typeof GetDataKeyResponseSchema;
+  },
+  /**
+   * Replaces that key and re-encrypts every stored credential under it.
+   * Admin only.
+   *
+   * @generated from rpc panmail.v1.SystemSettingsService.ChangeDataKey
+   */
+  changeDataKey: {
+    methodKind: "unary";
+    input: typeof ChangeDataKeyRequestSchema;
+    output: typeof ChangeDataKeyResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_panmail_v1_system_settings, 0);

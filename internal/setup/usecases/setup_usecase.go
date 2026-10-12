@@ -60,7 +60,12 @@ type setupUsecase struct {
 	conn           db.Connection
 	tokenMaker     *auth.SwappableTokenMaker
 	trackingSigner *tracking.Signer
-	migrateFn      func(db.Connection, string) error
+	// dataKey is the key the running process already encrypts credentials
+	// with, chosen at boot, and written to the config so a restart keeps
+	// reading what was stored before it. Empty when the key comes from the
+	// environment, which stays out of the file.
+	dataKey   string
+	migrateFn func(db.Connection, string) error
 
 	// saveConfig writes the configuration. A field so that a test can make
 	// the last step of setup fail.
@@ -72,6 +77,7 @@ func NewSetupUsecase(
 	conn db.Connection,
 	tokenMaker *auth.SwappableTokenMaker,
 	trackingSigner *tracking.Signer,
+	dataKey string,
 	migrateFn func(db.Connection, string) error,
 ) SetupUsecase {
 	return &setupUsecase{
@@ -79,6 +85,7 @@ func NewSetupUsecase(
 		conn:           conn,
 		tokenMaker:     tokenMaker,
 		trackingSigner: trackingSigner,
+		dataKey:        dataKey,
 		migrateFn:      migrateFn,
 		saveConfig:     config.Save,
 	}
@@ -185,6 +192,9 @@ func (u *setupUsecase) Setup(ctx context.Context, dbCfg *panmailv1.DatabaseConfi
 		},
 		App: config.AppConfig{
 			BaseURL: baseURL,
+		},
+		Secrets: config.SecretsConfig{
+			DataKey: u.dataKey,
 		},
 	}
 

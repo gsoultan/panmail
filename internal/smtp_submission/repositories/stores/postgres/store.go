@@ -166,3 +166,40 @@ func (s *store) unseal(stored string) (string, error) {
 	}
 	return plain, nil
 }
+
+// RotateSecrets rewrites the stored TLS private key under the keyring's
+// primary key. Idempotent: a key already on the primary is left alone.
+func (s *store) RotateSecrets(ctx context.Context) (int, error) {
+	dbConn, err := s.getDB()
+	if err != nil {
+		return 0, err
+	}
+
+	var stored string
+	err = dbConn.QueryRowContext(ctx,
+		`SELECT COALESCE(tls_private_key, '') FROM smtp_submission WHERE id = 1`).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !s.keyring.NeedsRotation(stored) {
+		return 0, nil
+	}
+
+	// Decrypted and re-sealed in memory only; the plaintext key goes nowhere.
+	plain, err := s.keyring.Decrypt(stored)
+	if err != nil {
+		return 0, fmt.Errorf("SMTP TLS private key: %w", err)
+	}
+	sealed, err := s.keyring.Encrypt(plain)
+	if err != nil {
+		return 0, fmt.Errorf("SMTP TLS private key: %w", err)
+	}
+	if _, err := dbConn.ExecContext(ctx,
+		`UPDATE smtp_submission SET tls_private_key = $1 WHERE id = 1`, sealed); err != nil {
+		return 0, fmt.Errorf("SMTP TLS private key: %w", err)
+	}
+	return 1, nil
+}

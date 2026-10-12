@@ -359,26 +359,33 @@ func main() {
 	// 3b. Derive the data encryption key for stored credentials. It is kept
 	// separate from the token signing key so the two can be rotated and
 	// compromised independently.
-	var keyring *secrets.Keyring
+	//
+	// Before setup there is no config to keep a key in, so one is chosen now
+	// and setup persists it. Building the keyring only once a config existed
+	// left every store wired below without one until the next restart, and
+	// the first provider saved after the setup wizard was refused.
+	var dataKey, setupDataKey string
 	if cfg != nil {
-		dataKey, err := config.EnsureDataKey(cfg)
-		if err != nil {
-			slog.Error("failed to resolve the data encryption key", "error", err)
-			os.Exit(1)
-		}
-		// Retired keys are decrypt-only, so values written before a rotation
-		// stay readable while they are moved across. Without them a key can
-		// never be replaced: reading what the old key wrote needs the old key.
-		retired := secrets.ParseRetiredKeys(os.Getenv(secrets.EnvRetiredKeysName))
-		keyring, err = secrets.NewKeyring(dataKey, retired...)
-		if err != nil {
-			slog.Error("failed to initialize the data encryption keyring", "error", err)
-			os.Exit(1)
-		}
-		if len(retired) > 0 {
-			slog.Info("secret key rotation in progress",
-				"primary_key", keyring.PrimaryKeyID(), "retired_keys", len(retired))
-		}
+		dataKey, err = config.EnsureDataKey(cfg)
+	} else {
+		dataKey, setupDataKey, err = config.FirstRunDataKey()
+	}
+	if err != nil {
+		slog.Error("failed to resolve the data encryption key", "error", err)
+		os.Exit(1)
+	}
+	// Retired keys are decrypt-only, so values written before a rotation
+	// stay readable while they are moved across. Without them a key can
+	// never be replaced: reading what the old key wrote needs the old key.
+	retired := config.RetiredDataKeys(cfg)
+	keyring, err := secrets.NewKeyring(dataKey, retired...)
+	if err != nil {
+		slog.Error("failed to initialize the data encryption keyring", "error", err)
+		os.Exit(1)
+	}
+	if len(retired) > 0 {
+		slog.Info("secret key rotation in progress",
+			"primary_key", keyring.PrimaryKeyID(), "retired_keys", len(retired))
 	}
 
 	// Tracking links are signed so recorded opens and clicks can be trusted
@@ -996,8 +1003,9 @@ func main() {
 	// all: the private key is sealed with the data key and there is no
 	// plaintext fallback, so the panel says so up front rather than failing at
 	// save time.
+	smtpSubmissionStore := smtpsubmissionstores.NewStore(conn, keyring)
 	smtpSubmissionUsecase := smtpusecases.NewUsecase(
-		smtpsubmissionstores.NewStore(conn, keyring),
+		smtpSubmissionStore,
 		smtpSupervisor,
 		smtpFlags,
 		keyring != nil,
@@ -1019,9 +1027,16 @@ func main() {
 		runWorker(&workers, workerCtx, "smtp-submission", func() { smtpSubmissionUsecase.Run(workerCtx) })
 	}
 
-	settingsService := settingsservices.NewSettingsService(settingsUsecase, smtpSubmissionUsecase)
+	settingsService := settingsservices.NewSettingsService(settingsUsecase, smtpSubmissionUsecase,
+		// Every store that seals a value, or its rows are left on the old key.
+		settingsusecases.NewDataKeyUsecase(keyring,
+			providerRepo.(settingsusecases.SecretRotator),
+			webhookRepo.(settingsusecases.SecretRotator),
+			sentCopyRepo.(settingsusecases.SecretRotator),
+			smtpSubmissionStore.(settingsusecases.SecretRotator),
+		))
 
-	setupUsecase := setupusecases.NewSetupUsecase(authUsecase, conn, swappableTokenMaker, trackingSigner, migrate)
+	setupUsecase := setupusecases.NewSetupUsecase(authUsecase, conn, swappableTokenMaker, trackingSigner, setupDataKey, migrate)
 	setupService := setupservices.NewSetupService(setupUsecase)
 	warnIfSetupIsStillOpen(setupUsecase)
 
@@ -1731,7 +1746,7 @@ func handleRotateSecretsCommand() {
 		os.Exit(1)
 	}
 
-	retired := secrets.ParseRetiredKeys(os.Getenv(secrets.EnvRetiredKeysName))
+	retired := config.RetiredDataKeys(cfg)
 	keyring, err := secrets.NewKeyring(dataKey, retired...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot build the keyring: %v\n", err)
@@ -1762,6 +1777,8 @@ func handleRotateSecretsCommand() {
 	}{
 		{"provider", postgres.NewStore(conn, keyring)},
 		{"webhook", webhookstores.NewStore(conn, keyring)},
+		{"Sent copies", sentcopystores.NewStore(conn, keyring)},
+		{"SMTP submission", smtpsubmissionstores.NewStore(conn, keyring)},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

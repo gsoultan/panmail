@@ -94,6 +94,14 @@ var procedurePolicy = map[string]access{
 	// credential able to widen the surface on which its own kind is accepted.
 	panmailv1connect.SystemSettingsServiceUpdateSmtpSubmissionProcedure: {minRole: RoleSuperAdmin},
 
+	// One key seals every tenant's provider passwords, so it is the
+	// deployment's operator's. Reading it is restricted too: the response
+	// carries no key material, but which key is in use and whether a change
+	// was interrupted is the operator's business only. No scope, so no API
+	// key can replace the key that protects the credentials behind it.
+	panmailv1connect.SystemSettingsServiceGetDataKeyProcedure:    {minRole: RoleSuperAdmin},
+	panmailv1connect.SystemSettingsServiceChangeDataKeyProcedure: {minRole: RoleSuperAdmin},
+
 	// Performance metrics are the host's: CPU, memory, load, disk, open files
 	// and the send rate summed over every tenant. None of it is scoped to the
 	// caller's tenant, so a tenant administrator reading it would be watching

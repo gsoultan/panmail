@@ -34,6 +34,9 @@ import { useAdaptedForm } from '../lib/form/useAdaptedForm';
 import { settingsService } from '../services/settings';
 import { notifications } from '@mantine/notifications';
 import { RetentionSettings } from '../features/settings/components/RetentionSettings';
+import { DataKeySettings } from '../features/settings/components/dataKey/DataKeySettings';
+import { useAuthStore } from '../store/authStore';
+import { accessFor } from '../lib/access';
 import {
   destructiveChanges,
   describeRetention,
@@ -44,6 +47,10 @@ import {
 
 export const SettingsPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  // The key endpoints answer only a super admin, so nobody else is shown a
+  // panel that can only fail.
+  const mayManageKey = accessFor(user?.role).configureDeployment;
   const {
     data: settings,
     isLoading,
@@ -270,6 +277,8 @@ export const SettingsPage: React.FC = () => {
             </Stack>
           </form>
         </Paper>
+
+        {mayManageKey ? <DataKeySettings /> : null}
       </Stack>
 
       <Modal
