@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
@@ -34,7 +35,8 @@ var (
 
 // selectColumns is the column list shared by every read, kept in one place so
 // the dynamic filter query below cannot drift from the embedded ones.
-const selectColumns = "id, tenant_id, name, type, config, allowed_domains, webhook_secret, created_at, updated_at"
+const selectColumns = "id, tenant_id, name, type, config, allowed_domains, webhook_secret, " +
+	"send_rate_per_minute, send_burst, created_at, updated_at"
 
 type store struct {
 	conn    db.Connection
@@ -101,7 +103,7 @@ func (s *store) List(ctx context.Context, tenantID string, name string, provider
 
 	if name != "" {
 		argCount++
-		query += fmt.Sprintf(" AND name ILIKE $%d", argCount)
+		query += fmt.Sprintf(" AND name %s $%d", likeOperator(dbConn), argCount)
 		args = append(args, "%"+name+"%")
 	}
 
@@ -172,6 +174,17 @@ func (s *store) Delete(ctx context.Context, tenantID, id string) error {
 	}
 	_, err = db.ExecContext(ctx, deleteProviderQuery, tenantID, id)
 	return err
+}
+
+// likeOperator is the case-insensitive match each engine spells differently.
+//
+// ILIKE is PostgreSQL's and is a syntax error on SQLite, where LIKE is already
+// case-insensitive for ASCII. The event store makes the same choice.
+func likeOperator(conn *sql.DB) string {
+	if strings.Contains(strings.ToLower(fmt.Sprintf("%T", conn.Driver())), "stdlib") {
+		return "ILIKE"
+	}
+	return "LIKE"
 }
 
 // seal encrypts the values that must not be stored in the clear.
