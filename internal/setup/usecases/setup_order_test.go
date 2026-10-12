@@ -45,7 +45,7 @@ func configExists(t *testing.T) bool {
 }
 
 func newOrderedUsecase(authUsecase *mockAuthUsecase, conn *mockConnection) SetupUsecase {
-	return NewSetupUsecase(authUsecase, conn, auth.NewSwappableTokenMaker(nil), nil,
+	return NewSetupUsecase(authUsecase, conn, auth.NewSwappableTokenMaker(nil), nil, "",
 		func(db.Connection, string) error { return nil })
 }
 
