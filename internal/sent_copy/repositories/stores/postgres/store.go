@@ -329,25 +329,30 @@ func (s *store) RotateSecrets(ctx context.Context) (rotated int, err error) {
 		return 0, err
 	}
 
+	// Each update binds exactly the placeholders it uses: PostgreSQL refuses a
+	// statement with a parameter it cannot type, so an unused $2 is an error.
 	tables := []struct {
 		what   string
 		list   string
 		update string
+		args   func(k1, k2, sealed string) []any
 	}{
 		{
 			"Sent copies settings",
 			`SELECT tenant_id, '', COALESCE(master_password, '') FROM sent_copy_settings`,
-			`UPDATE sent_copy_settings SET master_password = $3 WHERE tenant_id = $1`,
+			`UPDATE sent_copy_settings SET master_password = $2 WHERE tenant_id = $1`,
+			func(k1, _, sealed string) []any { return []any{k1, sealed} },
 		},
 		{
 			"Sent copies mailbox",
 			`SELECT tenant_id, address, COALESCE(password, '') FROM sent_copy_mailboxes`,
 			`UPDATE sent_copy_mailboxes SET password = $3 WHERE tenant_id = $1 AND address = $2`,
+			func(k1, k2, sealed string) []any { return []any{k1, k2, sealed} },
 		},
 	}
 
 	for _, t := range tables {
-		n, err := rotateColumn(ctx, dbConn, s.keyring, t.list, t.update)
+		n, err := rotateColumn(ctx, dbConn, s.keyring, t.list, t.update, t.args)
 		rotated += n
 		if err != nil {
 			return rotated, fmt.Errorf("%s: %w", t.what, err)
@@ -357,8 +362,9 @@ func (s *store) RotateSecrets(ctx context.Context) (rotated int, err error) {
 }
 
 // rotateColumn re-seals one encrypted column. list returns (key1, key2, value)
-// rows and update takes the same two keys and the new value.
-func rotateColumn(ctx context.Context, dbConn *sql.DB, keyring *secrets.Keyring, list, update string) (int, error) {
+// rows, and args builds update's parameters from the two keys and the new value.
+func rotateColumn(ctx context.Context, dbConn *sql.DB, keyring *secrets.Keyring, list, update string,
+	args func(k1, k2, sealed string) []any) (int, error) {
 	type row struct{ k1, k2, value string }
 
 	// Read everything first: holding a cursor open while updating the same
@@ -397,7 +403,7 @@ func rotateColumn(ctx context.Context, dbConn *sql.DB, keyring *secrets.Keyring,
 		if err != nil {
 			return rotated, fmt.Errorf("tenant %s: %w", r.k1, err)
 		}
-		if _, err := dbConn.ExecContext(ctx, update, r.k1, r.k2, sealed); err != nil {
+		if _, err := dbConn.ExecContext(ctx, update, args(r.k1, r.k2, sealed)...); err != nil {
 			return rotated, fmt.Errorf("tenant %s: %w", r.k1, err)
 		}
 		rotated++
