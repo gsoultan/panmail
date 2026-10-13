@@ -10,13 +10,13 @@ import {
   Code,
   Table,
   Select,
-  CopyButton,
   ActionIcon,
   Tooltip,
   Loader,
   Button,
   rem,
 } from '@mantine/core';
+import { CopyButton } from '../../../../lib/CopyButton';
 import {
   IconMail,
   IconCopy,

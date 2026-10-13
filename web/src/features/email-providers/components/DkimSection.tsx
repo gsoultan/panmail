@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
 import {
   Stack, Group, Text, TextInput, Textarea, Paper, Divider, Badge,
-  Alert, CopyButton, Tooltip, ActionIcon, Code, Switch,
+  Alert, Tooltip, ActionIcon, Code, Switch,
 } from '@mantine/core';
+import { CopyButton } from '../../../lib/CopyButton';
 import { IconCopy, IconCheck, IconShieldCheck, IconAlertTriangle, IconWorld } from '@tabler/icons-react';
 
 interface DkimSectionProps {

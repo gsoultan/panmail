@@ -1,5 +1,6 @@
 import React from 'react';
-import { TextInput, Select, NumberInput, Checkbox, Button, Stack, Group, Paper, Title, Divider, Text, CopyButton, Tooltip, ActionIcon } from '@mantine/core';
+import { TextInput, Select, NumberInput, Checkbox, Button, Stack, Group, Paper, Title, Divider, Text, Tooltip, ActionIcon } from '@mantine/core';
+import { CopyButton } from '../../../lib/CopyButton';
 import { IconCopy, IconCheck } from '@tabler/icons-react';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
 import { useAdaptedForm, type FieldErrors } from '../../../lib/form/useAdaptedForm';

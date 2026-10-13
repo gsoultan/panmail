@@ -29,6 +29,7 @@ import { SmtpIntegrationPanel } from '../features/settings/components/smtp/SmtpI
 import { SentCopiesSettings } from '../features/settings/components/sentCopies/SentCopiesSettings';
 import { useAuthStore } from '../store/authStore';
 import { accessFor } from '../lib/access';
+import { useCopy } from '../lib/useCopy';
 import { ScopePicker } from '../features/auth/components/ScopePicker';
 import { DEFAULT_SCOPE_IDS, resolveScopes, sanitize, summarize, type ScopeId } from '../features/auth/scopes';
 
@@ -93,7 +94,7 @@ export const ApiKeysPage: React.FC = () => {
   const [editScopes, setEditScopes] = useState<Set<ScopeId>>(() => new Set());
   const [keyName, setKeyName] = useState('');
   const [newKey, setNewKey] = useState<{ name: string; key: string; scopes: string[] } | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy(2000);
   // Seeded with the server's own default so the modal opens on the
   // least-privilege grant rather than on nothing.
   const [scopes, setScopes] = useState<Set<ScopeId>>(() => new Set(DEFAULT_SCOPE_IDS));
@@ -196,11 +197,8 @@ export const ApiKeysPage: React.FC = () => {
     });
   };
 
-  const handleCopy = () => {
-    if (newKey) {
-      navigator.clipboard.writeText(newKey.key);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    if (newKey && (await copy(newKey.key))) {
       notifications.show({
         message: 'API key copied to clipboard',
         color: 'brand',
