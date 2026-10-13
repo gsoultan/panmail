@@ -124,6 +124,7 @@ Administrator.
 | --- | --- |
 | F1 | Per-tenant inbound and outbound rules (allow, reject, tag, hold for review), compiled once per tenant and cached briefly. |
 | F2 | Held messages wait in a review queue; on expiry the held payload is discarded, and finished review records are pruned on the quarantine retention. |
+| F3 | A rule can match the text inside a PDF, Word (.docx) or Excel (.xlsx) attachment. The text is read only when a tenant's rule asks for it, and the read is bounded (25 MB per file, 1 MB of text, 64 MB decompressed, 1000 PDF pages). An attachment that cannot be read (encrypted, scanned, legacy .doc/.xls) has no text and does not match. Inbound messages do not yet pass their attachments to the filter, so today this applies to outbound mail. |
 
 ### 4.6 Administration
 

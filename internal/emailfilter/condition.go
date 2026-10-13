@@ -24,6 +24,10 @@ const (
 	FieldAttachmentName      Field = "attachment_name"
 	FieldAttachmentExtension Field = "attachment_extension"
 
+	// FieldAttachmentText is the text inside a PDF, Word or Excel attachment.
+	// See internal/emailfilter/attachtext for what is read and its limits.
+	FieldAttachmentText Field = "attachment_text"
+
 	FieldAttachmentCount     Field = "attachment_count"
 	FieldAttachmentSize      Field = "attachment_size"
 	FieldTotalAttachmentSize Field = "total_attachment_size"
@@ -96,6 +100,7 @@ var fieldKinds = map[Field]fieldKind{
 
 	FieldSubject: kindText, FieldBody: kindText, FieldSubjectOrBody: kindText,
 	FieldAttachmentName: kindText, FieldAttachmentExtension: kindText,
+	FieldAttachmentText: kindText,
 
 	FieldHeader: kindHeader,
 
@@ -266,6 +271,12 @@ func (c Condition) subjects(m Message) []string {
 			exts = append(exts, a.Extension())
 		}
 		return exts
+	case FieldAttachmentText:
+		texts := make([]string, 0, len(m.Attachments))
+		for _, a := range m.Attachments {
+			texts = append(texts, a.Text)
+		}
+		return texts
 	case FieldProvider:
 		return []string{m.ProviderID}
 	case FieldSPF:

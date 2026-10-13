@@ -15,6 +15,7 @@ require (
 	github.com/gsoultan/gsmail v0.10.0
 	github.com/gsoultan/panmail-sdk v0.1.0-rc.2
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
 	github.com/o1egl/paseto/v2 v2.1.1
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1

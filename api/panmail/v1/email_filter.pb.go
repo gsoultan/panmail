@@ -197,8 +197,8 @@ func (FilterStatus) EnumDescriptor() ([]byte, []int) {
 type FilterCondition struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// from, to, cc, bcc, any_recipient, subject, body, subject_or_body, header,
-	// attachment_name, attachment_extension, attachment_count, attachment_size,
-	// total_attachment_size, message_size, recipient_count, has_attachment,
+	// attachment_name, attachment_extension, attachment_text, attachment_count,
+	// attachment_size, total_attachment_size, message_size, recipient_count, has_attachment,
 	// has_executable_attachment, provider, spf, dkim, dmarc.
 	Field string `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
 	// contains, matches, equals, domain_is, in, gte, is_true, exists.

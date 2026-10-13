@@ -43,8 +43,8 @@ enum FilterStatus {
 // by the rule.
 message FilterCondition {
   // from, to, cc, bcc, any_recipient, subject, body, subject_or_body, header,
-  // attachment_name, attachment_extension, attachment_count, attachment_size,
-  // total_attachment_size, message_size, recipient_count, has_attachment,
+  // attachment_name, attachment_extension, attachment_text, attachment_count,
+  // attachment_size, total_attachment_size, message_size, recipient_count, has_attachment,
   // has_executable_attachment, provider, spf, dkim, dmarc.
   string field = 1;
 
