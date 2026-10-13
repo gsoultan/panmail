@@ -103,18 +103,27 @@ func (r *Rule) Validate() error {
 // reviewable, "held because the subject contained 'wire transfer' and there
 // was a .exe attached" is.
 func (r Rule) Matches(m Message) ([]Condition, bool) {
+	return r.matches(m, nil)
+}
+
+func (r Rule) matches(m Message, cache *detectionCache) ([]Condition, bool) {
 	if !r.Enabled {
 		return nil, false
 	}
+	if cache == nil {
+		cache = newDetectionCache(m)
+	}
 	matched := make([]Condition, 0, len(r.Conditions))
 	for _, condition := range r.Conditions {
-		if !condition.Matches(m) {
+		ok, findings := condition.evaluate(m, cache)
+		if !ok {
 			return nil, false
 		}
+		condition.Findings = findings
 		matched = append(matched, condition)
 	}
 	for _, exception := range r.Exceptions {
-		if exception.Matches(m) {
+		if ok, _ := exception.evaluate(m, cache); ok {
 			return nil, false
 		}
 	}
@@ -163,8 +172,11 @@ func Evaluate(rules []Rule, direction Direction, m Message) Decision {
 		return applicable[i].Priority < applicable[j].Priority
 	})
 
+	// One cache for the whole rule set, so two rules naming the same detector
+	// scan the message once.
+	cache := newDetectionCache(m)
 	for i := range applicable {
-		matched, ok := applicable[i].Matches(m)
+		matched, ok := applicable[i].matches(m, cache)
 		if !ok {
 			continue
 		}

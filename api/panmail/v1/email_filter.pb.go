@@ -199,15 +199,21 @@ type FilterCondition struct {
 	// from, to, cc, bcc, any_recipient, subject, body, subject_or_body, header,
 	// attachment_name, attachment_extension, attachment_text, attachment_count,
 	// attachment_size, total_attachment_size, message_size, recipient_count, has_attachment,
-	// has_executable_attachment, provider, spf, dkim, dmarc.
+	// has_executable_attachment, provider, spf, dkim, dmarc, sensitive_data.
 	Field string `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
-	// contains, matches, equals, domain_is, in, gte, is_true, exists.
-	Operator string   `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`
-	Values   []string `protobuf:"bytes,3,rep,name=values,proto3" json:"values,omitempty"`
+	// contains, matches, equals, domain_is, in, gte, is_true, exists, detects.
+	Operator string `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`
+	// For sensitive_data, the detectors to run: credit_card, id_nik, id_npwp,
+	// iban, email_address, phone_number, secret, private_key.
+	Values []string `protobuf:"bytes,3,rep,name=values,proto3" json:"values,omitempty"`
 	// The header name, when field is "header".
 	Header string `protobuf:"bytes,4,opt,name=header,proto3" json:"header,omitempty"`
-	// The threshold for the numeric fields. Sizes are in bytes.
-	Number        int64 `protobuf:"varint,5,opt,name=number,proto3" json:"number,omitempty"`
+	// The threshold for the numeric fields. Sizes are in bytes. For
+	// sensitive_data, the minimum count of distinct matches (zero means one).
+	Number int64 `protobuf:"varint,5,opt,name=number,proto3" json:"number,omitempty"`
+	// What the detectors found, on a sensitive_data condition in a filtered
+	// message's matched list. Output only: ignored on a rule.
+	Findings      []*FilterFinding `protobuf:"bytes,6,rep,name=findings,proto3" json:"findings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -277,6 +283,85 @@ func (x *FilterCondition) GetNumber() int64 {
 	return 0
 }
 
+func (x *FilterCondition) GetFindings() []*FilterFinding {
+	if x != nil {
+		return x.Findings
+	}
+	return nil
+}
+
+// What one detector found in a message. Samples are masked before they are
+// stored: the last four digits of a number, the domain of an address.
+type FilterFinding struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Detector string                 `protobuf:"bytes,1,opt,name=detector,proto3" json:"detector,omitempty"`
+	// Distinct values, not occurrences.
+	Count int32 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	// subject, body, attachment_name:<file> or attachment:<file>.
+	Locations     []string `protobuf:"bytes,3,rep,name=locations,proto3" json:"locations,omitempty"`
+	Samples       []string `protobuf:"bytes,4,rep,name=samples,proto3" json:"samples,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilterFinding) Reset() {
+	*x = FilterFinding{}
+	mi := &file_panmail_v1_email_filter_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilterFinding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilterFinding) ProtoMessage() {}
+
+func (x *FilterFinding) ProtoReflect() protoreflect.Message {
+	mi := &file_panmail_v1_email_filter_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilterFinding.ProtoReflect.Descriptor instead.
+func (*FilterFinding) Descriptor() ([]byte, []int) {
+	return file_panmail_v1_email_filter_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *FilterFinding) GetDetector() string {
+	if x != nil {
+		return x.Detector
+	}
+	return ""
+}
+
+func (x *FilterFinding) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *FilterFinding) GetLocations() []string {
+	if x != nil {
+		return x.Locations
+	}
+	return nil
+}
+
+func (x *FilterFinding) GetSamples() []string {
+	if x != nil {
+		return x.Samples
+	}
+	return nil
+}
+
 type FilterRule struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -298,7 +383,7 @@ type FilterRule struct {
 
 func (x *FilterRule) Reset() {
 	*x = FilterRule{}
-	mi := &file_panmail_v1_email_filter_proto_msgTypes[1]
+	mi := &file_panmail_v1_email_filter_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -310,7 +395,7 @@ func (x *FilterRule) String() string {
 func (*FilterRule) ProtoMessage() {}
 
 func (x *FilterRule) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_email_filter_proto_msgTypes[1]
+	mi := &file_panmail_v1_email_filter_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -323,7 +408,7 @@ func (x *FilterRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilterRule.ProtoReflect.Descriptor instead.
 func (*FilterRule) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_email_filter_proto_rawDescGZIP(), []int{1}
+	return file_panmail_v1_email_filter_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *FilterRule) GetId() string {
@@ -437,7 +522,7 @@ type FilteredMessage struct {
 
 func (x *FilteredMessage) Reset() {
 	*x = FilteredMessage{}
-	mi := &file_panmail_v1_email_filter_proto_msgTypes[2]
+	mi := &file_panmail_v1_email_filter_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -449,7 +534,7 @@ func (x *FilteredMessage) String() string {
 func (*FilteredMessage) ProtoMessage() {}
 
 func (x *FilteredMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_panmail_v1_email_filter_proto_msgTypes[2]
+	mi := &file_panmail_v1_email_filter_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -462,7 +547,7 @@ func (x *FilteredMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilteredMessage.ProtoReflect.Descriptor instead.
 func (*FilteredMessage) Descriptor() ([]byte, []int) {
-	return file_panmail_v1_email_filter_proto_rawDescGZIP(), []int{2}
+	return file_panmail_v1_email_filter_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *FilteredMessage) GetId() string {
@@ -610,13 +695,19 @@ var File_panmail_v1_email_filter_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_filter_proto_rawDesc = "" +
 	"\n" +
 	"\x1dpanmail/v1/email_filter.proto\x12\n" +
-	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8b\x01\n" +
+	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc2\x01\n" +
 	"\x0fFilterCondition\x12\x14\n" +
 	"\x05field\x18\x01 \x01(\tR\x05field\x12\x1a\n" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x16\n" +
 	"\x06values\x18\x03 \x03(\tR\x06values\x12\x16\n" +
 	"\x06header\x18\x04 \x01(\tR\x06header\x12\x16\n" +
-	"\x06number\x18\x05 \x01(\x03R\x06number\"\xd5\x03\n" +
+	"\x06number\x18\x05 \x01(\x03R\x06number\x125\n" +
+	"\bfindings\x18\x06 \x03(\v2\x19.panmail.v1.FilterFindingR\bfindings\"y\n" +
+	"\rFilterFinding\x12\x1a\n" +
+	"\bdetector\x18\x01 \x01(\tR\bdetector\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\x12\x1c\n" +
+	"\tlocations\x18\x03 \x03(\tR\tlocations\x12\x18\n" +
+	"\asamples\x18\x04 \x03(\tR\asamples\"\xd5\x03\n" +
 	"\n" +
 	"FilterRule\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -702,35 +793,37 @@ func file_panmail_v1_email_filter_proto_rawDescGZIP() []byte {
 }
 
 var file_panmail_v1_email_filter_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_panmail_v1_email_filter_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_panmail_v1_email_filter_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_panmail_v1_email_filter_proto_goTypes = []any{
 	(FilterDirection)(0),          // 0: panmail.v1.FilterDirection
 	(FilterAction)(0),             // 1: panmail.v1.FilterAction
 	(FilterStatus)(0),             // 2: panmail.v1.FilterStatus
 	(*FilterCondition)(nil),       // 3: panmail.v1.FilterCondition
-	(*FilterRule)(nil),            // 4: panmail.v1.FilterRule
-	(*FilteredMessage)(nil),       // 5: panmail.v1.FilteredMessage
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*FilterFinding)(nil),         // 4: panmail.v1.FilterFinding
+	(*FilterRule)(nil),            // 5: panmail.v1.FilterRule
+	(*FilteredMessage)(nil),       // 6: panmail.v1.FilteredMessage
+	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 }
 var file_panmail_v1_email_filter_proto_depIdxs = []int32{
-	0,  // 0: panmail.v1.FilterRule.direction:type_name -> panmail.v1.FilterDirection
-	1,  // 1: panmail.v1.FilterRule.action:type_name -> panmail.v1.FilterAction
-	3,  // 2: panmail.v1.FilterRule.conditions:type_name -> panmail.v1.FilterCondition
-	3,  // 3: panmail.v1.FilterRule.exceptions:type_name -> panmail.v1.FilterCondition
-	6,  // 4: panmail.v1.FilterRule.created_at:type_name -> google.protobuf.Timestamp
-	6,  // 5: panmail.v1.FilterRule.updated_at:type_name -> google.protobuf.Timestamp
-	0,  // 6: panmail.v1.FilteredMessage.direction:type_name -> panmail.v1.FilterDirection
-	1,  // 7: panmail.v1.FilteredMessage.action:type_name -> panmail.v1.FilterAction
-	2,  // 8: panmail.v1.FilteredMessage.status:type_name -> panmail.v1.FilterStatus
-	3,  // 9: panmail.v1.FilteredMessage.matched:type_name -> panmail.v1.FilterCondition
-	6,  // 10: panmail.v1.FilteredMessage.reviewed_at:type_name -> google.protobuf.Timestamp
-	6,  // 11: panmail.v1.FilteredMessage.created_at:type_name -> google.protobuf.Timestamp
-	6,  // 12: panmail.v1.FilteredMessage.expires_at:type_name -> google.protobuf.Timestamp
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	4,  // 0: panmail.v1.FilterCondition.findings:type_name -> panmail.v1.FilterFinding
+	0,  // 1: panmail.v1.FilterRule.direction:type_name -> panmail.v1.FilterDirection
+	1,  // 2: panmail.v1.FilterRule.action:type_name -> panmail.v1.FilterAction
+	3,  // 3: panmail.v1.FilterRule.conditions:type_name -> panmail.v1.FilterCondition
+	3,  // 4: panmail.v1.FilterRule.exceptions:type_name -> panmail.v1.FilterCondition
+	7,  // 5: panmail.v1.FilterRule.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 6: panmail.v1.FilterRule.updated_at:type_name -> google.protobuf.Timestamp
+	0,  // 7: panmail.v1.FilteredMessage.direction:type_name -> panmail.v1.FilterDirection
+	1,  // 8: panmail.v1.FilteredMessage.action:type_name -> panmail.v1.FilterAction
+	2,  // 9: panmail.v1.FilteredMessage.status:type_name -> panmail.v1.FilterStatus
+	3,  // 10: panmail.v1.FilteredMessage.matched:type_name -> panmail.v1.FilterCondition
+	7,  // 11: panmail.v1.FilteredMessage.reviewed_at:type_name -> google.protobuf.Timestamp
+	7,  // 12: panmail.v1.FilteredMessage.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 13: panmail.v1.FilteredMessage.expires_at:type_name -> google.protobuf.Timestamp
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_panmail_v1_email_filter_proto_init() }
@@ -744,7 +837,7 @@ func file_panmail_v1_email_filter_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_panmail_v1_email_filter_proto_rawDesc), len(file_panmail_v1_email_filter_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

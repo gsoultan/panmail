@@ -134,3 +134,41 @@ func luhn(s string) bool {
 	}
 	return sum%10 == 0
 }
+
+// FindSecrets returns every issued credential shape in s: the same tokens the
+// redactor masks without a label. It exists for callers that need to count
+// what is there rather than hide it, which is what the content filter does
+// before a message leaves.
+func FindSecrets(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, re := range shapePatterns {
+		out = append(out, re.FindAllString(s, -1)...)
+	}
+	return out
+}
+
+// FindPrivateKeys returns each PEM private key block in s, header to footer.
+func FindPrivateKeys(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return pemRe.FindAllString(s, -1)
+}
+
+// FindCards returns the digit runs in s that pass the Luhn checksum, exactly
+// as the Secrets level would mask them.
+func FindCards(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, candidate := range cardRe.FindAllString(s, -1) {
+		if luhn(candidate) {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}

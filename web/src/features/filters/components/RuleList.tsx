@@ -1,12 +1,13 @@
 import React from 'react';
 import {
-  ActionIcon, Badge, Box, Button, Group, Loader, Modal, NumberInput, Paper, ScrollArea,
+  ActionIcon, Badge, Box, Button, Group, Loader, Modal, MultiSelect, NumberInput, Paper, ScrollArea,
   Select, Stack, Switch, Table, Text, TextInput, ThemeIcon, Title, rem,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconShieldCheck, IconTrash, IconX } from '@tabler/icons-react';
 import { filterService } from '../services/filter';
+import { DETECTORS } from '../detectors';
 import {
   FilterAction, FilterDirection, type FilterRule,
 } from '../../../api/panmail/v1/email_filter_pb';
@@ -33,6 +34,7 @@ const FIELDS = [
       ['attachment_count', 'Attachment count'], ['attachment_size', 'Largest attachment'],
       ['total_attachment_size', 'Total attachment size']],
   },
+  { group: 'Sensitive data', items: [['sensitive_data', 'Sensitive data detected']] },
   { group: 'Message', items: [['message_size', 'Message size'], ['provider', 'Provider']] },
   { group: 'Inbound authentication', items: [['spf', 'SPF'], ['dkim', 'DKIM'], ['dmarc', 'DMARC']] },
 ] as const;
@@ -47,6 +49,7 @@ const ADDRESSES = new Set(['from', 'to', 'cc', 'bcc', 'any_recipient']);
 
 function operatorsFor(field: string): { value: string; label: string }[] {
   if (NUMERIC.has(field)) return [{ value: 'gte', label: 'is at least' }];
+  if (field === 'sensitive_data') return [{ value: 'detects', label: 'finds at least' }];
   if (BOOLEAN.has(field)) return [{ value: 'is_true', label: 'is true' }];
   if (ENUMS.has(field)) return [{ value: 'equals', label: 'is' }, { value: 'in', label: 'is one of' }];
   if (field === 'header') {
@@ -63,6 +66,18 @@ function operatorsFor(field: string): { value: string; label: string }[] {
 type DraftCondition = {
   field: string; operator: string; values: string; header: string; number: number;
 };
+
+// A detector list and a typed value share the draft's values, so moving into
+// or out of sensitive_data clears them; carrying one into the other is never
+// what was meant. Other moves keep what was typed, as they always have.
+function switchField(c: DraftCondition, field: string): DraftCondition {
+  const next = { ...c, field, operator: operatorsFor(field)[0].value };
+  if ((c.field === 'sensitive_data') !== (field === 'sensitive_data')) {
+    next.values = '';
+    next.number = field === 'sensitive_data' ? 1 : 0;
+  }
+  return next;
+}
 
 const emptyCondition = (): DraftCondition =>
   ({ field: 'from', operator: 'contains', values: '', header: '', number: 0 });
@@ -248,7 +263,7 @@ export const RuleList: React.FC = () => {
             <Stack gap="xs">
               {conditions.map((condition, i) => {
                 const operators = operatorsFor(condition.field);
-                const needsValues = !['is_true', 'exists', 'gte'].includes(condition.operator);
+                const needsValues = !['is_true', 'exists', 'gte', 'detects'].includes(condition.operator);
                 return (
                   <Paper key={i} withBorder p="xs" radius="sm">
                     <Group gap="xs" align="flex-end" wrap="nowrap">
@@ -260,7 +275,7 @@ export const RuleList: React.FC = () => {
                           items: g.items.map(([value, label]) => ({ value, label })),
                         }))}
                         onChange={(v) => setConditions((all) => all.map((c, j) =>
-                          j === i ? { ...c, field: v ?? c.field, operator: operatorsFor(v ?? c.field)[0].value } : c))}
+                          j === i ? switchField(c, v ?? c.field) : c))}
                       />
                       <Select
                         label={i === 0 ? 'Is' : undefined} size="xs" w={rem(150)}
@@ -274,7 +289,19 @@ export const RuleList: React.FC = () => {
                           onChange={(e) => setConditions((all) => all.map((c, j) =>
                             j === i ? { ...c, header: e.currentTarget.value } : c))} />
                       )}
-                      {condition.operator === 'gte' ? (
+                      {condition.operator === 'detects' ? (
+                        <>
+                          <NumberInput label={i === 0 ? 'Count' : undefined} size="xs" w={rem(80)}
+                            value={condition.number || 1} min={1}
+                            onChange={(v) => setConditions((all) => all.map((c, j) =>
+                              j === i ? { ...c, number: Number(v) || 1 } : c))} />
+                          <MultiSelect label={i === 0 ? 'Of' : undefined} size="xs" style={{ flex: 1 }}
+                            placeholder="Card number, NIK…" data={DETECTORS}
+                            value={condition.values.split(',').map((v) => v.trim()).filter(Boolean)}
+                            onChange={(v) => setConditions((all) => all.map((c, j) =>
+                              j === i ? { ...c, values: v.join(',') } : c))} />
+                        </>
+                      ) : condition.operator === 'gte' ? (
                         <NumberInput label={i === 0 ? 'Value' : undefined} size="xs" style={{ flex: 1 }}
                           value={condition.number} min={0}
                           onChange={(v) => setConditions((all) => all.map((c, j) =>
