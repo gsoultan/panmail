@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file panmail/v1/email_filter.proto.
  */
 export const file_panmail_v1_email_filter: GenFile = /*@__PURE__*/
-  fileDesc("Ch1wYW5tYWlsL3YxL2VtYWlsX2ZpbHRlci5wcm90bxIKcGFubWFpbC52MSJiCg9GaWx0ZXJDb25kaXRpb24SDQoFZmllbGQYASABKAkSEAoIb3BlcmF0b3IYAiABKAkSDgoGdmFsdWVzGAMgAygJEg4KBmhlYWRlchgEIAEoCRIOCgZudW1iZXIYBSABKAMi8gIKCkZpbHRlclJ1bGUSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIuCglkaXJlY3Rpb24YAyABKA4yGy5wYW5tYWlsLnYxLkZpbHRlckRpcmVjdGlvbhIoCgZhY3Rpb24YBCABKA4yGC5wYW5tYWlsLnYxLkZpbHRlckFjdGlvbhIQCghwcmlvcml0eRgFIAEoBRIPCgdlbmFibGVkGAYgASgIEi8KCmNvbmRpdGlvbnMYByADKAsyGy5wYW5tYWlsLnYxLkZpbHRlckNvbmRpdGlvbhIvCgpleGNlcHRpb25zGAggAygLMhsucGFubWFpbC52MS5GaWx0ZXJDb25kaXRpb24SCwoDdGFnGAkgASgJEi4KCmNyZWF0ZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wItIECg9GaWx0ZXJlZE1lc3NhZ2USCgoCaWQYASABKAkSLgoJZGlyZWN0aW9uGAIgASgOMhsucGFubWFpbC52MS5GaWx0ZXJEaXJlY3Rpb24SDwoHcnVsZV9pZBgDIAEoCRIRCglydWxlX25hbWUYBCABKAkSKAoGYWN0aW9uGAUgASgOMhgucGFubWFpbC52MS5GaWx0ZXJBY3Rpb24SKAoGc3RhdHVzGAYgASgOMhgucGFubWFpbC52MS5GaWx0ZXJTdGF0dXMSEgoKbWVzc2FnZV9pZBgHIAEoCRITCgtwcm92aWRlcl9pZBgIIAEoCRIMCgRmcm9tGAkgASgJEhIKCnJlY2lwaWVudHMYCiADKAkSDwoHc3ViamVjdBgLIAEoCRISCgpzaXplX2J5dGVzGAwgASgDEhgKEGF0dGFjaG1lbnRfY291bnQYDSABKAUSGAoQYXR0YWNobWVudF9uYW1lcxgOIAMoCRIsCgdtYXRjaGVkGA8gAygLMhsucGFubWFpbC52MS5GaWx0ZXJDb25kaXRpb24SEwoLcmV2aWV3ZWRfYnkYECABKAkSLwoLcmV2aWV3ZWRfYXQYESABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhMKC3Jldmlld19ub3RlGBIgASgJEi4KCmNyZWF0ZWRfYXQYEyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYFCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wKnAKD0ZpbHRlckRpcmVjdGlvbhIgChxGSUxURVJfRElSRUNUSU9OX1VOU1BFQ0lGSUVEEAASHQoZRklMVEVSX0RJUkVDVElPTl9PVVRCT1VORBABEhwKGEZJTFRFUl9ESVJFQ1RJT05fSU5CT1VORBACKo8BCgxGaWx0ZXJBY3Rpb24SHQoZRklMVEVSX0FDVElPTl9VTlNQRUNJRklFRBAAEhYKEkZJTFRFUl9BQ1RJT05fSE9MRBABEhgKFEZJTFRFUl9BQ1RJT05fUkVKRUNUEAISFQoRRklMVEVSX0FDVElPTl9UQUcQAxIXChNGSUxURVJfQUNUSU9OX0FMTE9XEAQqmwEKDEZpbHRlclN0YXR1cxIdChlGSUxURVJfU1RBVFVTX1VOU1BFQ0lGSUVEEAASGQoVRklMVEVSX1NUQVRVU19QRU5ESU5HEAESGgoWRklMVEVSX1NUQVRVU19SRUxFQVNFRBACEhoKFkZJTFRFUl9TVEFUVVNfUkVKRUNURUQQAxIZChVGSUxURVJfU1RBVFVTX0VYUElSRUQQBEKhAQoOY29tLnBhbm1haWwudjFCEEVtYWlsRmlsdGVyUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("Ch1wYW5tYWlsL3YxL2VtYWlsX2ZpbHRlci5wcm90bxIKcGFubWFpbC52MSKPAQoPRmlsdGVyQ29uZGl0aW9uEg0KBWZpZWxkGAEgASgJEhAKCG9wZXJhdG9yGAIgASgJEg4KBnZhbHVlcxgDIAMoCRIOCgZoZWFkZXIYBCABKAkSDgoGbnVtYmVyGAUgASgDEisKCGZpbmRpbmdzGAYgAygLMhkucGFubWFpbC52MS5GaWx0ZXJGaW5kaW5nIlQKDUZpbHRlckZpbmRpbmcSEAoIZGV0ZWN0b3IYASABKAkSDQoFY291bnQYAiABKAUSEQoJbG9jYXRpb25zGAMgAygJEg8KB3NhbXBsZXMYBCADKAki8gIKCkZpbHRlclJ1bGUSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRIuCglkaXJlY3Rpb24YAyABKA4yGy5wYW5tYWlsLnYxLkZpbHRlckRpcmVjdGlvbhIoCgZhY3Rpb24YBCABKA4yGC5wYW5tYWlsLnYxLkZpbHRlckFjdGlvbhIQCghwcmlvcml0eRgFIAEoBRIPCgdlbmFibGVkGAYgASgIEi8KCmNvbmRpdGlvbnMYByADKAsyGy5wYW5tYWlsLnYxLkZpbHRlckNvbmRpdGlvbhIvCgpleGNlcHRpb25zGAggAygLMhsucGFubWFpbC52MS5GaWx0ZXJDb25kaXRpb24SCwoDdGFnGAkgASgJEi4KCmNyZWF0ZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wItIECg9GaWx0ZXJlZE1lc3NhZ2USCgoCaWQYASABKAkSLgoJZGlyZWN0aW9uGAIgASgOMhsucGFubWFpbC52MS5GaWx0ZXJEaXJlY3Rpb24SDwoHcnVsZV9pZBgDIAEoCRIRCglydWxlX25hbWUYBCABKAkSKAoGYWN0aW9uGAUgASgOMhgucGFubWFpbC52MS5GaWx0ZXJBY3Rpb24SKAoGc3RhdHVzGAYgASgOMhgucGFubWFpbC52MS5GaWx0ZXJTdGF0dXMSEgoKbWVzc2FnZV9pZBgHIAEoCRITCgtwcm92aWRlcl9pZBgIIAEoCRIMCgRmcm9tGAkgASgJEhIKCnJlY2lwaWVudHMYCiADKAkSDwoHc3ViamVjdBgLIAEoCRISCgpzaXplX2J5dGVzGAwgASgDEhgKEGF0dGFjaG1lbnRfY291bnQYDSABKAUSGAoQYXR0YWNobWVudF9uYW1lcxgOIAMoCRIsCgdtYXRjaGVkGA8gAygLMhsucGFubWFpbC52MS5GaWx0ZXJDb25kaXRpb24SEwoLcmV2aWV3ZWRfYnkYECABKAkSLwoLcmV2aWV3ZWRfYXQYESABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhMKC3Jldmlld19ub3RlGBIgASgJEi4KCmNyZWF0ZWRfYXQYEyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYFCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wKnAKD0ZpbHRlckRpcmVjdGlvbhIgChxGSUxURVJfRElSRUNUSU9OX1VOU1BFQ0lGSUVEEAASHQoZRklMVEVSX0RJUkVDVElPTl9PVVRCT1VORBABEhwKGEZJTFRFUl9ESVJFQ1RJT05fSU5CT1VORBACKo8BCgxGaWx0ZXJBY3Rpb24SHQoZRklMVEVSX0FDVElPTl9VTlNQRUNJRklFRBAAEhYKEkZJTFRFUl9BQ1RJT05fSE9MRBABEhgKFEZJTFRFUl9BQ1RJT05fUkVKRUNUEAISFQoRRklMVEVSX0FDVElPTl9UQUcQAxIXChNGSUxURVJfQUNUSU9OX0FMTE9XEAQqmwEKDEZpbHRlclN0YXR1cxIdChlGSUxURVJfU1RBVFVTX1VOU1BFQ0lGSUVEEAASGQoVRklMVEVSX1NUQVRVU19QRU5ESU5HEAESGgoWRklMVEVSX1NUQVRVU19SRUxFQVNFRBACEhoKFkZJTFRFUl9TVEFUVVNfUkVKRUNURUQQAxIZChVGSUxURVJfU1RBVFVTX0VYUElSRUQQBEKhAQoOY29tLnBhbm1haWwudjFCEEVtYWlsRmlsdGVyUHJvdG9QAVo0Z2l0aHViLmNvbS9nc291bHRhbi9wYW5tYWlsL2FwaS9wYW5tYWlsL3YxO3Bhbm1haWx2MaICA1BYWKoCClBhbm1haWwuVjHKAgpQYW5tYWlsXFYx4gIWUGFubWFpbFxWMVxHUEJNZXRhZGF0YeoCC1Bhbm1haWw6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * One test. Values are ORed against each other; separate conditions are ANDed
@@ -25,20 +25,23 @@ export type FilterCondition = Message<"panmail.v1.FilterCondition"> & {
    * from, to, cc, bcc, any_recipient, subject, body, subject_or_body, header,
    * attachment_name, attachment_extension, attachment_text, attachment_count,
    * attachment_size, total_attachment_size, message_size, recipient_count, has_attachment,
-   * has_executable_attachment, provider, spf, dkim, dmarc.
+   * has_executable_attachment, provider, spf, dkim, dmarc, sensitive_data.
    *
    * @generated from field: string field = 1;
    */
   field: string;
 
   /**
-   * contains, matches, equals, domain_is, in, gte, is_true, exists.
+   * contains, matches, equals, domain_is, in, gte, is_true, exists, detects.
    *
    * @generated from field: string operator = 2;
    */
   operator: string;
 
   /**
+   * For sensitive_data, the detectors to run: credit_card, id_nik, id_npwp,
+   * iban, email_address, phone_number, secret, private_key.
+   *
    * @generated from field: repeated string values = 3;
    */
   values: string[];
@@ -51,11 +54,20 @@ export type FilterCondition = Message<"panmail.v1.FilterCondition"> & {
   header: string;
 
   /**
-   * The threshold for the numeric fields. Sizes are in bytes.
+   * The threshold for the numeric fields. Sizes are in bytes. For
+   * sensitive_data, the minimum count of distinct matches (zero means one).
    *
    * @generated from field: int64 number = 5;
    */
   number: bigint;
+
+  /**
+   * What the detectors found, on a sensitive_data condition in a filtered
+   * message's matched list. Output only: ignored on a rule.
+   *
+   * @generated from field: repeated panmail.v1.FilterFinding findings = 6;
+   */
+  findings: FilterFinding[];
 };
 
 /**
@@ -64,6 +76,45 @@ export type FilterCondition = Message<"panmail.v1.FilterCondition"> & {
  */
 export const FilterConditionSchema: GenMessage<FilterCondition> = /*@__PURE__*/
   messageDesc(file_panmail_v1_email_filter, 0);
+
+/**
+ * What one detector found in a message. Samples are masked before they are
+ * stored: the last four digits of a number, the domain of an address.
+ *
+ * @generated from message panmail.v1.FilterFinding
+ */
+export type FilterFinding = Message<"panmail.v1.FilterFinding"> & {
+  /**
+   * @generated from field: string detector = 1;
+   */
+  detector: string;
+
+  /**
+   * Distinct values, not occurrences.
+   *
+   * @generated from field: int32 count = 2;
+   */
+  count: number;
+
+  /**
+   * subject, body, attachment_name:<file> or attachment:<file>.
+   *
+   * @generated from field: repeated string locations = 3;
+   */
+  locations: string[];
+
+  /**
+   * @generated from field: repeated string samples = 4;
+   */
+  samples: string[];
+};
+
+/**
+ * Describes the message panmail.v1.FilterFinding.
+ * Use `create(FilterFindingSchema)` to create a new message.
+ */
+export const FilterFindingSchema: GenMessage<FilterFinding> = /*@__PURE__*/
+  messageDesc(file_panmail_v1_email_filter, 1);
 
 /**
  * @generated from message panmail.v1.FilterRule
@@ -134,7 +185,7 @@ export type FilterRule = Message<"panmail.v1.FilterRule"> & {
  * Use `create(FilterRuleSchema)` to create a new message.
  */
 export const FilterRuleSchema: GenMessage<FilterRule> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_email_filter, 1);
+  messageDesc(file_panmail_v1_email_filter, 2);
 
 /**
  * One decision, recorded. Carries the envelope and the reason — which is what
@@ -255,7 +306,7 @@ export type FilteredMessage = Message<"panmail.v1.FilteredMessage"> & {
  * Use `create(FilteredMessageSchema)` to create a new message.
  */
 export const FilteredMessageSchema: GenMessage<FilteredMessage> = /*@__PURE__*/
-  messageDesc(file_panmail_v1_email_filter, 2);
+  messageDesc(file_panmail_v1_email_filter, 3);
 
 /**
  * Which pipeline a rule applies to. A rule is written for one: "the sender is

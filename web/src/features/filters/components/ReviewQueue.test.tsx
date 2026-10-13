@@ -21,8 +21,15 @@ const held = {
   attachmentCount: 1,
   attachmentNames: ['numbers.xlsx'],
   matched: [
-    { field: 'has_attachment', operator: 'is_true', values: [], header: '', number: 0n },
-    { field: 'message_size', operator: 'gte', values: [], header: '', number: 1_000_000n },
+    { field: 'has_attachment', operator: 'is_true', values: [], header: '', number: 0n, findings: [] },
+    { field: 'message_size', operator: 'gte', values: [], header: '', number: 1_000_000n, findings: [] },
+    {
+      field: 'sensitive_data', operator: 'detects', values: ['credit_card', 'id_nik'], header: '', number: 3n,
+      findings: [{
+        detector: 'credit_card', count: 4, locations: ['body', 'attachment:numbers.xlsx'],
+        samples: ['************1111', '************4444'],
+      }],
+    },
   ],
   reviewedBy: '',
   reviewNote: '',
@@ -98,6 +105,17 @@ describe('ReviewQueue', () => {
     const shown = document.body.textContent ?? '';
     expect(shown).toContain('has attachment');
     expect(shown).toContain('message size is at least 1000000');
+  });
+
+  // A DLP hold says what was found and where, with the values masked.
+  test('shows what the sensitive-data detectors found', async () => {
+    await renderQueue();
+    await openInspector();
+
+    const shown = document.body.textContent ?? '';
+    expect(shown).toContain('at least 3 of: Card number (Luhn checked), NIK (Indonesian ID number)');
+    expect(shown).toContain('×4 in body, numbers.xlsx');
+    expect(shown).toContain('************1111');
   });
 
   test('releasing calls the service with the message id', async () => {

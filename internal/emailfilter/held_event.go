@@ -122,6 +122,10 @@ type MatchedCondition struct {
 	Values   []string `json:"values,omitempty"`
 	Header   string   `json:"header,omitempty"`
 	Number   int64    `json:"number,omitempty"`
+
+	// Findings is what the detectors saw, for a sensitive_data condition.
+	// Samples are already masked.
+	Findings []Finding `json:"findings,omitempty"`
 }
 
 // heldEventFor builds the notification for a recorded decision.
@@ -134,6 +138,7 @@ func heldEventFor(record *FilteredMessage) HeldEvent {
 			Values:   c.Values,
 			Header:   c.Header,
 			Number:   c.Number,
+			Findings: c.Findings,
 		})
 	}
 	return HeldEvent{

@@ -125,6 +125,7 @@ Administrator.
 | F1 | Per-tenant inbound and outbound rules (allow, reject, tag, hold for review), compiled once per tenant and cached briefly. |
 | F2 | Held messages wait in a review queue; on expiry the held payload is discarded, and finished review records are pruned on the quarantine retention. |
 | F3 | A rule can match the text inside a PDF, Word (.docx) or Excel (.xlsx) attachment. The text is read only when a tenant's rule asks for it, and the read is bounded (25 MB per file, 1 MB of text, 64 MB decompressed, 1000 PDF pages). An attachment that cannot be read (encrypted, scanned, legacy .doc/.xls) has no text and does not match. Inbound messages do not yet pass their attachments to the filter, so today this applies to outbound mail. |
+| F4 | A rule can detect sensitive data with built-in detectors: card numbers (Luhn), Indonesian NIK and NPWP, IBANs (mod 97), email addresses, phone numbers, issued API keys and tokens, and PEM private keys. It scans the subject, body (HTML reduced to text), attachment names and attachment text, and holds when the named detectors find at least a set number of distinct values between them. The review queue and the held webhook record which detector fired, how many values it found, where, and up to three masked samples; the values themselves are never stored. |
 
 ### 4.6 Administration
 
