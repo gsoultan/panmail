@@ -5,15 +5,24 @@
 
 all: build
 
+# The release tag this checkout is on, without the leading `v`, so a local build
+# labels itself the way goreleaser labels a release: `2.2.2` on the tag,
+# `2.2.2-3-gabc1234` past it. Both the UI and `panmail --version` get the same
+# value. Override with `make build VERSION=...`.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')
+ifeq ($(strip $(VERSION)),)
+VERSION := development
+endif
+
 generate:
 	rtk buf generate
 	rtk go generate ./...
 
 build-frontend:
-	cd web && rtk bun install && rtk bun run build
+	cd web && rtk bun install && VITE_APP_VERSION=$(VERSION) rtk bun run build
 
 build-backend:
-	rtk go build -tags builtui -o panmail ./cmd/api
+	rtk go build -tags builtui -ldflags "-s -w -X main.Version=$(VERSION)" -o panmail ./cmd/api
 
 build: build-frontend build-backend
 

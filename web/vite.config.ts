@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { execFileSync } from 'node:child_process'
 
 // In development Vite serves the app and forwards the gateway's own routes to
 // the Go process, which is what lets the UI keep HMR while still talking to a
@@ -25,9 +26,33 @@ const gatewayRoutes = [
   'track/',
 ].join('|')
 
+// The version the sidebar shows (src/version.ts). Release paths pass it in
+// VITE_APP_VERSION and that always wins. Anything else, a plain `bun run build`
+// or the dev server, asks git instead, so a build from a tagged checkout reads
+// as that tag rather than as `development`. `git describe` gives `v2.2.2` on the
+// tag itself and `v2.2.2-3-gabc1234` three commits past it; the leading `v` is
+// dropped to match what goreleaser passes. Outside a git checkout (the Docker
+// build context has no .git) it stays unset and the UI says `development`.
+function gitVersion(): string | undefined {
+  try {
+    return execFileSync('git', ['describe', '--tags', '--always', '--dirty'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .trim()
+      .replace(/^v/, '') || undefined
+  } catch {
+    return undefined
+  }
+}
+const appVersion = process.env.VITE_APP_VERSION?.trim() || gitVersion()
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: appVersion
+    ? { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion) }
+    : {},
   server: {
     port: devPort,
     // Fail rather than silently moving to the next port: the scripts print the

@@ -5,6 +5,9 @@
  * it says. Three things build it, and all three pass the version the same way:
  * goreleaser (`VITE_APP_VERSION={{ .Version }}`), the Dockerfile
  * (`--build-arg VERSION`), and `panmail build --built-ui` (`--version`).
+ * When none of them passes one, vite.config.ts asks `git describe` instead, and
+ * `make build` and `panmail build` do the same by default, so a local build of a
+ * tagged checkout shows that tag too.
  *
  * "The same way" means without a leading `v` — the value matches the
  * `main.Version` ldflag exactly, so the sidebar and `panmail --version` cannot
@@ -17,11 +20,10 @@
  * looks like a version number.
  *
  * Unreleased builds carry a word rather than a number — `development` is the
- * default in all three build paths, and CI builds its image as `ci`. Prefixing
+ * default outside a git checkout, and CI builds its image as `ci`. Prefixing
  * those would read `vdevelopment`, so the prefix is conditional. A missing or
- * blank value means nobody passed one, which is the plain `bun run build` a
- * developer runs locally, so it reports itself as `development` too rather than
- * inventing a release number.
+ * blank value means nobody passed one and git could not say either, so it
+ * reports itself as `development` too rather than inventing a release number.
  */
 export function formatVersion(raw: string | undefined): string {
   const version = raw?.trim();
