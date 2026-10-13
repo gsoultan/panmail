@@ -8,12 +8,13 @@ import (
 )
 
 // needsAttachmentText reports whether any rule asks about the text inside an
-// attachment, in a condition or an exception.
+// attachment, in a condition or an exception. A sensitive-data condition
+// counts: a card number in payroll.xlsx is the case it exists for.
 func needsAttachmentText(rules []Rule) bool {
 	for _, r := range rules {
 		for _, list := range [][]Condition{r.Conditions, r.Exceptions} {
 			for _, c := range list {
-				if c.Field == FieldAttachmentText {
+				if c.Field == FieldAttachmentText || c.Field == FieldSensitiveData {
 					return true
 				}
 			}

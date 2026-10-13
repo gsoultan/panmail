@@ -45,19 +45,40 @@ message FilterCondition {
   // from, to, cc, bcc, any_recipient, subject, body, subject_or_body, header,
   // attachment_name, attachment_extension, attachment_text, attachment_count,
   // attachment_size, total_attachment_size, message_size, recipient_count, has_attachment,
-  // has_executable_attachment, provider, spf, dkim, dmarc.
+  // has_executable_attachment, provider, spf, dkim, dmarc, sensitive_data.
   string field = 1;
 
-  // contains, matches, equals, domain_is, in, gte, is_true, exists.
+  // contains, matches, equals, domain_is, in, gte, is_true, exists, detects.
   string operator = 2;
 
+  // For sensitive_data, the detectors to run: credit_card, id_nik, id_npwp,
+  // iban, email_address, phone_number, secret, private_key.
   repeated string values = 3;
 
   // The header name, when field is "header".
   string header = 4;
 
-  // The threshold for the numeric fields. Sizes are in bytes.
+  // The threshold for the numeric fields. Sizes are in bytes. For
+  // sensitive_data, the minimum count of distinct matches (zero means one).
   int64 number = 5;
+
+  // What the detectors found, on a sensitive_data condition in a filtered
+  // message's matched list. Output only: ignored on a rule.
+  repeated FilterFinding findings = 6;
+}
+
+// What one detector found in a message. Samples are masked before they are
+// stored: the last four digits of a number, the domain of an address.
+message FilterFinding {
+  string detector = 1;
+
+  // Distinct values, not occurrences.
+  int32 count = 2;
+
+  // subject, body, attachment_name:<file> or attachment:<file>.
+  repeated string locations = 3;
+
+  repeated string samples = 4;
 }
 
 message FilterRule {

@@ -10,6 +10,7 @@ import {
 } from '@tabler/icons-react';
 import { ConnectError, Code as ConnectCode } from '@connectrpc/connect';
 import { filterService } from '../services/filter';
+import { describeLocation, detectorLabel } from '../detectors';
 import {
   FilterAction, FilterDirection, FilterStatus,
   type FilteredMessage,
@@ -50,6 +51,8 @@ function describeCondition(c: {
       return `${field} is present`;
     case 'gte':
       return `${field} is at least ${c.number}`;
+    case 'detects':
+      return `at least ${c.number > 0n ? c.number : 1n} of: ${c.values.map(detectorLabel).join(', ')}`;
     case 'in':
       return `${field} is one of ${c.values.join(', ')}`;
     case 'domain_is':
@@ -252,7 +255,19 @@ export const ReviewQueue: React.FC = () => {
               <Text size="xs" c="dimmed" mb={6}>Rule: {inspecting.ruleName}</Text>
               <Stack gap={4}>
                 {inspecting.matched.map((c, i) => (
-                  <Code key={i} block style={{ fontSize: rem(11) }}>{describeCondition(c)}</Code>
+                  <Box key={i}>
+                    <Code block style={{ fontSize: rem(11) }}>{describeCondition(c)}</Code>
+                    {/* What the detectors saw. Samples arrive masked. */}
+                    {c.findings.map((f) => (
+                      <Text key={f.detector} size="xs" mt={4}>
+                        <b>{detectorLabel(f.detector)}</b> ×{f.count}
+                        {f.locations.length > 0 && <> in {f.locations.map(describeLocation).join(', ')}</>}
+                        {f.samples.length > 0 && (
+                          <Text span size="xs" c="dimmed" ff="monospace"> ({f.samples.join(', ')})</Text>
+                        )}
+                      </Text>
+                    ))}
+                  </Box>
                 ))}
               </Stack>
             </Paper>

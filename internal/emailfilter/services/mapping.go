@@ -73,6 +73,23 @@ func conditionsToProto(in []emailfilter.Condition) []*panmailv1.FilterCondition 
 			Values:   c.Values,
 			Header:   c.Header,
 			Number:   c.Number,
+			Findings: findingsToProto(c.Findings),
+		})
+	}
+	return out
+}
+
+func findingsToProto(in []emailfilter.Finding) []*panmailv1.FilterFinding {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]*panmailv1.FilterFinding, 0, len(in))
+	for _, f := range in {
+		out = append(out, &panmailv1.FilterFinding{
+			Detector:  string(f.Detector),
+			Count:     int32(f.Count),
+			Locations: f.Locations,
+			Samples:   f.Samples,
 		})
 	}
 	return out

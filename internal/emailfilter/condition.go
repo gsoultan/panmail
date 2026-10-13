@@ -39,6 +39,11 @@ const (
 
 	FieldProvider Field = "provider"
 
+	// FieldSensitiveData runs built-in detectors over the subject, body,
+	// attachment names and attachment text. Values are Detector names and
+	// Number is how many distinct matches it takes; see detect.go.
+	FieldSensitiveData Field = "sensitive_data"
+
 	FieldSPF   Field = "spf"
 	FieldDKIM  Field = "dkim"
 	FieldDMARC Field = "dmarc"
@@ -81,6 +86,10 @@ const (
 
 	// OpExists asserts a header is present, whatever its value.
 	OpExists Operator = "exists"
+
+	// OpDetects runs the named detectors and holds when they find at least
+	// Number distinct values between them (one, when Number is zero).
+	OpDetects Operator = "detects"
 )
 
 type fieldKind int
@@ -92,6 +101,7 @@ const (
 	kindNumber
 	kindBool
 	kindEnum
+	kindDetector
 )
 
 var fieldKinds = map[Field]fieldKind{
@@ -111,15 +121,18 @@ var fieldKinds = map[Field]fieldKind{
 	FieldHasAttachment: kindBool, FieldHasExecutableAttachment: kindBool,
 
 	FieldProvider: kindEnum, FieldSPF: kindEnum, FieldDKIM: kindEnum, FieldDMARC: kindEnum,
+
+	FieldSensitiveData: kindDetector,
 }
 
 var allowedOperators = map[fieldKind]map[Operator]bool{
-	kindAddress: {OpContains: true, OpMatches: true, OpEquals: true, OpDomainIs: true},
-	kindText:    {OpContains: true, OpMatches: true, OpEquals: true, OpIn: true},
-	kindHeader:  {OpContains: true, OpMatches: true, OpEquals: true, OpExists: true},
-	kindNumber:  {OpGreaterOrEqual: true},
-	kindBool:    {OpIsTrue: true},
-	kindEnum:    {OpEquals: true, OpIn: true},
+	kindAddress:  {OpContains: true, OpMatches: true, OpEquals: true, OpDomainIs: true},
+	kindText:     {OpContains: true, OpMatches: true, OpEquals: true, OpIn: true},
+	kindHeader:   {OpContains: true, OpMatches: true, OpEquals: true, OpExists: true},
+	kindNumber:   {OpGreaterOrEqual: true},
+	kindBool:     {OpIsTrue: true},
+	kindEnum:     {OpEquals: true, OpIn: true},
+	kindDetector: {OpDetects: true},
 }
 
 // inboundOnlyFields cannot be evaluated on the way out, because nothing has
@@ -142,7 +155,14 @@ type Condition struct {
 	Header string `json:"header,omitempty"`
 
 	// Number is the threshold, for the numeric fields. Sizes are in bytes.
+	// For sensitive_data it is the minimum count of distinct matches.
 	Number int64 `json:"number,omitempty"`
+
+	// Findings is output, not input: what the detectors saw, set on the copy
+	// of a sensitive-data condition in Decision.Matched so the review queue
+	// can say "4 card numbers, in the body and payroll.xlsx". Cleared by
+	// Validate, so a client cannot store findings on a rule.
+	Findings []Finding `json:"findings,omitempty"`
 
 	// compiled is populated by Compile and is what OpMatches uses. Compiling
 	// at evaluation time would put a regexp compile on the send path for every
@@ -175,9 +195,15 @@ func (c *Condition) Validate(direction Direction) error {
 	if needsValues && len(c.Values) == 0 {
 		return fmt.Errorf("emailfilter: %s %s needs at least one value", c.Field, c.Operator)
 	}
-	if c.Operator == OpGreaterOrEqual && c.Number < 0 {
-		return fmt.Errorf("emailfilter: %s gte needs a threshold of zero or more", c.Field)
+	if (c.Operator == OpGreaterOrEqual || c.Operator == OpDetects) && c.Number < 0 {
+		return fmt.Errorf("emailfilter: %s %s needs a threshold of zero or more", c.Field, c.Operator)
 	}
+	if c.Operator == OpDetects {
+		if err := validateDetectors(c.Values); err != nil {
+			return err
+		}
+	}
+	c.Findings = nil
 
 	c.compiled = nil
 	if c.Operator == OpMatches {
@@ -196,6 +222,53 @@ func (c *Condition) Validate(direction Direction) error {
 
 // Matches reports whether the message satisfies the condition.
 func (c Condition) Matches(m Message) bool {
+	ok, _ := c.evaluate(m, nil)
+	return ok
+}
+
+// evaluate is Matches with the detectors' findings, for the audit trail. The
+// cache is shared across a rule set so each detector scans a message once;
+// nil builds a private one.
+func (c Condition) evaluate(m Message, cache *detectionCache) (bool, []Finding) {
+	if c.Field == FieldSensitiveData {
+		if cache == nil {
+			cache = newDetectionCache(m)
+		}
+		return c.detect(cache)
+	}
+	return c.matchesField(m), nil
+}
+
+// detect sums distinct matches across the condition's detectors against the
+// threshold. Only detectors that found something are reported.
+func (c Condition) detect(cache *detectionCache) (bool, []Finding) {
+	threshold := c.Number
+	if threshold < 1 {
+		threshold = 1
+	}
+	var total int64
+	var findings []Finding
+	seen := map[Detector]bool{}
+	for _, v := range c.Values {
+		d := Detector(strings.TrimSpace(v))
+		if seen[d] {
+			continue
+		}
+		seen[d] = true
+		f := cache.find(d)
+		if f.Count == 0 {
+			continue
+		}
+		total += int64(f.Count)
+		findings = append(findings, f)
+	}
+	if total < threshold {
+		return false, nil
+	}
+	return true, findings
+}
+
+func (c Condition) matchesField(m Message) bool {
 	switch c.Field {
 	case FieldHasAttachment:
 		return len(m.Attachments) > 0
