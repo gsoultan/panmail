@@ -29,6 +29,7 @@ const FIELDS = [
     group: 'Attachments',
     items: [['has_attachment', 'Has any attachment'], ['has_executable_attachment', 'Has an executable'],
       ['attachment_name', 'Attachment name'], ['attachment_extension', 'Attachment extension'],
+      ['attachment_text', 'Text inside attachment (PDF, Word, Excel)'],
       ['attachment_count', 'Attachment count'], ['attachment_size', 'Largest attachment'],
       ['total_attachment_size', 'Total attachment size']],
   },

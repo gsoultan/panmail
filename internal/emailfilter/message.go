@@ -31,14 +31,24 @@ func (d Direction) Valid() bool {
 	return d == DirectionOutbound || d == DirectionInbound
 }
 
-// Attachment is what a rule can ask about a file, without holding its bytes.
-// Size rather than content: the evaluator runs on the send path, and reading a
-// 20 MB attachment to answer "is it bigger than 10 MB" would put the whole
-// thing through memory for a question the header already answers.
+// Attachment is what a rule can ask about a file.
+//
+// Data is the attachment's bytes, shared with the caller's request rather
+// than copied, and read only when a rule asks about the text inside a file.
+// Every other question -- name, extension, size -- is answered without
+// touching it, because reading a 20 MB attachment to answer "is it bigger than
+// 10 MB" would put the whole thing through memory for nothing.
+//
+// Text is the readable text of a PDF, Word or Excel attachment. Screen fills
+// it in, and only when one of the tenant's rules has an attachment_text
+// condition; Evaluate never reads Data itself.
 type Attachment struct {
 	Filename    string
 	ContentType string
 	Size        int64
+
+	Data []byte
+	Text string
 }
 
 // Extension is the lowercased extension with no dot, or "" if there is none.

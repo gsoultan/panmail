@@ -6,10 +6,9 @@ import (
 )
 
 // filterAttachments projects the request's attachments onto what a rule can
-// ask about. The bytes are deliberately left behind: the evaluator answers
-// questions about names, extensions and sizes, and copying a 20 MB attachment
-// into a second structure to answer "is it bigger than 10 MB" would put the
-// whole thing through memory twice on the send path.
+// ask about. The bytes are shared, not copied: they are read only when a rule
+// asks about the text inside a file, and copying a 20 MB attachment into a
+// second structure would put it through memory twice on the send path.
 func filterAttachments(in []*panmailv1.Attachment) []emailfilter.Attachment {
 	if len(in) == 0 {
 		return nil
@@ -23,6 +22,7 @@ func filterAttachments(in []*panmailv1.Attachment) []emailfilter.Attachment {
 			Filename:    a.Filename,
 			ContentType: a.ContentType,
 			Size:        int64(len(a.Content)),
+			Data:        a.Content,
 		})
 	}
 	return out

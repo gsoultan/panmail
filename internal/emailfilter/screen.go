@@ -97,6 +97,11 @@ func (s *screener) Screen(ctx context.Context, tenantID string, direction Direct
 	if len(rules) == 0 {
 		return Decision{}, nil
 	}
+	// Reading a PDF or a spreadsheet is the one expensive question a rule can
+	// ask, so it is answered only when a rule asks it.
+	if needsAttachmentText(rules) {
+		m = readAttachmentText(tenantID, m)
+	}
 	return Evaluate(rules, direction, m), nil
 }
 

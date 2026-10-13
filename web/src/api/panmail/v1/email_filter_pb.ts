@@ -23,8 +23,8 @@ export const file_panmail_v1_email_filter: GenFile = /*@__PURE__*/
 export type FilterCondition = Message<"panmail.v1.FilterCondition"> & {
   /**
    * from, to, cc, bcc, any_recipient, subject, body, subject_or_body, header,
-   * attachment_name, attachment_extension, attachment_count, attachment_size,
-   * total_attachment_size, message_size, recipient_count, has_attachment,
+   * attachment_name, attachment_extension, attachment_text, attachment_count,
+   * attachment_size, total_attachment_size, message_size, recipient_count, has_attachment,
    * has_executable_attachment, provider, spf, dkim, dmarc.
    *
    * @generated from field: string field = 1;
