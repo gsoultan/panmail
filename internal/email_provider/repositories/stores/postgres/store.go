@@ -37,10 +37,9 @@ var (
 // selectColumns is the column list shared by every read, kept in one place so
 // the dynamic filter query below cannot drift from the embedded ones.
 //
-// allowed_domains holds the provider's allowed senders. It is named for what
-// it held before entries could be addresses; rows from then carry bare
+// allowed_senders rows written before entries could be addresses carry bare
 // domains, which senders.Canonical reads as *@domain on the way out.
-const selectColumns = "id, tenant_id, name, type, config, allowed_domains, webhook_secret, " +
+const selectColumns = "id, tenant_id, name, type, config, allowed_senders, webhook_secret, " +
 	"send_rate_per_minute, send_burst, created_at, updated_at"
 
 type store struct {

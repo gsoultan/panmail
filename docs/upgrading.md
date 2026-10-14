@@ -15,13 +15,13 @@ decision from you.
 
 A provider's `allowed_domains` became `allowed_senders`: a list of exact
 addresses (`billing@example.com`) and whole domains (`*@example.com`). Existing
-restrictions carry over unchanged, with nothing to migrate: a stored domain
-reads as `*@domain`.
+restrictions carry over unchanged: a stored domain reads as `*@domain`.
 
 | Change | What to do |
 | :--- | :--- |
 | `allowed_domains` is removed from `EmailProvider` and the create and update requests | Send and read `allowed_senders`, writing a domain as `*@domain`. A request that still sends `allowed_domains` has it ignored, so the provider is saved unrestricted. |
 | The refusal reads `provider X is not authorized to send as alice@example.com` instead of `... to send for domain example.com` | Update anything that matches the old text. It is still `FailedPrecondition` over the API and still a permanent failure in the outbox. |
+| Migration 0025 renames the `email_providers.allowed_domains` column to `allowed_senders` | Nothing, unless you query the table directly. During a rolling deploy, instances still on the old version fail to read providers once the migration has run, so roll forward rather than running the two versions side by side for long. |
 | The web form now shows and saves the list | Nothing. Before this, saving a provider in the web form cleared a list set through the API. |
 
 ## v2.0.0 (from v1.6.x)
