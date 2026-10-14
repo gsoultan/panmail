@@ -14,6 +14,33 @@ import { sendsMail } from '../components/allowedSenders';
 type ProviderConfig = MessageInitShape<typeof CreateEmailProviderRequestSchema>['config'];
 
 /**
+ * Copies a form branch into a plain init object, dropping protobuf-es's
+ * `$typeName` (and `$unknown`) at every level.
+ *
+ * The edit form is seeded from the provider the server returned, so a config
+ * branch is a real message that the form has spread into new objects. Spreads
+ * keep `$typeName`, and protobuf-es treats anything carrying it as an already
+ * built message: it skips converting the fields inside, so a plain nested
+ * object the form put there, such as the blank DKIM block written when signing
+ * is off, reaches the serializer as a bare object and the request fails with
+ * "cannot use field panmail.v1.DkimConfig.domain with message undefined".
+ * With the markers gone, every level goes through create() as an init object.
+ */
+export const toInit = (value: unknown): any => {
+  if (Array.isArray(value)) return value.map(toInit);
+  if (value === null || typeof value !== 'object') return value;
+  // Messages and plain objects are copied; Uint8Array and the like stay as is.
+  const proto = Object.getPrototypeOf(value);
+  if (!('$typeName' in value) && proto !== Object.prototype && proto !== null) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value)) {
+    if (key === '$typeName' || key === '$unknown') continue;
+    out[key] = toInit(field);
+  }
+  return out;
+};
+
+/**
  * Maps form values onto the request's config oneof.
  *
  * One function rather than a ternary chain repeated at each call site: the same
@@ -24,19 +51,19 @@ type ProviderConfig = MessageInitShape<typeof CreateEmailProviderRequestSchema>[
 const configFor = (values: any): ProviderConfig => {
   switch (values.type) {
     case ProviderType.SMTP:
-      return { case: 'smtp', value: values.smtp ?? {} };
+      return { case: 'smtp', value: toInit(values.smtp ?? {}) };
     case ProviderType.IMAP:
-      return { case: 'imap', value: values.imap ?? {} };
+      return { case: 'imap', value: toInit(values.imap ?? {}) };
     case ProviderType.POP3:
-      return { case: 'pop3', value: values.pop3 ?? {} };
+      return { case: 'pop3', value: toInit(values.pop3 ?? {}) };
     case ProviderType.SENDGRID:
-      return { case: 'sendgrid', value: values.sendgrid ?? {} };
+      return { case: 'sendgrid', value: toInit(values.sendgrid ?? {}) };
     case ProviderType.SES:
-      return { case: 'ses', value: values.ses ?? {} };
+      return { case: 'ses', value: toInit(values.ses ?? {}) };
     case ProviderType.POSTMARK:
-      return { case: 'postmark', value: values.postmark ?? {} };
+      return { case: 'postmark', value: toInit(values.postmark ?? {}) };
     case ProviderType.MAILGUN:
-      return { case: 'mailgun', value: values.mailgun ?? {} };
+      return { case: 'mailgun', value: toInit(values.mailgun ?? {}) };
     default:
       return undefined;
   }
