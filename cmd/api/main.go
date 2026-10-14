@@ -1663,12 +1663,26 @@ func buildUI(version string) {
 	fmt.Println("✅ UI built successfully.")
 }
 
+// gitVersion is the release tag the working tree is on, without the leading
+// "v", the same value the Makefile derives and goreleaser passes: "2.2.2" on the
+// tag, "2.2.2-3-gabc1234" past it. Outside a git checkout it is "development".
+func gitVersion() string {
+	out, err := exec.Command("git", "describe", "--tags", "--always", "--dirty").Output()
+	if v := strings.TrimPrefix(strings.TrimSpace(string(out)), "v"); err == nil && v != "" {
+		return v
+	}
+	return "development"
+}
+
 func handleBuildCommand() {
 	buildFlags := flag.NewFlagSet("build", flag.ExitOnError)
 	builtUI := buildFlags.Bool("built-ui", false, "Build and embed the UI")
-	version := buildFlags.String("version", "development", "Version to build")
+	version := buildFlags.String("version", "", "Version to build (default: the git tag this checkout is on, else development)")
 
 	_ = buildFlags.Parse(os.Args[2:])
+	if *version == "" {
+		*version = gitVersion()
+	}
 
 	// Check if we are in the project root by checking for go.mod
 	if _, err := os.Stat("go.mod"); os.IsNotExist(err) {
