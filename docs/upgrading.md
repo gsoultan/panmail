@@ -9,6 +9,21 @@ version you run and the one you are moving to. Migrations run on their own at
 startup, so a section only says something about the schema when it needs a
 decision from you.
 
+## Unreleased
+
+### Providers restrict senders by address as well as domain
+
+A provider's `allowed_domains` became `allowed_senders`: a list of exact
+addresses (`billing@example.com`) and whole domains (`*@example.com`). Existing
+restrictions carry over unchanged, with nothing to migrate: a stored domain
+reads as `*@domain`.
+
+| Change | What to do |
+| :--- | :--- |
+| `allowed_domains` is deprecated on `EmailProvider` and the create and update requests | Send and read `allowed_senders`. Domains still sent in `allowed_domains` are added as `*@domain`; on read it lists only the `*@domain` entries, so a client reading it alone does not see address entries. |
+| The refusal reads `provider X is not authorized to send as alice@example.com` instead of `... to send for domain example.com` | Update anything that matches the old text. It is still `FailedPrecondition` over the API and still a permanent failure in the outbox. |
+| The web form now shows and saves the list | Nothing. Before this, saving a provider in the web form cleared a list set through the API. |
+
 ## v2.0.0 (from v1.6.x)
 
 The October 2026 hardening pass, and the major version marks it: an

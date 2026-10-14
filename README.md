@@ -368,7 +368,7 @@ For an application that already speaks SMTP — an existing framework mailer, or
 anything you would rather not fit a new client into — panmail accepts
 submissions directly. It is the same pipeline: a message submitted over SMTP
 goes through the same send usecase as the RPC API, so the rate limit, backlog
-ceiling, suppression list and per-provider `AllowedDomains` anti-spoofing
+ceiling, suppression list and per-provider allowed-senders anti-spoofing
 checks all apply unchanged.
 
 The listener is **off by default**, and there are two ways to turn it on.

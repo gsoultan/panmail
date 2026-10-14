@@ -128,6 +128,19 @@ describe('editing a saved provider', () => {
     expect(sent.smtp.oauth2.clientId).toBe('');
   });
 
+  // The bug the section fixed: the form never carried the list, and update
+  // replaces it, so every save from here lifted the restriction.
+  test('saving a restricted provider untouched keeps its allowed senders', async () => {
+    const onSubmit = mock(() => {});
+    const provider = { ...savedSmtpProvider({}), allowedSenders: ['*@example.com', 'billing@pay.example'] };
+
+    const { container } = await renderForm({ initialValues: provider, onSubmit });
+    await submit(container);
+
+    const sent = (onSubmit.mock.calls[0] as unknown as [any])[0];
+    expect(sent.allowedSenders).toEqual(['*@example.com', 'billing@pay.example']);
+  });
+
   test('the existing host and username survive the round trip', async () => {
     const onSubmit = mock(() => {});
     const { container } = await renderForm({ initialValues: savedSmtpProvider({}), onSubmit });

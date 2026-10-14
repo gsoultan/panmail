@@ -10,6 +10,8 @@ import { ApiProviderFields } from './ApiProviderFields';
 import { OAuthSection } from './OAuthSection';
 import { DomainHealthPanel } from './DomainHealthPanel';
 import { InboundWebhookSection } from './InboundWebhookSection';
+import { AllowedSendersSection } from './AllowedSendersSection';
+import { sendsMail } from './allowedSenders';
 import { DkimKeyMatch } from '../../../api/panmail/v1/email_provider_service_pb';
 import { emailProviderService } from '../services/emailProvider';
 
@@ -49,6 +51,9 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
     // Zero is unlimited and zero is the default.
     sendRatePerMinute: 0,
     sendBurst: 0,
+    // Readable and replaced whole on update, so it must be seeded from the
+    // saved provider: a form that left it out cleared it on every save.
+    allowedSenders: [] as string[],
   };
 
   const getInitialValues = () => {
@@ -78,6 +83,7 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
       webhookSecret: '',
       sendRatePerMinute: initialValues.sendRatePerMinute ?? 0,
       sendBurst: initialValues.sendBurst ?? 0,
+      allowedSenders: [...(initialValues.allowedSenders ?? [])],
     };
   };
 
@@ -305,6 +311,18 @@ export const ProviderForm: React.FC<ProviderFormProps> = ({ initialValues, onSub
             <Stack gap="md">
               <Text fw={700} size="sm" tt="uppercase" c="light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-2))">Server Configuration</Text>
               {renderConfigFields()}
+              {sendsMail(form.values.type) && (
+                <>
+                  <Divider my="xs" />
+                  <AllowedSendersSection
+                    providerType={form.values.type}
+                    value={form.values.allowedSenders ?? []}
+                    onChange={(next) => form.setFieldValue('allowedSenders', next)}
+                    smtpUsername={form.values.smtp?.username}
+                    dkimDomain={form.values.smtp?.dkimEnabled ? form.values.smtp?.dkim?.domain : ''}
+                  />
+                </>
+              )}
               <Divider my="xs" />
               <Title order={5}>Send rate</Title>
               <Text size="sm" c="dimmed">

@@ -12,6 +12,7 @@ import (
 	"github.com/gsoultan/gsmail"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	"github.com/gsoultan/panmail/internal/email_provider/senders"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -191,13 +192,16 @@ func (u *domainHealthUsecase) resolveTarget(ctx context.Context, tenantID string
 			}
 			target.privateKey = dkim.GetPrivateKey()
 		}
-		target.allowedDomains = provider.AllowedDomains
+		// The From domains the provider may send as, whether an entry admits
+		// the whole domain or one address at it: either is mail recipients
+		// will see from that domain.
+		target.allowedDomains = senders.Domains(provider.AllowedSenders)
 	}
 
 	// Falling back to the first allowed domain means a provider that sends but
 	// does not sign still gets a useful answer.
-	if target.domain == "" && len(provider.AllowedDomains) > 0 {
-		target.domain = strings.TrimSpace(provider.AllowedDomains[0])
+	if domains := senders.Domains(provider.AllowedSenders); target.domain == "" && len(domains) > 0 {
+		target.domain = domains[0]
 	}
 	if target.domain == "" {
 		return healthTarget{}, fmt.Errorf("provider %s has no DKIM domain or allowed domain to check; supply a domain", req.GetProviderId())

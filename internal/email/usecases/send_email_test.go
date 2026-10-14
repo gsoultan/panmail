@@ -397,7 +397,7 @@ func TestSendEmailUsecase_SendEmail(t *testing.T) {
 			// SMTP host is how every hosted ESP works, and rejecting it made
 			// Panmail unusable with SendGrid, SES, Mailgun and Postmark. The
 			// control that decides who may send is the provider's
-			// AllowedDomains list, covered in send_email_domain_test.go.
+			// allowed senders list, covered in send_email_domain_test.go.
 			name: "Sender domain need not match the provider host",
 			provider: &providerEntities.EmailProvider{
 				ID:   testProviderID,

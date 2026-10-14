@@ -11,6 +11,7 @@ import (
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	"github.com/gsoultan/panmail/internal/email_provider/senders"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -41,6 +42,11 @@ func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, re
 		}
 	}
 
+	allowed, err := allowedSenders(req.AllowedSenders, req.AllowedDomains)
+	if err != nil {
+		return nil, err
+	}
+
 	configBytes, err := marshalCreateConfig(req)
 	if err != nil {
 		return nil, err
@@ -52,7 +58,7 @@ func (u *manageProvidersUsecase) Create(ctx context.Context, tenantID string, re
 		Name:           req.Name,
 		Type:           req.Type,
 		Config:         configBytes,
-		AllowedDomains: req.AllowedDomains,
+		AllowedSenders: allowed,
 		WebhookSecret:  req.WebhookSecret,
 
 		SendRatePerMinute: req.SendRatePerMinute,
@@ -124,6 +130,11 @@ func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, re
 		}
 	}
 
+	allowed, err := allowedSenders(req.AllowedSenders, req.AllowedDomains)
+	if err != nil {
+		return nil, err
+	}
+
 	p, err := u.repo.GetByID(ctx, tenantID, req.Id)
 	if err != nil {
 		return nil, err
@@ -147,7 +158,9 @@ func (u *manageProvidersUsecase) Update(ctx context.Context, tenantID string, re
 	}
 
 	p.Name = req.Name
-	p.AllowedDomains = req.AllowedDomains
+	// Replaced, not merged, like the name: the list is readable, so a client
+	// round-trips it, and an empty one is how a restriction is lifted.
+	p.AllowedSenders = allowed
 	p.UpdatedAt = time.Now()
 
 	// Applied unconditionally, unlike the secret below. The rate is readable,
@@ -228,6 +241,19 @@ func (u *manageProvidersUsecase) TestConfig(ctx context.Context, req *panmailv1.
 	return gsmail.Ping(ctx, provider)
 }
 
+// allowedSenders validates a request's allowed senders. Domains sent in the
+// deprecated allowed_domains field join the list as *@domain, so a client
+// written against it keeps working.
+func allowedSenders(entries, legacyDomains []string) ([]string, error) {
+	all := append([]string(nil), entries...)
+	for _, d := range legacyDomains {
+		if d = strings.TrimSpace(d); d != "" {
+			all = append(all, "*@"+strings.TrimPrefix(d, "*@"))
+		}
+	}
+	return senders.Normalize(all)
+}
+
 // redactedPassword is what callers see in place of a stored credential. It is
 // a fixed marker rather than the real length, which would leak information.
 const redactedPassword = ""
@@ -244,7 +270,10 @@ func (u *manageProvidersUsecase) toProto(p *entities.EmailProvider) (*panmailv1.
 		TenantId:       p.TenantID,
 		Name:           p.Name,
 		Type:           p.Type,
-		AllowedDomains: p.AllowedDomains,
+		AllowedSenders: p.AllowedSenders,
+		// Deprecated, for clients that predate allowed_senders: the domains
+		// admitted whole, so their restrictions are still visible.
+		AllowedDomains: senders.WildcardDomains(p.AllowedSenders),
 
 		// Configuration, not a credential: an operator has to see a ceiling in
 		// order to change it.

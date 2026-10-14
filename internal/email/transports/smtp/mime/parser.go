@@ -40,7 +40,7 @@ const (
 )
 
 // ErrNoFrom is returned when a submission carries no usable From address.
-// The gateway will not guess a sender: the provider's AllowedDomains check
+// The gateway will not guess a sender: the provider's allowed senders check
 // is anchored to it.
 var ErrNoFrom = errors.New("message has no From address")
 

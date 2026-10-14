@@ -244,7 +244,7 @@ remain in it. A signing key that differs between two instances means a token
 minted by one is rejected by the other.
 
 This is specific to the settings *file*. Per-tenant configuration -- a tenant's
-`send_rate_per_minute`, a provider's `allowed_domains` and its credentials -- is
+`send_rate_per_minute`, a provider's `allowed_senders` and its credentials -- is
 in the database, so an edit to any of it is visible to every instance as soon as
 the caches expire.
 

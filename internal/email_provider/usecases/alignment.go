@@ -15,7 +15,7 @@ import (
 // the two differ fails DMARC however good the signature is.
 //
 // This is the gap between the two things panmail already checks. The provider's
-// AllowedDomains decides which From addresses it will accept; the provider's
+// allowed senders decide which From addresses it will accept; the provider's
 // DKIM configuration decides what the signature claims. Nothing compared them,
 // so a provider signing for one domain while sending as another produced mail
 // that was correctly signed, published in DNS, healthy by every check here, and

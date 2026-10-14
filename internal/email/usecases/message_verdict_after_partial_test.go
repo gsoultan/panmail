@@ -79,7 +79,7 @@ func TestAMessageLevelVerdictSparesRecipientsAlreadyDelivered(t *testing.T) {
 
 	h.pass() // ok@ delivered, busy@ deferred
 	// While busy@ waits, an operator restricts the provider to another domain.
-	h.provider.AllowedDomains = []string{"elsewhere.com"}
+	h.provider.AllowedSenders = []string{"*@elsewhere.com"}
 	h.pass()
 
 	for _, ty := range h.typesFor("ok@example.com") {
@@ -102,7 +102,7 @@ func TestAMessageLevelVerdictSparesRecipientsAlreadyDelivered(t *testing.T) {
 // every recipient, as it always has.
 func TestAFirstPassVerdictStillReachesEveryone(t *testing.T) {
 	h := newVerdictHarness("a@example.com", "b@example.com")
-	h.provider.AllowedDomains = []string{"elsewhere.com"}
+	h.provider.AllowedSenders = []string{"*@elsewhere.com"}
 
 	h.pass()
 

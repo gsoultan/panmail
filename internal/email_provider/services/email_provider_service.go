@@ -2,10 +2,12 @@ package services
 
 import (
 	"context"
+	"errors"
 
 	"connectrpc.com/connect"
 	panmailv1 "github.com/gsoultan/panmail/api/panmail/v1"
 	"github.com/gsoultan/panmail/internal/auth/middlewares"
+	"github.com/gsoultan/panmail/internal/email_provider/senders"
 	"github.com/gsoultan/panmail/internal/email_provider/usecases"
 )
 
@@ -28,7 +30,7 @@ func (s *emailProviderService) CreateEmailProvider(ctx context.Context, req *pan
 	tenantID := middlewares.GetTenantID(ctx)
 	p, err := s.manageProvidersUsecase.Create(ctx, tenantID, req)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connect.NewError(writeErrorCode(err), err)
 	}
 	return &panmailv1.CreateEmailProviderResponse{Provider: p}, nil
 }
@@ -58,7 +60,7 @@ func (s *emailProviderService) UpdateEmailProvider(ctx context.Context, req *pan
 	tenantID := middlewares.GetTenantID(ctx)
 	p, err := s.manageProvidersUsecase.Update(ctx, tenantID, req)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connect.NewError(writeErrorCode(err), err)
 	}
 	return &panmailv1.UpdateEmailProviderResponse{Provider: p}, nil
 }
@@ -101,4 +103,14 @@ func (s *emailProviderService) CheckDomainHealth(ctx context.Context, req *panma
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return res, nil
+}
+
+// writeErrorCode classifies a failed create or update. An allowed sender that
+// does not parse is the caller's to fix, and the error names it.
+func writeErrorCode(err error) connect.Code {
+	var invalid *senders.InvalidEntryError
+	if errors.As(err, &invalid) {
+		return connect.CodeInvalidArgument
+	}
+	return connect.CodeInternal
 }

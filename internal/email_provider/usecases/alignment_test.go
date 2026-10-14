@@ -96,7 +96,7 @@ func TestAProviderThatOnlySendsAsWhatItSignsIsQuiet(t *testing.T) {
 	}
 }
 
-// Empty AllowedDomains means any caller may send as any domain, so alignment
+// Empty allowed senders mean any caller may send as any domain, so alignment
 // depends on each request. That is worth saying — it is the default, and it is
 // how a provider ends up signing for one domain and sending as anything.
 func TestAProviderWithNoRestrictionIsFlaggedSeparately(t *testing.T) {
