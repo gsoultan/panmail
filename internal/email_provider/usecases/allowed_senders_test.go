@@ -16,7 +16,7 @@ func newSendersTestUsecase() (ManageProvidersUsecase, *mockRepo) {
 	return NewManageProvidersUsecase(repo, NewProviderFactory()), repo
 }
 
-func sesCreate(name string, allowedSenders, allowedDomains []string) *panmailv1.CreateEmailProviderRequest {
+func sesCreate(name string, allowedSenders []string) *panmailv1.CreateEmailProviderRequest {
 	return &panmailv1.CreateEmailProviderRequest{
 		Name: name,
 		Type: panmailv1.ProviderType_PROVIDER_TYPE_SES,
@@ -24,7 +24,6 @@ func sesCreate(name string, allowedSenders, allowedDomains []string) *panmailv1.
 			Ses: &panmailv1.SesConfig{Region: "us-east-1", AccessKey: "AKIA", SecretKey: "secret"},
 		},
 		AllowedSenders: allowedSenders,
-		AllowedDomains: allowedDomains,
 	}
 }
 
@@ -34,7 +33,7 @@ func TestCreateStoresAllowedSendersInCanonicalForm(t *testing.T) {
 	u, repo := newSendersTestUsecase()
 
 	got, err := u.Create(context.Background(), testTenantID,
-		sesCreate("SES", []string{"Billing@Acme.com", "acme.org", "billing@acme.com"}, nil))
+		sesCreate("SES", []string{"Billing@Acme.com", "acme.org", "billing@acme.com"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,25 +45,6 @@ func TestCreateStoresAllowedSendersInCanonicalForm(t *testing.T) {
 	if stored := repo.providers[got.Id].AllowedSenders; !reflect.DeepEqual(stored, want) {
 		t.Errorf("stored AllowedSenders = %v, want %v", stored, want)
 	}
-	// The deprecated field reports only what is admitted whole.
-	if !reflect.DeepEqual(got.AllowedDomains, []string{"acme.org"}) {
-		t.Errorf("response AllowedDomains = %v, want [acme.org]", got.AllowedDomains)
-	}
-}
-
-// A client written against allowed_domains keeps its restriction.
-func TestCreateAcceptsTheDeprecatedAllowedDomains(t *testing.T) {
-	u, _ := newSendersTestUsecase()
-
-	got, err := u.Create(context.Background(), testTenantID,
-		sesCreate("SES", []string{"ops@acme.io"}, []string{"Example.com"}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"ops@acme.io", "*@example.com"}
-	if !reflect.DeepEqual(got.AllowedSenders, want) {
-		t.Errorf("AllowedSenders = %v, want %v", got.AllowedSenders, want)
-	}
 }
 
 // An entry that cannot be matched is refused with its name, not stored to be
@@ -73,7 +53,7 @@ func TestCreateRefusesAnInvalidAllowedSender(t *testing.T) {
 	u, repo := newSendersTestUsecase()
 
 	_, err := u.Create(context.Background(), testTenantID,
-		sesCreate("SES", []string{"ok@acme.com", "*.acme.com"}, nil))
+		sesCreate("SES", []string{"ok@acme.com", "*.acme.com"}))
 
 	var invalid *senders.InvalidEntryError
 	if !errors.As(err, &invalid) || invalid.Entry != "*.acme.com" {
@@ -89,7 +69,7 @@ func TestCreateRefusesAnInvalidAllowedSender(t *testing.T) {
 func TestUpdateReplacesAllowedSenders(t *testing.T) {
 	u, repo := newSendersTestUsecase()
 	created, err := u.Create(context.Background(), testTenantID,
-		sesCreate("SES", []string{"*@acme.com"}, nil))
+		sesCreate("SES", []string{"*@acme.com"}))
 	if err != nil {
 		t.Fatal(err)
 	}

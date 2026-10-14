@@ -34,9 +34,9 @@ message CreateEmailProviderRequest {
     PostmarkConfig postmark = 14;
     MailgunConfig mailgun = 15;
   }
-  // Deprecated: send allowed_senders. Each domain here is added to
-  // allowed_senders as *@domain.
-  repeated string allowed_domains = 10 [deprecated = true];
+  // Was allowed_domains, replaced by allowed_senders.
+  reserved 10;
+  reserved "allowed_domains";
   // See EmailProvider.allowed_senders. Entries are validated and stored in
   // canonical form: lower case, bare domains written as *@domain. On update
   // the list replaces the stored one, so an empty list lifts the restriction.
@@ -85,9 +85,9 @@ message UpdateEmailProviderRequest {
     PostmarkConfig postmark = 14;
     MailgunConfig mailgun = 15;
   }
-  // Deprecated: send allowed_senders. Each domain here is added to
-  // allowed_senders as *@domain.
-  repeated string allowed_domains = 10 [deprecated = true];
+  // Was allowed_domains, replaced by allowed_senders.
+  reserved 10;
+  reserved "allowed_domains";
   // See EmailProvider.allowed_senders. Entries are validated and stored in
   // canonical form: lower case, bare domains written as *@domain. On update
   // the list replaces the stored one, so an empty list lifts the restriction.

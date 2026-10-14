@@ -40,13 +40,6 @@ type EmailProvider struct {
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	TenantId   string                 `protobuf:"bytes,13,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	// Deprecated: read allowed_senders. Reports the domains allowed_senders
-	// admits whole (its *@domain entries, without the "*@"), so a client that
-	// predates allowed_senders still sees domain restrictions. It does not show
-	// exact-address entries.
-	//
-	// Deprecated: Marked as deprecated in panmail/v1/email_provider.proto.
-	AllowedDomains []string `protobuf:"bytes,14,rep,name=allowed_domains,json=allowedDomains,proto3" json:"allowed_domains,omitempty"`
 	// Verification material for this provider's delivery webhooks: SendGrid's
 	// base64 ECDSA public key, Mailgun's HTTP webhook signing key, or a shared
 	// secret for the generic HMAC format. Write-only; never returned.
@@ -211,14 +204,6 @@ func (x *EmailProvider) GetTenantId() string {
 		return x.TenantId
 	}
 	return ""
-}
-
-// Deprecated: Marked as deprecated in panmail/v1/email_provider.proto.
-func (x *EmailProvider) GetAllowedDomains() []string {
-	if x != nil {
-		return x.AllowedDomains
-	}
-	return nil
 }
 
 func (x *EmailProvider) GetWebhookSecret() string {
@@ -984,7 +969,7 @@ var File_panmail_v1_email_provider_proto protoreflect.FileDescriptor
 const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"\n" +
 	"\x1fpanmail/v1/email_provider.proto\x12\n" +
-	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1epanmail/v1/provider_type.proto\"\xaf\x06\n" +
+	"panmail.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1epanmail/v1/provider_type.proto\"\x99\x06\n" +
 	"\rEmailProvider\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
@@ -1001,14 +986,13 @@ const file_panmail_v1_email_provider_proto_rawDesc = "" +
 	"createTime\x12;\n" +
 	"\vupdate_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\x12\x1b\n" +
-	"\ttenant_id\x18\r \x01(\tR\btenantId\x12+\n" +
-	"\x0fallowed_domains\x18\x0e \x03(\tB\x02\x18\x01R\x0eallowedDomains\x12%\n" +
+	"\ttenant_id\x18\r \x01(\tR\btenantId\x12%\n" +
 	"\x0ewebhook_secret\x18\x0f \x01(\tR\rwebhookSecret\x12/\n" +
 	"\x14send_rate_per_minute\x18\x14 \x01(\x05R\x11sendRatePerMinute\x12\x1d\n" +
 	"\n" +
 	"send_burst\x18\x15 \x01(\x05R\tsendBurst\x12'\n" +
 	"\x0fallowed_senders\x18\x16 \x03(\tR\x0eallowedSendersB\b\n" +
-	"\x06config\"\x84\x02\n" +
+	"\x06configJ\x04\b\x0e\x10\x0fR\x0fallowed_domains\"\x84\x02\n" +
 	"\n" +
 	"SmtpConfig\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +

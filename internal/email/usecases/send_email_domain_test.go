@@ -62,7 +62,7 @@ func TestSenderDomainNeedNotMatchTheProviderHost(t *testing.T) {
 
 	for _, tc := range hosts {
 		t.Run(tc.name, func(t *testing.T) {
-			// No AllowedDomains: the operator has not restricted this provider.
+			// No AllowedSenders: the operator has not restricted this provider.
 			u, sender := newDomainTestUsecase(smtpProvider(t, tc.host, nil))
 
 			req := &panmailv1.SendEmailRequest{

@@ -219,16 +219,3 @@ func Domains(entries []string) []string {
 	}
 	return out
 }
-
-// WildcardDomains lists the domains admitted whole, without the "*@". It is
-// what the deprecated allowed_domains field reports, so a client that reads
-// only that field still sees the domain restrictions.
-func WildcardDomains(entries []string) []string {
-	var out []string
-	for _, e := range Canonical(entries) {
-		if strings.HasPrefix(e, wildcard+"@") {
-			out = append(out, Domain(e))
-		}
-	}
-	return out
-}

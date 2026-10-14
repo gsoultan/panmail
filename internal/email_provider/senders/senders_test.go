@@ -101,12 +101,9 @@ func TestCanonicalKeepsWhatItCannotParse(t *testing.T) {
 	}
 }
 
-func TestDomainsAndWildcardDomains(t *testing.T) {
+func TestDomains(t *testing.T) {
 	list := []string{"*@acme.com", "billing@acme-pay.io", "ops@acme.com", "receipts@acme-pay.io"}
 	if got, want := Domains(list), []string{"acme.com", "acme-pay.io"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Domains = %v, want %v", got, want)
-	}
-	if got, want := WildcardDomains(list), []string{"acme.com"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("WildcardDomains = %v, want %v", got, want)
 	}
 }
