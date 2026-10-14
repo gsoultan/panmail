@@ -34,7 +34,13 @@ message CreateEmailProviderRequest {
     PostmarkConfig postmark = 14;
     MailgunConfig mailgun = 15;
   }
-  repeated string allowed_domains = 10;
+  // Was allowed_domains, replaced by allowed_senders.
+  reserved 10;
+  reserved "allowed_domains";
+  // See EmailProvider.allowed_senders. Entries are validated and stored in
+  // canonical form: lower case, bare domains written as *@domain. On update
+  // the list replaces the stored one, so an empty list lifts the restriction.
+  repeated string allowed_senders = 18;
   // Secret used to verify this provider's delivery webhooks. Write-only.
   string webhook_secret = 11;
 
@@ -79,7 +85,13 @@ message UpdateEmailProviderRequest {
     PostmarkConfig postmark = 14;
     MailgunConfig mailgun = 15;
   }
-  repeated string allowed_domains = 10;
+  // Was allowed_domains, replaced by allowed_senders.
+  reserved 10;
+  reserved "allowed_domains";
+  // See EmailProvider.allowed_senders. Entries are validated and stored in
+  // canonical form: lower case, bare domains written as *@domain. On update
+  // the list replaces the stored one, so an empty list lifts the restriction.
+  repeated string allowed_senders = 18;
   // Secret used to verify this provider's delivery webhooks. Write-only.
   // Leave empty to keep the currently stored value.
   string webhook_secret = 11;

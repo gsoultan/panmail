@@ -74,23 +74,25 @@ func (e *TemplateRefusedError) Unwrap() error { return e.Err }
 // attempts over two days -- before failing anyway.
 func (e *TemplateRefusedError) permanent() {}
 
-// ProviderDomainRefusedError reports a send whose From domain the provider is
-// not authorized for.
+// ProviderSenderRefusedError reports a send whose From address the provider is
+// not authorized to send as.
 //
-// A decision, not a failure: the provider's AllowedDomains will answer the
+// A decision, not a failure: the provider's allowed senders will answer the
 // same way until an operator edits them. It is refused at admission so the
 // caller hears it while waiting, and again at delivery, which remains the
 // authority because the configuration can change in between.
-type ProviderDomainRefusedError struct {
+type ProviderSenderRefusedError struct {
 	Provider string
-	Domain   string
+	Sender   string
 }
 
-func (e *ProviderDomainRefusedError) Error() string {
-	return fmt.Sprintf("provider %s is not authorized to send for domain %s", e.Provider, e.Domain)
+// Error keeps "not authorized to send", which the bounce classifier reads as
+// permanent.
+func (e *ProviderSenderRefusedError) Error() string {
+	return fmt.Sprintf("provider %s is not authorized to send as %s", e.Provider, e.Sender)
 }
 
-func (e *ProviderDomainRefusedError) permanent() {}
+func (e *ProviderSenderRefusedError) permanent() {}
 
 // permanentRefusal marks a refusal that retrying cannot change.
 //

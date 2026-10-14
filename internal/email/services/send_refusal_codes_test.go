@@ -68,7 +68,7 @@ func TestRefusalsThatAreDecisionsGetTheirOwnCode(t *testing.T) {
 			// may make, refused by configuration that will not change on its
 			// own.
 			name: "provider not authorized for the sender's domain",
-			err:  &usecases.ProviderDomainRefusedError{Provider: "ESP", Domain: "example.com"},
+			err:  &usecases.ProviderSenderRefusedError{Provider: "ESP", Sender: "ceo@example.com"},
 			want: connect.CodeFailedPrecondition,
 		},
 		{

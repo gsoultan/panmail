@@ -8,12 +8,16 @@ import (
 )
 
 type EmailProvider struct {
-	ID             string
-	TenantID       string
-	Name           string
-	Type           panmailv1.ProviderType
-	Config         []byte   // JSON encoded config; encrypted at rest
-	AllowedDomains []string // Domains this provider is authorized to send for
+	ID       string
+	TenantID string
+	Name     string
+	Type     panmailv1.ProviderType
+	Config   []byte // JSON encoded config; encrypted at rest
+
+	// AllowedSenders are the From addresses this provider may send as, each
+	// an exact address or *@domain; empty means unrestricted. See package
+	// senders for the forms and how they match.
+	AllowedSenders []string
 
 	// WebhookSecret verifies delivery webhooks from this provider: SendGrid's
 	// ECDSA public key, Mailgun's signing key, SES's SNS topic ARNs, or a

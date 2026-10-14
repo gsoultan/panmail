@@ -102,6 +102,24 @@ func TestRunAppliesLaterMigrations(t *testing.T) {
 	}
 }
 
+// 0025 renames a column, so the new name being there is not enough: an ADD
+// in its place would leave the old column holding every existing restriction.
+func TestRunRenamesProviderAllowedDomains(t *testing.T) {
+	db := newTestDB(t)
+
+	if err := Run(db, DialectSQLite); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	cols := columns(t, db, "email_providers")
+	if !cols["allowed_senders"] {
+		t.Error("email_providers.allowed_senders is missing")
+	}
+	if cols["allowed_domains"] {
+		t.Error("email_providers.allowed_domains is still there")
+	}
+}
+
 func TestRunIsIdempotent(t *testing.T) {
 	db := newTestDB(t)
 

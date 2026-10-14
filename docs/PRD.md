@@ -79,7 +79,7 @@ Administrator.
 | --- | --- |
 | S1 | `EmailService.SendEmail` over ConnectRPC/gRPC/JSON, authenticated by an API key with the `email:send` scope, or by a console session. |
 | S2 | An SMTP submission listener (off by default) feeding the same pipeline, with AUTH only over TLS on any non-loopback listener. |
-| S3 | `provider_id` is required; panmail never guesses which provider a message leaves through. A `From` outside the provider's `AllowedDomains` is refused. |
+| S3 | `provider_id` is required; panmail never guesses which provider a message leaves through. A `From` outside the provider's allowed senders (exact addresses or `*@domain`) is refused. |
 | S4 | Refusals are decisions with stable codes (rate limited, backlog full, suppressed, invalid, unauthenticated, permission denied) and are made **before** anything is queued or recorded. Only `unknown` and `aborted` (S8) are worth retrying. |
 | S5 | Each recipient receives its own copy (personal tracking), with the full visible To/Cc audience in the headers and only that recipient in the envelope. Bcc is never a header. |
 | S6 | Handlebars and Go `html/template` bodies, with date formatting and time zones; a template that will not render is refused, not sent blank. |

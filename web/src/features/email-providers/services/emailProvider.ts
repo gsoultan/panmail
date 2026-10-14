@@ -2,6 +2,7 @@ import type { MessageInitShape } from '@bufbuild/protobuf';
 import { providerClient, emailClient } from '../../../services/client';
 import type { CreateEmailProviderRequestSchema } from '../../../api/panmail/v1/email_provider_service_pb';
 import { ProviderType } from '../../../api/panmail/v1/provider_type_pb';
+import { sendsMail } from '../components/allowedSenders';
 
 /**
  * The config oneof, as the request wants it.
@@ -41,6 +42,15 @@ const configFor = (values: any): ProviderConfig => {
   }
 };
 
+/**
+ * The allowed senders to save. Always sent, like the send rate: the list is
+ * readable, the server replaces the stored one with it, and an empty list is
+ * how a restriction is lifted. IMAP and POP3 do not send, so a list left over
+ * from switching the type is not saved against them.
+ */
+const allowedSendersFor = (values: any): string[] =>
+  sendsMail(values.type) ? [...(values.allowedSenders ?? [])] : [];
+
 export const emailProviderService = {
   async listProviders(pageSize?: number, pageToken?: string, name?: string, type?: ProviderType) {
     const res = await providerClient.listEmailProviders({ pageSize, pageToken, name, type });
@@ -57,6 +67,7 @@ export const emailProviderService = {
       webhookSecret: values.webhookSecret ?? '',
       sendRatePerMinute: Number(values.sendRatePerMinute) || 0,
       sendBurst: Number(values.sendBurst) || 0,
+      allowedSenders: allowedSendersFor(values),
     });
     return res.provider;
   },
@@ -74,6 +85,7 @@ export const emailProviderService = {
       // round-trips it, and an explicit zero is how a ceiling is removed.
       sendRatePerMinute: Number(values.sendRatePerMinute) || 0,
       sendBurst: Number(values.sendBurst) || 0,
+      allowedSenders: allowedSendersFor(values),
     });
     return res.provider;
   },

@@ -15,7 +15,7 @@ import (
 
 // smtpProvider builds an SMTP provider whose host is deliberately unrelated to
 // any sender's domain, which is the normal shape for a hosted ESP.
-func smtpProvider(t *testing.T, host string, allowedDomains []string) *providerEntities.EmailProvider {
+func smtpProvider(t *testing.T, host string, allowedSenders []string) *providerEntities.EmailProvider {
 	t.Helper()
 	cfg, err := json.Marshal(map[string]any{"host": host, "port": 587})
 	if err != nil {
@@ -26,7 +26,7 @@ func smtpProvider(t *testing.T, host string, allowedDomains []string) *providerE
 		Name:           "ESP",
 		Type:           panmailv1.ProviderType_PROVIDER_TYPE_SMTP,
 		Config:         cfg,
-		AllowedDomains: allowedDomains,
+		AllowedSenders: allowedSenders,
 	}
 }
 
@@ -62,7 +62,7 @@ func TestSenderDomainNeedNotMatchTheProviderHost(t *testing.T) {
 
 	for _, tc := range hosts {
 		t.Run(tc.name, func(t *testing.T) {
-			// No AllowedDomains: the operator has not restricted this provider.
+			// No AllowedSenders: the operator has not restricted this provider.
 			u, sender := newDomainTestUsecase(smtpProvider(t, tc.host, nil))
 
 			req := &panmailv1.SendEmailRequest{
@@ -84,10 +84,10 @@ func TestSenderDomainNeedNotMatchTheProviderHost(t *testing.T) {
 	}
 }
 
-// Removing the host check must not weaken anti-spoofing. AllowedDomains is the
+// Removing the host check must not weaken anti-spoofing. AllowedSenders is the
 // control that decides which senders a provider may relay for, and it is
 // enforced against the From address regardless of the provider's hostname.
-func TestAllowedDomainsStillBlocksASpoofedSender(t *testing.T) {
+func TestAllowedSendersStillBlocksASpoofedSender(t *testing.T) {
 	provider := smtpProvider(t, "smtp.sendgrid.net", []string{"yourcompany.com"})
 	u, sender := newDomainTestUsecase(provider)
 
@@ -102,9 +102,9 @@ func TestAllowedDomainsStillBlocksASpoofedSender(t *testing.T) {
 	ctx := context.WithValue(context.Background(), SkipOutboxKey, true)
 	_, err := u.SendEmail(ctx, testTenantID, req)
 	if err == nil {
-		t.Fatal("a From domain outside AllowedDomains must be rejected")
+		t.Fatal("a From outside AllowedSenders must be rejected")
 	}
-	if !strings.Contains(err.Error(), "not authorized to send for domain") {
+	if !strings.Contains(err.Error(), "not authorized to send as") {
 		t.Errorf("expected an authorization error, got: %v", err)
 	}
 	if len(sender.sentEmails) != 0 {
@@ -112,9 +112,9 @@ func TestAllowedDomainsStillBlocksASpoofedSender(t *testing.T) {
 	}
 }
 
-// The permitted half of the same control: a sender inside AllowedDomains goes
+// The permitted half of the same control: a sender inside AllowedSenders goes
 // through even though it shares nothing with the provider's hostname.
-func TestAllowedDomainsPermitsAnAuthorizedSender(t *testing.T) {
+func TestAllowedSendersPermitsAnAuthorizedSender(t *testing.T) {
 	provider := smtpProvider(t, "smtp.sendgrid.net", []string{"yourcompany.com"})
 	u, sender := newDomainTestUsecase(provider)
 
@@ -135,24 +135,24 @@ func TestAllowedDomainsPermitsAnAuthorizedSender(t *testing.T) {
 	}
 }
 
-// senderDomain is the one extractor both halves of the send path use, so its
+// senderAddress is the one extractor both halves of the send path use, so its
 // answers decide whether admission and delivery agree.
-func TestSenderDomain(t *testing.T) {
+func TestSenderAddress(t *testing.T) {
 	tests := []struct {
 		from    string
 		want    string
 		wantErr bool
 	}{
-		{from: "alice@example.com", want: "example.com"},
-		{from: "alice@Example.COM", want: "example.com"},
+		{from: "alice@example.com", want: "alice@example.com"},
+		{from: "alice@Example.COM", want: "alice@example.com"},
 		// The display-name form admission already accepts. Splitting the raw
 		// string on "@" read this as `example.com>`.
-		{from: "Alice <alice@example.com>", want: "example.com"},
-		{from: `"Smith, Alice" <alice@example.com>`, want: "example.com"},
-		{from: "  alice@example.com  ", want: "example.com"},
-		// A quoted local part may hold an "@" of its own; the domain is after
-		// the last one.
-		{from: `"a@b"@example.com`, want: "example.com"},
+		{from: "Alice <alice@example.com>", want: "alice@example.com"},
+		{from: `"Smith, Alice" <alice@example.com>`, want: "alice@example.com"},
+		{from: "  alice@example.com  ", want: "alice@example.com"},
+		// A quoted local part may hold an "@" of its own. The parser drops
+		// the quotes; the domain is still what follows the last "@".
+		{from: `"a@b"@example.com`, want: "a@b@example.com"},
 		{from: "no-at-sign", wantErr: true},
 		{from: "alice@", wantErr: true},
 		{from: "@example.com", wantErr: true},
@@ -160,44 +160,46 @@ func TestSenderDomain(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got, err := senderDomain(tt.from)
+		got, err := senderAddress(tt.from)
 		if (err != nil) != tt.wantErr {
-			t.Errorf("senderDomain(%q) error = %v, wantErr %v", tt.from, err, tt.wantErr)
+			t.Errorf("senderAddress(%q) error = %v, wantErr %v", tt.from, err, tt.wantErr)
 			continue
 		}
 		if got != tt.want {
-			t.Errorf("senderDomain(%q) = %q, want %q", tt.from, got, tt.want)
+			t.Errorf("senderAddress(%q) = %q, want %q", tt.from, got, tt.want)
 		}
 	}
 }
 
-func TestProviderAllowsDomain(t *testing.T) {
-	restricted := &providerEntities.EmailProvider{AllowedDomains: []string{"yourcompany.com", " Other.org "}}
+func TestProviderSenderMatch(t *testing.T) {
+	restricted := &providerEntities.EmailProvider{AllowedSenders: []string{"*@yourcompany.com", " Other.org ", "billing@pay.example"}}
 	open := &providerEntities.EmailProvider{}
 
 	tests := []struct {
-		name   string
-		p      *providerEntities.EmailProvider
-		domain string
-		want   bool
+		name    string
+		p       *providerEntities.EmailProvider
+		address string
+		want    bool
 	}{
-		{"an unrestricted provider allows anything", open, "anywhere.net", true},
-		{"a listed domain", restricted, "yourcompany.com", true},
-		{"case does not matter", restricted, "other.org", true},
-		{"stray whitespace in the list does not matter", restricted, "other.org", true},
-		{"an unlisted domain", restricted, "someone-elses-bank.com", false},
-		{"a suffix is not a match", restricted, "evil-yourcompany.com", false},
+		{"an unrestricted provider allows anything", open, "a@anywhere.net", true},
+		{"a listed domain", restricted, "a@yourcompany.com", true},
+		{"a stored bare domain, case and whitespace aside", restricted, "a@other.org", true},
+		{"a listed address", restricted, "billing@pay.example", true},
+		{"another address at a listed address's domain", restricted, "ops@pay.example", false},
+		{"an unlisted domain", restricted, "a@someone-elses-bank.com", false},
+		{"a suffix is not a match", restricted, "a@evil-yourcompany.com", false},
+		{"a subdomain is not a match", restricted, "a@mail.yourcompany.com", false},
 	}
 	for _, tt := range tests {
-		if got := providerAllowsDomain(tt.p, tt.domain); got != tt.want {
-			t.Errorf("%s: providerAllowsDomain(%q) = %v, want %v", tt.name, tt.domain, got, tt.want)
+		if got := providerSenderMatch(tt.p, tt.address).Allowed(); got != tt.want {
+			t.Errorf("%s: providerSenderMatch(%q) = %v, want %v", tt.name, tt.address, got, tt.want)
 		}
 	}
 }
 
 // The latent bug. Admission accepts the display-name form, but delivery split
 // the raw From on "@" and read the domain as `yourcompany.com>` -- so a
-// provider with AllowedDomains refused every such send, after admission had
+// provider with AllowedSenders refused every such send, after admission had
 // already answered 200.
 func TestADisplayNameSenderIsDeliveredThroughARestrictedProvider(t *testing.T) {
 	provider := smtpProvider(t, "smtp.sendgrid.net", []string{"yourcompany.com"})
@@ -222,7 +224,7 @@ func TestADisplayNameSenderIsDeliveredThroughARestrictedProvider(t *testing.T) {
 
 // Refused while the caller is still waiting, rather than answered 200 and
 // failed later in the worker where nobody is listening.
-func TestAdmissionRefusesADomainTheProviderIsNotAuthorizedFor(t *testing.T) {
+func TestAdmissionRefusesASenderTheProviderIsNotAuthorizedFor(t *testing.T) {
 	provider := smtpProvider(t, "smtp.sendgrid.net", []string{"yourcompany.com"})
 	u, sender := newDomainTestUsecase(provider)
 
@@ -237,11 +239,11 @@ func TestAdmissionRefusesADomainTheProviderIsNotAuthorizedFor(t *testing.T) {
 	// No SkipOutboxKey: this is admission, not delivery.
 	_, err := u.SendEmail(context.Background(), testTenantID, req)
 
-	var refused *ProviderDomainRefusedError
+	var refused *ProviderSenderRefusedError
 	if !errors.As(err, &refused) {
-		t.Fatalf("error = %v, want a ProviderDomainRefusedError at admission", err)
+		t.Fatalf("error = %v, want a ProviderSenderRefusedError at admission", err)
 	}
-	if refused.Domain != "someone-elses-bank.com" || refused.Provider != "ESP" {
+	if refused.Sender != "ceo@someone-elses-bank.com" || refused.Provider != "ESP" {
 		t.Errorf("refusal = %+v", refused)
 	}
 	if len(sender.sentEmails) != 0 {
@@ -321,11 +323,12 @@ func TestADomainRefusalDoesNotSpendTheRate(t *testing.T) {
 	}
 }
 
-// The message the refusal carried before it was typed, byte for byte: the
-// outbox worker records it, and it is what an operator greps a log for.
-func TestProviderDomainRefusalMessageIsUnchanged(t *testing.T) {
-	got := (&ProviderDomainRefusedError{Provider: "ESP", Domain: "example.com"}).Error()
-	want := "provider ESP is not authorized to send for domain example.com"
+// The message the refusal carries: the outbox worker records it, an operator
+// greps a log for it, and the bounce classifier reads "not authorized to send"
+// in it as permanent.
+func TestProviderSenderRefusalMessage(t *testing.T) {
+	got := (&ProviderSenderRefusedError{Provider: "ESP", Sender: "ceo@example.com"}).Error()
+	want := "provider ESP is not authorized to send as ceo@example.com"
 	if got != want {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}

@@ -284,7 +284,7 @@ func (m *workerMockOutboxRepo) Stats(context.Context) (int64, time.Time, error) 
 func TestAPermanentRefusalIsNotRetried(t *testing.T) {
 	outboxRepo := &workerMockOutboxRepo{}
 	emailUsecase := &mockEmailUsecase{
-		err: &ProviderDomainRefusedError{Provider: "ESP", Domain: "someone-elses-bank.com"},
+		err: &ProviderSenderRefusedError{Provider: "ESP", Sender: "ceo@someone-elses-bank.com"},
 	}
 	w := NewQueueWorker(outboxRepo, emailUsecase, &mockSuppressionUsecase{},
 		&mockTenantUsecase{}, time.Second).(*queueWorker)
@@ -319,7 +319,7 @@ func TestAPermanentRefusalSurvivesWrapping(t *testing.T) {
 	outboxRepo := &workerMockOutboxRepo{}
 	emailUsecase := &mockEmailUsecase{
 		err: fmt.Errorf("delivery failed: %w",
-			&ProviderDomainRefusedError{Provider: "ESP", Domain: "example.com"}),
+			&ProviderSenderRefusedError{Provider: "ESP", Sender: "ceo@example.com"}),
 	}
 	w := NewQueueWorker(outboxRepo, emailUsecase, &mockSuppressionUsecase{},
 		&mockTenantUsecase{}, time.Second).(*queueWorker)

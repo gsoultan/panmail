@@ -313,7 +313,7 @@ func TestTheProvidersDkimDomainIsPreferredOverTheRequest(t *testing.T) {
 
 func TestAProviderWithoutDkimFallsBackToItsAllowedDomain(t *testing.T) {
 	provider := smtpProviderWithDkim(t, providerID, "", "", "")
-	provider.AllowedDomains = []string{"fallback.example.com"}
+	provider.AllowedSenders = []string{"*@fallback.example.com"}
 
 	u := newHealthUsecase(map[string]*entities.EmailProvider{providerID: provider}, fakeResolver{})
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	"github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	"github.com/gsoultan/panmail/internal/email_provider/senders"
 	"github.com/gsoultan/panmail/pkg/db"
 	"github.com/gsoultan/panmail/pkg/secrets"
 )
@@ -35,7 +36,10 @@ var (
 
 // selectColumns is the column list shared by every read, kept in one place so
 // the dynamic filter query below cannot drift from the embedded ones.
-const selectColumns = "id, tenant_id, name, type, config, allowed_domains, webhook_secret, " +
+//
+// allowed_senders rows written before entries could be addresses carry bare
+// domains, which senders.Canonical reads as *@domain on the way out.
+const selectColumns = "id, tenant_id, name, type, config, allowed_senders, webhook_secret, " +
 	"send_rate_per_minute, send_burst, created_at, updated_at"
 
 type store struct {
@@ -70,10 +74,10 @@ func (s *store) Create(ctx context.Context, p *entities.EmailProvider) error {
 	if err != nil {
 		return err
 	}
-	allowedDomainsJSON, _ := json.Marshal(p.AllowedDomains)
+	allowedSendersJSON, _ := json.Marshal(p.AllowedSenders)
 
 	_, err = db.ExecContext(ctx, createProviderQuery,
-		p.ID, p.TenantID, p.Name, p.Type, config, string(allowedDomainsJSON), secret,
+		p.ID, p.TenantID, p.Name, p.Type, config, string(allowedSendersJSON), secret,
 		p.SendRatePerMinute, p.SendBurst, p.CreatedAt, p.UpdatedAt)
 	return err
 }
@@ -159,10 +163,10 @@ func (s *store) Update(ctx context.Context, p *entities.EmailProvider) error {
 	if err != nil {
 		return err
 	}
-	allowedDomainsJSON, _ := json.Marshal(p.AllowedDomains)
+	allowedSendersJSON, _ := json.Marshal(p.AllowedSenders)
 
 	_, err = db.ExecContext(ctx, updateProviderQuery,
-		p.TenantID, p.ID, p.Name, config, string(allowedDomainsJSON), secret,
+		p.TenantID, p.ID, p.Name, config, string(allowedSendersJSON), secret,
 		p.SendRatePerMinute, p.SendBurst, p.UpdatedAt)
 	return err
 }
@@ -205,11 +209,11 @@ func (s *store) seal(p *entities.EmailProvider) (config string, secret string, e
 // scanProvider reads one row and decrypts the sealed columns.
 func (s *store) scanProvider(scan func(...any) error) (*entities.EmailProvider, error) {
 	p := &entities.EmailProvider{}
-	var allowedDomainsJSON []byte
+	var allowedSendersJSON []byte
 	var config string
 	var webhookSecret sql.NullString
 
-	if err := scan(&p.ID, &p.TenantID, &p.Name, &p.Type, &config, &allowedDomainsJSON,
+	if err := scan(&p.ID, &p.TenantID, &p.Name, &p.Type, &config, &allowedSendersJSON,
 		&webhookSecret, &p.SendRatePerMinute, &p.SendBurst, &p.CreatedAt, &p.UpdatedAt); err != nil {
 		return nil, err
 	}
@@ -228,8 +232,10 @@ func (s *store) scanProvider(scan func(...any) error) (*entities.EmailProvider, 
 		p.WebhookSecret = plainSecret
 	}
 
-	if len(allowedDomainsJSON) > 0 {
-		_ = json.Unmarshal(allowedDomainsJSON, &p.AllowedDomains)
+	if len(allowedSendersJSON) > 0 {
+		var stored []string
+		_ = json.Unmarshal(allowedSendersJSON, &stored)
+		p.AllowedSenders = senders.Canonical(stored)
 	}
 
 	return p, nil

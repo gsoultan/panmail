@@ -18,6 +18,7 @@ import (
 	"github.com/gsoultan/panmail/internal/email/repositories/stores"
 	providerEntities "github.com/gsoultan/panmail/internal/email_provider/repositories/entities"
 	providerStores "github.com/gsoultan/panmail/internal/email_provider/repositories/stores"
+	"github.com/gsoultan/panmail/internal/email_provider/senders"
 	"github.com/gsoultan/panmail/internal/emailfilter"
 	eventusecases "github.com/gsoultan/panmail/internal/event/usecases"
 	"github.com/gsoultan/panmail/internal/ratelimit"
@@ -246,9 +247,8 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		return nil, &ProviderNotFoundError{ProviderID: req.ProviderId}
 	}
 
-	// Anti-spoofing is enforced by the provider's AllowedDomains list in
-	// doSend, which checks the From address against the domains the operator
-	// authorised for that provider.
+	// Anti-spoofing is enforced by the provider's allowed senders, which are
+	// checked against the From address below and again in doSend.
 	//
 	// There used to be a second check here comparing the From domain with the
 	// SMTP *host* domain. It rejected every hosted ESP — sending
@@ -285,17 +285,17 @@ func (u *sendEmailUsecase) SendEmail(ctx context.Context, tenantID string, req *
 		}
 	}
 
-	// Refuse a From domain the provider is not authorized for while the
+	// Refuse a From address the provider is not authorized for while the
 	// caller is still waiting. This used to be checked only at delivery, so a
 	// doomed send was answered 200, queued, and then failed in the worker
 	// where nobody was listening. Checked before the rate so a send that can
 	// never go out does not spend anyone's allowance.
-	domain, err := senderDomain(req.From)
+	sender, err := senderAddress(req.From)
 	if err != nil {
 		return nil, err
 	}
-	if !providerAllowsDomain(provider, domain) {
-		return nil, &ProviderDomainRefusedError{Provider: provider.Name, Domain: domain}
+	if !providerSenderMatch(provider, sender).Allowed() {
+		return nil, &ProviderSenderRefusedError{Provider: provider.Name, Sender: sender}
 	}
 
 	// The send rate is charged here and only here.
@@ -546,8 +546,8 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 	defer cancelPrep()
 
 	// The same extractor admission used, so the two cannot disagree about
-	// what domain this send is from.
-	fromDomain, err := senderDomain(req.From)
+	// who this send is from.
+	fromAddress, err := senderAddress(req.From)
 	if err != nil {
 		return nil, err
 	}
@@ -578,11 +578,11 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 
 		if p != nil {
 			// Still checked here though admission checked it too: this is the
-			// authority, since AllowedDomains may have changed while the message
+			// authority, since the allowed senders may have changed while the message
 			// was queued. The refusal is permanent, so the worker fails it once
 			// rather than retrying it for two days.
-			if !providerAllowsDomain(p, fromDomain) {
-				return nil, &ProviderDomainRefusedError{Provider: p.Name, Domain: fromDomain}
+			if !providerSenderMatch(p, fromAddress).Allowed() {
+				return nil, &ProviderSenderRefusedError{Provider: p.Name, Sender: fromAddress}
 			}
 			providers = append(providers, p)
 		}
@@ -594,8 +594,10 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 			return nil, fmt.Errorf("failed to list providers: %w", err)
 		}
 
-		var domainSpecific []*providerEntities.EmailProvider
-		var generic []*providerEntities.EmailProvider
+		// The most specific authorization wins: providers that name this
+		// exact address, then those that admit its whole domain, then those
+		// with no restriction at all.
+		var byAddress, byDomain, generic []*providerEntities.EmailProvider
 
 		for _, p := range allProviders {
 			// Skip receivers
@@ -603,21 +605,22 @@ func (u *sendEmailUsecase) doSend(ctx context.Context, tenantID string, req *pan
 				continue
 			}
 
-			if len(p.AllowedDomains) > 0 {
-				for _, d := range p.AllowedDomains {
-					if strings.ToLower(d) == fromDomain {
-						domainSpecific = append(domainSpecific, p)
-						break
-					}
-				}
-			} else {
+			switch providerSenderMatch(p, fromAddress) {
+			case senders.ByAddress:
+				byAddress = append(byAddress, p)
+			case senders.ByDomain:
+				byDomain = append(byDomain, p)
+			case senders.Unrestricted:
 				generic = append(generic, p)
 			}
 		}
 
-		if len(domainSpecific) > 0 {
-			providers = domainSpecific
-		} else {
+		switch {
+		case len(byAddress) > 0:
+			providers = byAddress
+		case len(byDomain) > 0:
+			providers = byDomain
+		default:
 			providers = generic
 		}
 	}

@@ -145,7 +145,7 @@ func (s *session) Data(r io.Reader) error {
 	// The envelope sender is passed as the fallback From. A submission with
 	// no From header is malformed but recoverable, and the address bounces
 	// already go to is the honest sender to use. It stays subject to the
-	// provider's AllowedDomains check, so this forgives a missing header
+	// provider's allowed senders check, so this forgives a missing header
 	// without forgiving a spoofed one.
 	parsed, err := s.server.parser.Parse(r, s.from)
 	if err != nil {

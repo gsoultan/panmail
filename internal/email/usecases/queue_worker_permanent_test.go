@@ -81,7 +81,7 @@ func TestARefusalSuppressesNoOne(t *testing.T) {
 // The domain refusal already classified as REJECTED; recording refusals as
 // REJECTED explicitly must leave it exactly where it was.
 func TestTheDomainRefusalIsUnchanged(t *testing.T) {
-	outbox, send, _ := runPermanentRefusal(t, &ProviderDomainRefusedError{Provider: "ESP", Domain: "example.com"})
+	outbox, send, _ := runPermanentRefusal(t, &ProviderSenderRefusedError{Provider: "ESP", Sender: "ceo@example.com"})
 
 	if outbox.lastUpdate == nil || outbox.lastUpdate.Status != entities.OutboxStatusFailed {
 		t.Fatalf("row = %+v, want failed on the first attempt", outbox.lastUpdate)
