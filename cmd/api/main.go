@@ -198,6 +198,12 @@ func main() {
 		return
 	}
 
+	// Recovery for a locked-out administrator. See handleResetPasswordCommand.
+	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
+		handleResetPasswordCommand()
+		return
+	}
+
 	// Parse flags for server mode
 	builtUIFlag := flag.Bool("built-ui", false, "Serve the built UI (embedded or from web/dist)")
 	configFlag := flag.String("config", "", "Path to configuration file")

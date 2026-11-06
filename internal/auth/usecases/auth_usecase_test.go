@@ -65,6 +65,14 @@ func (r *stubUserRepo) UpdateTwoFactor(ctx context.Context, id string, enabled b
 	}
 	return nil
 }
+func (r *stubUserRepo) UpdatePassword(ctx context.Context, id string, passwordHash string) error {
+	u, ok := r.byID[id]
+	if !ok {
+		return errors.New("not found")
+	}
+	u.Password = passwordHash
+	return nil
+}
 func (r *stubUserRepo) Delete(ctx context.Context, id string) error { return nil }
 func (r *stubUserRepo) Count(ctx context.Context) (int, error)      { return len(r.byID), nil }
 
