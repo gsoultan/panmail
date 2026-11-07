@@ -12,6 +12,8 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id string) (*entities.User, error)
 	ListByTenantID(ctx context.Context, tenantID string, pageSize int, pageToken string) ([]*entities.User, string, error)
 	UpdateRole(ctx context.Context, id string, role string) error
+	// UpdatePassword stores a new password hash, never a plaintext password.
+	UpdatePassword(ctx context.Context, id string, passwordHash string) error
 	UpdateTwoFactor(ctx context.Context, id string, enabled bool, secret string) error
 	Delete(ctx context.Context, id string) error
 	Count(ctx context.Context) (int, error)

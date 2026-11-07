@@ -24,6 +24,8 @@ var (
 	listUsersByTenantQuery string
 	//go:embed sql/update_user_role.sql
 	updateUserRoleQuery string
+	//go:embed sql/update_user_password.sql
+	updateUserPasswordQuery string
 	//go:embed sql/update_user_two_factor.sql
 	updateUserTwoFactorQuery string
 	//go:embed sql/delete_user.sql
@@ -139,6 +141,28 @@ func (s *store) UpdateRole(ctx context.Context, id string, role string) error {
 	}
 	_, err = db.ExecContext(ctx, updateUserRoleQuery, role, time.Now(), id)
 	return err
+}
+
+// UpdatePassword replaces the stored password hash. It reports sql.ErrNoRows
+// when no user has that id, so a reset that changed nothing is not reported
+// as done.
+func (s *store) UpdatePassword(ctx context.Context, id string, passwordHash string) error {
+	db, err := s.getDB()
+	if err != nil {
+		return err
+	}
+	res, err := db.ExecContext(ctx, updateUserPasswordQuery, passwordHash, time.Now(), id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (s *store) UpdateTwoFactor(ctx context.Context, id string, enabled bool, secret string) error {
